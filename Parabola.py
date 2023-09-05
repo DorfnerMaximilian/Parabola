@@ -1307,80 +1307,223 @@ def getAtomicCoordinates(folder="./"):
     f.close()
     return Atoms
 #-------------------------------------------------------------------------
-def getMatricesfromfile(parentfolder,filename="KSHamiltonian"):
-        with open(parentfolder+"/"+filename,'r+') as f:
-            OLMlines=[]
-            OLMFlag=False
-            Niter=0
-            Nlines=0
-            for line in f:
-                if len(line.split())>=1:
-                    if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX":
+def getMatricesfromfile_mulOne(parentfolder="./",filename="KSHamiltonian"):
+    ##Reads in the overlapmatrix and the KSHamiltonian in case of Spin multiplicity 1
+    ## input:
+    ## (opt.)   folder              path to the folder of the KSHamiltonian file         (string)
+    ## output:  KSlines             list of strings of the converges KS Hamiltonian
+    ##          OLMlines            list of strings of the overlapmatrix
+    ##          NumBasisfunctions   int number of (spherical) Basisfunctions in Basis set
+    with open(parentfolder+"/"+filename,'r+') as f:
+        OLMlines=[]
+        OLMFlag=False
+        Niter=0
+        Nlines=0
+        for line in f:
+            if len(line.split())>=1:
+                if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX":
+                    OLMFlag=False
+                    Niter+=1
+                if line.split()[0]=="OVERLAP" and  line.split()[1]=="MATRIX" and OLMFlag:
+                    OLMFlag=False
+                if OLMFlag:
+                    OLMlines.append(line)
+                elif line.split()[0]=="OVERLAP" and  line.split()[1]=="MATRIX":
+                    OLMFlag=True
+            Nlines+=1
+    NumBasisfunctions=0
+    with open(parentfolder+"/"+filename,'r+') as f:
+        KSlines=[]
+        KSFlag=False
+        Niter2=0
+        Nlines2=0
+        for line in f:
+            if len(line.split())>=1:
+                if line.split()[0]=="OVERLAP" and  line.split()[1]=="MATRIX":
+                    KSFlag=False
+                if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX":
+                    Niter2+=1
+                    KSFlag=False
+                if KSFlag:
+                    KSlines.append(line)
+                if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX" and Niter2==Niter:
+                    KSFlag=True
+                if Nlines2==Nlines-3:
+                    NumBasisfunctions=int(line.split()[0])
+            Nlines2+=1
+    return KSlines,OLMlines,NumBasisfunctions
+def getMatricesfromfile_mulTwo(parentfolder,filename="KSHamiltonian"):
+    with open(parentfolder+"/"+filename,'r+') as f:
+        OLMlines=[]
+        OLMFlag=False
+        Niter0=0
+        Niter1=0
+        Nlines=0
+        for line in f:
+            if len(line.split())>=1:
+                if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX":
+                    if line.split()[2]=="FOR" and  line.split()[3]=="ALPHA":
                         OLMFlag=False
-                        Niter+=1
-                    if line.split()[0]=="OVERLAP" and  line.split()[1]=="MATRIX" and OLMFlag:
+                        Niter0+=1
+                if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX":
+                    if line.split()[2]=="FOR" and  line.split()[3]=="BETA":
                         OLMFlag=False
-                    if OLMFlag:
-                        OLMlines.append(line)
-                    elif line.split()[0]=="OVERLAP" and  line.split()[1]=="MATRIX":
-                        OLMFlag=True
-                Nlines+=1
-        NumBasisfunctions=0
-        with open(parentfolder+"/"+filename,'r+') as f:
-            KSlines=[]
-            KSFlag=False
-            Niter2=0
-            Nlines2=0
-            for line in f:
-                if len(line.split())>=1:
-                    if line.split()[0]=="OVERLAP" and  line.split()[1]=="MATRIX":
-                        KSFlag=False
-                    if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX":
+                        Niter1+=1
+                if line.split()[0]=="OVERLAP" and  line.split()[1]=="MATRIX" and OLMFlag:
+                    OLMFlag=False
+                if OLMFlag:
+                    OLMlines.append(line)
+                elif line.split()[0]=="OVERLAP" and  line.split()[1]=="MATRIX":
+                    OLMFlag=True
+            Nlines+=1
+    NumBasisfunctions=0
+    with open(parentfolder+"/"+filename,'r+') as f:
+        KSlines_alpha=[]
+        KSFlag1=False
+        Niter2=0
+        Nlines2=0
+        for line in f:
+            if len(line.split())>=1:
+                if line.split()[0]=="OVERLAP" and  line.split()[1]=="MATRIX":
+                    KSFlag1=False
+                if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX":
+                    if line.split()[2]=="FOR" and  line.split()[3]=="BETA":
+                        KSFlag1=False
+                if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX":
+                    if line.split()[2]=="FOR" and  line.split()[3]=="ALPHA":
+                        KSFlag1=False
                         Niter2+=1
-                        KSFlag=False
-                    if KSFlag:
-                        KSlines.append(line)
-                    if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX" and Niter2==Niter:
-                        KSFlag=True
-                    if Nlines2==Nlines-3:
-                        NumBasisfunctions=int(line.split()[0])
-                Nlines2+=1
-        return KSlines,OLMlines,NumBasisfunctions
+                if KSFlag1:
+                    KSlines_alpha.append(line)
+                if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX":
+                    if line.split()[2]=="FOR" and  line.split()[3]=="ALPHA" and Niter2==Niter0:
+                        KSFlag1=True
+                if Nlines2==Nlines-3:
+                    NumBasisfunctions=int(line.split()[0])
+            Nlines2+=1
+    with open(parentfolder+"/"+filename,'r+') as f:
+        KSlines_beta=[]
+        KSFlag1=False
+        Niter2=0
+        Nlines2=0
+        for line in f:
+            if len(line.split())>=1:
+                if line.split()[0]=="OVERLAP" and  line.split()[1]=="MATRIX":
+                    KSFlag1=False
+                if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX":
+                    if line.split()[2]=="FOR" and  line.split()[3]=="ALPHA":
+                        KSFlag1=False
+                if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX":
+                    if line.split()[2]=="FOR" and  line.split()[3]=="BETA":
+                        KSFlag1=False
+                        Niter2+=1
+                if KSFlag1:
+                    KSlines_beta.append(line)
+                if line.split()[0]=="KOHN-SHAM" and  line.split()[1]=="MATRIX":
+                    if line.split()[2]=="FOR" and  line.split()[3]=="BETA" and Niter2==Niter1:
+                        KSFlag1=True
+            Nlines2+=1
+    return KSlines_alpha,KSlines_beta,OLMlines,NumBasisfunctions
+def checkforSpinMultiplicity(path="./"):
+    ##opens the .inp file in the directory and checks, if Multiplicity is 1
+    ## input:
+    ## (opt.)   folder              path to the folder of the .inp file         (string)
+    ## output:  mul    (int)        the multiplicity of the system. 
+
+    #get the Projectname
+    inp_files = [f for f in os.listdir(path) if f.endswith('.inp')]
+    if len(inp_files) != 1:
+        raise ValueError('InputError: There should be only one *.inp file in the current directory')
+    pathtofile = path+"/"+inp_files[0]
+    mul=1
+    with open(pathtofile,"r") as f:
+        lines=f.readlines()
+        for line in lines:
+            if len(line.split())>1:
+                if line.split()[0]=="MULTIPLICITY":
+                    mul=int(line.split()[1])
+    return mul
 #-------------------------------------------------------------------------
 def readinMatrices(parentfolder="./",filename='KSHamiltonian'):
-    ## Reads the Kohn-Sham Hamiltonian and the Overlapmatrix from a provided file
+    ## Reads the Kohn-Sham Hamiltonian (for spin-species alpha/-beta) and the overlapmatrix from a provided file
     ## input:
     ## (opt.)   filename            path to the Hamiltonian file        (string)
     ## output:  KSHamiltonian       Kohn-Sham Hamiltonian   symmetric np.array(NumBasisfunctions,Numbasisfunction)
+    ##                              In case of Multiplicity 2 KSHamiltonian is the KS_Hamiltonian of the alpha spin!
     ##          OLM                 Overlapmatrix           symmetric np.array(NumBasisfunctions,Numbasisfunction)
-    try:
-        KSlines,OLMlines,NumBasisfunctions=getMatricesfromfile(parentfolder,filename)
-        KSHamiltonian=np.zeros((NumBasisfunctions,NumBasisfunctions))
-        OLM=np.zeros((NumBasisfunctions,NumBasisfunctions))
-        for l in KSlines:
-            if len(l.split())<5:
-                jindices=[int(j)-1 for j in l.split()]
-            else:
-                iindix=int(l.split()[0])-1
-                iter=4
-                for jindex in jindices:
-                    KSHamiltonian[iindix][jindex]=float(l.split()[iter])
-                    iter+=1
-        for l in OLMlines:
-            if len(l.split())<5:
-                jindices=[int(j)-1 for j in l.split()]
-            else:
-                iindix=int(l.split()[0])-1
-                iter=4
-                for jindex in jindices:
-                    OLM[iindix][jindex]=float(l.split()[iter])
-                    iter+=1
-        np.save(parentfolder+"/"+"KSHamiltonian",KSHamiltonian)
-        np.save(parentfolder+"/"+"OLM",OLM)
-        os.remove(parentfolder+"/"+"KSHamiltonian")
-    except:
-        KSHamiltonian=np.load(parentfolder+"/KSHamiltonian.npy")
-        OLM=np.load(parentfolder+"/OLM.npy")
+    mul=checkforSpinMultiplicity(parentfolder)
+    if mul==1:
+        try:
+            KSlines,OLMlines,NumBasisfunctions=getMatricesfromfile_mulOne(parentfolder,filename)
+            KSHamiltonian=np.zeros((NumBasisfunctions,NumBasisfunctions))
+            OLM=np.zeros((NumBasisfunctions,NumBasisfunctions))
+            for l in KSlines:
+                if len(l.split())<5:
+                    jindices=[int(j)-1 for j in l.split()]
+                else:
+                    iindix=int(l.split()[0])-1
+                    iter=4
+                    for jindex in jindices:
+                        KSHamiltonian[iindix][jindex]=float(l.split()[iter])
+                        iter+=1
+            for l in OLMlines:
+                if len(l.split())<5:
+                    jindices=[int(j)-1 for j in l.split()]
+                else:
+                    iindix=int(l.split()[0])-1
+                    iter=4
+                    for jindex in jindices:
+                        OLM[iindix][jindex]=float(l.split()[iter])
+                        iter+=1
+            np.save(parentfolder+"/"+"KSHamiltonian",KSHamiltonian)
+            np.save(parentfolder+"/"+"OLM",OLM)
+            os.remove(parentfolder+"/"+"KSHamiltonian")
+        except:
+            KSHamiltonian=np.load(parentfolder+"/KSHamiltonian.npy")
+            OLM=np.load(parentfolder+"/OLM.npy")
+    elif mul==2:
+        try:
+            KSlines_alpha,KSlines_beta,OLMlines,NumBasisfunctions=getMatricesfromfile_mulTwo(parentfolder,filename)
+            KSHamiltonian_alpha=np.zeros((NumBasisfunctions,NumBasisfunctions))
+            KSHamiltonian_beta=np.zeros((NumBasisfunctions,NumBasisfunctions))
+            OLM=np.zeros((NumBasisfunctions,NumBasisfunctions))
+            for l in KSlines_alpha:
+                if len(l.split())<5:
+                    jindices=[int(j)-1 for j in l.split()]
+                else:
+                    iindix=int(l.split()[0])-1
+                    iter=4
+                    for jindex in jindices:
+                        KSHamiltonian_alpha[iindix][jindex]=float(l.split()[iter])
+                        iter+=1
+            for l in KSlines_beta:
+                if len(l.split())<5:
+                    jindices=[int(j)-1 for j in l.split()]
+                else:
+                    iindix=int(l.split()[0])-1
+                    iter=4
+                    for jindex in jindices:
+                        KSHamiltonian_beta[iindix][jindex]=float(l.split()[iter])
+                        iter+=1
+            for l in OLMlines:
+                if len(l.split())<5:
+                    jindices=[int(j)-1 for j in l.split()]
+                else:
+                    iindix=int(l.split()[0])-1
+                    iter=4
+                    for jindex in jindices:
+                        OLM[iindix][jindex]=float(l.split()[iter])
+                        iter+=1
+            np.save(parentfolder+"/"+"KSHamiltonian_alpha",KSHamiltonian_alpha)
+            np.save(parentfolder+"/"+"KSHamiltonian_beta",KSHamiltonian_beta)
+            np.save(parentfolder+"/"+"OLM",OLM)
+            KSHamiltonian=KSHamiltonian_alpha
+            os.remove(parentfolder+"/"+"KSHamiltonian")
+        except:
+            KSHamiltonian_alpha=np.load(parentfolder+"/KSHamiltonian_alpha.npy")
+            KSHamiltonian_beta=np.load(parentfolder+"/KSHamiltonian_beta.npy")
+            OLM=np.load(parentfolder+"/OLM.npy")
+            KSHamiltonian=KSHamiltonian_alpha
     return KSHamiltonian,OLM
 def compressKSfile(parentfolder="./"):
     _,_=readinMatrices(parentfolder)
@@ -2654,6 +2797,7 @@ def readCubeFile(filename,parentfolder="./"):
     with open(parentfolder+"/"+filename,"r") as file:
         lines=file.readlines()
         it=0
+        Cubedata=False
         for line in lines:
             if it==3:
                 Nx=int(line.split()[0])
@@ -2662,6 +2806,8 @@ def readCubeFile(filename,parentfolder="./"):
             if it==5:
                 Nz=int(line.split()[0])
             if len(line.split())==6:
+                Cubedata=True
+            if Cubedata:
                 for da in line.split():
                     predata.append(float(da))
             it+=1
@@ -2739,27 +2885,32 @@ def ComputeDipolmatrixElements(State1,State2,path="./"):
     #Check that State1 and State2 have the same dimensions
     if np.shape(State1)!=np.shape(State2):
         raise ValueError("Different Grid for the two states. Reconsider your input!")
-    Nx=np.shape(State1)[0]
-    Ny=np.shape(State1)[1]
-    Nz=np.shape(State1)[2]
+    N1=np.shape(State1)[0]
+    N2=np.shape(State1)[1]
+    N3=np.shape(State1)[2]
     conFactors=ConversionFactors()
-    CellSizes=getCellSize(path)
-    lengthx=np.linalg.norm(CellSizes[0])*conFactors['A->a.u.']/Nx
-    lengthy=np.linalg.norm(CellSizes[1])*conFactors['A->a.u.']/Ny
-    lengthz=np.linalg.norm(CellSizes[2])*conFactors['A->a.u.']/Nz
-    #Compute overlap of the Wavefunctions 
-    OLP=np.sum(np.sum(np.sum(State1*State2)))*lengthx*lengthy*lengthz
+    Cellvectors=getCellSize(path)
+    #Convert to atomic units
+    cellvector1=Cellvectors[0]*1.88972613288564
+    cellvector2=Cellvectors[1]*1.88972613288564
+    cellvector3=Cellvectors[2]*1.88972613288564
+    #get voxel volume in a.u.**3
+    voxelvolume=np.dot(cellvector1,np.cross(cellvector2,cellvector3))/(N1*N2*N3)
     ##Set up real space grids
-    xgrid=lengthx*np.arange(Nx)
-    ygrid=lengthy*np.arange(Ny)
-    zgrid=lengthz*np.arange(Nz)
-    xop,yop,zop=np.meshgrid(xgrid,ygrid,zgrid,indexing="ij")
-    dxint=np.sum(np.sum(np.sum(State1*xop*State2)))*lengthx*lengthy*lengthz
-    dyint=np.sum(np.sum(np.sum(State1*yop*State2)))*lengthx*lengthy*lengthz
-    dzint=np.sum(np.sum(np.sum(State1*zop*State2)))*lengthx*lengthy*lengthz
+    #discretization
+    length1=np.linalg.norm(cellvector1)/N1
+    length2=np.linalg.norm(cellvector2)/N2
+    length3=np.linalg.norm(cellvector3)/N3
+    grid1=length1*np.arange(N1)
+    grid2=length2*np.arange(N2)
+    grid3=length3*np.arange(N3)
+    xx,yy,zz=np.meshgrid(grid1,grid2,grid3,indexing="ij")
+    dxint=np.sum(State1*xx*State2)*voxelvolume
+    dyint=np.sum(State1*yy*State2)*voxelvolume
+    dzint=np.sum(State1*zz*State2)*voxelvolume
     return dxint,dyint,dzint
 
-def OpticalAnalysis(Nx=150,Ny=150,Nz=150,path="./",minweigth=0.05):
+def OpticalAnalysis(Nx=200,Ny=200,Nz=200,minweigth=0.05,path="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
        input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 
                                                           TDDFPT calculation lies                                                
@@ -2771,6 +2922,7 @@ def OpticalAnalysis(Nx=150,Ny=150,Nz=150,path="./",minweigth=0.05):
     states=[]
     energies=[]
     states=getExcitedStatesCP2K(path,minweigth,Delta)
+    print(states)
     TransitionDipolevectors=[]
     with open("ExcitedStatesAndDipoles.dat","a") as file:
         file.write("Python Convention of state labeling!\n")
@@ -2802,9 +2954,9 @@ def OpticalAnalysis(Nx=150,Ny=150,Nz=150,path="./",minweigth=0.05):
                 State2=WFNonGrid(StateLabel2,Nx,Ny,Nz,path)
             #compute the dipole matrix elements of the elementary transitions
             edx,edy,edz=ComputeDipolmatrixElements(State2,State1,path)
-            dx+=amplitude*edx*np.sqrt(2)
-            dy+=amplitude*edy*np.sqrt(2)
-            dz+=amplitude*edz*np.sqrt(2)
+            dx+=amplitude*edx
+            dy+=amplitude*edy
+            dz+=amplitude*edz
         TransitionDipolevectors.append(np.array([dx,dy,dz]))
         with open("ExcitedStatesAndDipoles.dat","a") as file:
             file.write("Excited State #:"+str(it+1)+"\n")
@@ -2819,7 +2971,7 @@ def OpticalAnalysis(Nx=150,Ny=150,Nz=150,path="./",minweigth=0.05):
                 itl=elementaryState[0]
                 ith=elementaryState[1]
                 if it==0:
-                    file.write("Dominant state transition:"+"HOMO-"+str(int(np.abs(itl)))+"->"+"LUMO+"+str(ith-1)+"\n")
+                    file.write("Dominant state transition:"+"HOMO-"+str(int(itl))+"->"+"LUMO+"+str(ith-1)+"\n")
                     file.write("Excited State is composed of the individual excitations:\n") 
                 file.write(format(itl,'3.0f')+" ->"+format(ith,'3.0f')+":"+format(amplitude,'12.6f')+"\n")
                 it+=1
