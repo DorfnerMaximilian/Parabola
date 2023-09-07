@@ -252,6 +252,7 @@ def centerMolecule(path="./"):
     #Compute center of Cell (assuming orthogonal basis vectors)
     cellcenter=0.5*cellcoordinates[0]+0.5*cellcoordinates[1]+0.5*cellcoordinates[2]
     xyzcoordinates,masses,atomicsym=getCoordinatesAndMasses(path)
+
     #Compute the Intertia Tensor
     I=getInertiaTensor(xyzcoordinates,masses)
     centerofmasscoordinates,centerofMass=getCenterOfMassCoordinates(xyzcoordinates,masses)
@@ -304,6 +305,10 @@ def centerMolecule(path="./"):
         ValueError("Increase cell size in y direction to at least ",2*mincellsizey)
     if mincellsizez<=0.5*distz:
         ValueError("Increase cell size in z direction to at least ",2*mincellsizez)
+    
+    writexyzfile(atomicsym,centerofcellCoordinates,path)
+#-------------------------------------------------------------------------
+def writexyzfile(atomicsym,coordinates,path="./"):
     xyzfilename=getxyzfilename(path)
     # generate new xyz file
     xyzinput=[]
@@ -312,7 +317,7 @@ def centerMolecule(path="./"):
         xyzinput.append(lines[0])
         xyzinput.append(lines[1])
     g.close()
-    for it,xyz in enumerate(centerofcellCoordinates):
+    for it,xyz in enumerate(coordinates):
         xyzinput.append(atomicsym[it]+' '+str(xyz[0])+' '+str(xyz[1])+' '+str(xyz[2])+'\n')
     #open the old xyz file
     g=open(xyzfilename,'r+')
@@ -321,7 +326,6 @@ def centerMolecule(path="./"):
     #generate the new content
     for line in xyzinput:
         g.write(line)
-#-------------------------------------------------------------------------
 def getNewXYZ(path='.'):
     ## Script to readout the last iteration of the GeoOpt file and 
     ## generate new oldxyzfile_opt.xyz file for Vibrational Analysis
@@ -2910,7 +2914,7 @@ def ComputeDipolmatrixElements(State1,State2,path="./"):
     dzint=np.sum(State1*zz*State2)*voxelvolume
     return dxint,dyint,dzint
 
-def OpticalAnalysis(Nx=200,Ny=200,Nz=200,minweigth=0.05,path="./"):
+def OpticalAnalysis(Nx=150,Ny=150,Nz=150,minweigth=0.05,path="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
        input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 
                                                           TDDFPT calculation lies                                                
