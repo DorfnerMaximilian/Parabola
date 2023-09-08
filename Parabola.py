@@ -2909,12 +2909,13 @@ def ComputeDipolmatrixElements(State1,State2,path="./"):
     grid2=length2*np.arange(N2)
     grid3=length3*np.arange(N3)
     xx,yy,zz=np.meshgrid(grid1,grid2,grid3,indexing="ij")
-    dxint=np.sum(State1*xx*State2)*voxelvolume
-    dyint=np.sum(State1*yy*State2)*voxelvolume
-    dzint=np.sum(State1*zz*State2)*voxelvolume
+    transitiondensity=State1*State2
+    dxint=np.sum(xx*transitiondensity)*voxelvolume
+    dyint=np.sum(yy*transitiondensity)*voxelvolume
+    dzint=np.sum(zz*transitiondensity)*voxelvolume
     return dxint,dyint,dzint
 
-def OpticalAnalysis(Nx=150,Ny=150,Nz=150,minweigth=0.05,path="./"):
+def OpticalAnalysis(Nx=300,Ny=300,Nz=300,minweigth=0.05,path="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
        input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 
                                                           TDDFPT calculation lies                                                
