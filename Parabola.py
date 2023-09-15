@@ -2856,13 +2856,13 @@ def writeXSFFile(data,filename="test.xsf",parentfolder='./'):
         file.write("#\n")
         file.write("CRYSTAL\n")
         file.write("PRIMVEC\n")
-        file.write(format(CellSizes[0],'12.6f')+format(0.0,'12.6f')+format(0.0,'12.6f')+"\n")
-        file.write(format(0.0,'12.6f')+format(CellSizes[1],'12.6f')+format(0.0,'12.6f')+"\n")
-        file.write(format(0.0,'12.6f')+format(0.0,'12.6f')+format(CellSizes[2],'12.6f')+"\n")
+        file.write(format(CellSizes[0][0],'12.6f')+format(CellSizes[0][1],'12.6f')+format(CellSizes[0][2],'12.6f')+"\n")
+        file.write(format(CellSizes[1][0],'12.6f')+format(CellSizes[1][1],'12.6f')+format(CellSizes[1][2],'12.6f')+"\n")
+        file.write(format(CellSizes[2][0],'12.6f')+format(CellSizes[2][1],'12.6f')+format(CellSizes[2][2],'12.6f')+"\n")
         file.write("CONVVEC\n")
-        file.write(format(CellSizes[0],'12.6f')+format(0.0,'12.6f')+format(0.0,'12.6f')+"\n")
-        file.write(format(0.0,'12.6f')+format(CellSizes[1],'12.6f')+format(0.0,'12.6f')+"\n")
-        file.write(format(0.0,'12.6f')+format(0.0,'12.6f')+format(CellSizes[2],'12.6f')+"\n")
+        file.write(format(CellSizes[0][0],'12.6f')+format(CellSizes[0][1],'12.6f')+format(CellSizes[0][2],'12.6f')+"\n")
+        file.write(format(CellSizes[1][0],'12.6f')+format(CellSizes[1][1],'12.6f')+format(CellSizes[1][2],'12.6f')+"\n")
+        file.write(format(CellSizes[2][0],'12.6f')+format(CellSizes[2][1],'12.6f')+format(CellSizes[2][2],'12.6f')+"\n")
         file.write("PRIMCOORD\n")
         file.write(format(numofatoms,'5.0f')+format(1,'5.0f')+"\n")
         for atom in coordinates:
@@ -2872,9 +2872,9 @@ def writeXSFFile(data,filename="test.xsf",parentfolder='./'):
         file.write("BEGIN_DATAGRID_3D_UNKNOWN\n")
         file.write(format(Nx,'5.0f')+format(Ny,'5.0f')+format(Nz,'5.0f')+"\n")
         file.write(format(origin[0],'5.1f')+format(origin[1],'5.1f')+format(origin[2],'5.1f')+"\n")
-        file.write(format(CellSizes[0]*(Nx-1)/Nx,'12.6f')+format(0.0,'12.6f')+format(0.0,'12.6f')+"\n")
-        file.write(format(0.0,'12.6f')+format(CellSizes[1]*(Ny-1)/Ny,'12.6f')+format(0.0,'12.6f')+"\n")
-        file.write(format(0.0,'12.6f')+format(0.0,'12.6f')+format(CellSizes[2]*(Nz-1)/Nz,'12.6f')+"\n")
+        file.write(format(np.linalg.norm(CellSizes[0])*(Nx-1)/Nx,'12.6f')+format(0.0,'12.6f')+format(0.0,'12.6f')+"\n")
+        file.write(format(0.0,'12.6f')+format(np.linalg.norm(CellSizes[1])*(Ny-1)/Ny,'12.6f')+format(0.0,'12.6f')+"\n")
+        file.write(format(0.0,'12.6f')+format(0.0,'12.6f')+format(np.linalg.norm(CellSizes[2])*(Nz-1)/Nz,'12.6f')+"\n")
         for itz in range(Nz):
             for ity in range(Ny):
                 for itx in range(Nx):
