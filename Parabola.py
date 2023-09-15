@@ -308,11 +308,12 @@ def centerMolecule(path="./"):
     
     writexyzfile(atomicsym,centerofcellCoordinates,path)
 #-------------------------------------------------------------------------
-def writexyzfile(atomicsym,coordinates,path="./"):
-    xyzfilename=getxyzfilename(path)
+def writexyzfile(atomicsym,coordinates,readpath="./",writepath="./"):
+    xyzfilename=getxyzfilename(readpath)
+    xyzfilename=xyzfilename.split("/")[-1]
     # generate new xyz file
     xyzinput=[]
-    with open(xyzfilename) as g:
+    with open(readpath+"/"+xyzfilename) as g:
         lines = g.readlines()
         xyzinput.append(lines[0])
         xyzinput.append(lines[1])
@@ -320,7 +321,13 @@ def writexyzfile(atomicsym,coordinates,path="./"):
     for it,xyz in enumerate(coordinates):
         xyzinput.append(atomicsym[it]+' '+str(xyz[0])+' '+str(xyz[1])+' '+str(xyz[2])+'\n')
     #open the old xyz file
-    g=open(xyzfilename,'r+')
+    
+    #Check if the file exist in the write directory
+    inp_files = [f for f in os.listdir(writepath) if f.endswith('.xyz')]
+    if len(inp_files) == 0:
+        os.system("touch "+xyzfilename)
+
+    g=open(writepath+"/"+xyzfilename,'r+')
     # kill its content
     g.truncate(0)
     #generate the new content
@@ -2666,7 +2673,7 @@ def writemolFile(normalmodeEnergies,normalmodes,normfactors,parentfolder="./"):
             modeiter+=1
 
 
-def WFNonGrid(id=0,N1=100,N2=100,N3=100,parentfolder='./'):
+def WFNonGrid(id=0,N1=100,N2=100,N3=100,label="",parentfolder='./'):
     '''Function to represent the DFT eigenstate HOMO+id on a real space grid within the unit cell with Nx,Ny,Nz grid points
        input:   id:               (int)                   specifies the Orbital, id=0 is HOMO id=1 is LUMO id=-1 is HOMO-1 ect. 
        (opt.)   parentfolder:     (str)                   path to the .inp file of the cp2k calculation to read in the cell dimensions    
@@ -2758,7 +2765,7 @@ def WFNonGrid(id=0,N1=100,N2=100,N3=100,parentfolder='./'):
     f=np.zeros((N1,N2,N3))
     f=getWavefunction(xx,yy,zz,Atoms,a,Basis,cs,voxelvolume,v1,v2,v3)
     f/=np.sqrt(voxelvolume*np.sum(np.sum(np.sum(f**2))))
-    filename=str(id)
+    filename=str(id)+label
     np.save(filename,f)
     return f
 def writeCubeFile(data,filename='test.cube',parentfolder='./'):
@@ -2927,7 +2934,6 @@ def OpticalAnalysis(Nx=300,Ny=300,Nz=300,minweigth=0.05,path="./"):
     states=[]
     energies=[]
     states=getExcitedStatesCP2K(path,minweigth,Delta)
-    print(states)
     TransitionDipolevectors=[]
     with open("ExcitedStatesAndDipoles.dat","a") as file:
         file.write("Python Convention of state labeling!\n")
