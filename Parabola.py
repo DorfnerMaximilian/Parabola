@@ -266,9 +266,20 @@ def centerMolecule(path="./"):
             if it1==it2 and np.abs(np.dot(principleAxis[:,it1],principleAxis[:,it2])-1.0)>10**(-12):
                 ValueError("Principle Axis are not normalized! This leads to Errorious results!")
     #Represent the centerofMassCoordinates in terms of the principle axis frame
+    #Fix Orientation of Principle Axis 
     v1=principleAxis[:,0]
     v2=principleAxis[:,1]
     v3=principleAxis[:,2]
+    if v1[0]<0.0:
+        v1*=-1.0
+    #This makes Principle Axis righthanded
+    B=np.zeros((3,3))
+    B[:,0]=v1
+    B[:,1]=v2
+    B[:,2]=v3
+    determinant=np.linalg.det(B)
+    if determinant<0:
+        v2*=-1.0
     principleaxiscoordinates=[]
     for coordinate in centerofmasscoordinates:
         v1coordinate=np.dot(coordinate,v1)
@@ -1221,7 +1232,10 @@ def CheckConvergence(quantity,path='./'):
                 if OverlapMatrixFlag==False:
                     Overlapmatrix=getTransformationmatrix(Atoms,Atoms,Basis,cs)
                     OverlapMatrixFlag=True
-                diff=np.abs(np.abs(Overlapmatrix)-np.abs(OLM))
+                diff=np.abs(Overlapmatrix-OLM)
+                for it1 in range(np.shape(Overlapmatrix)[0]):
+                    for it2 in range(it1,np.shape(Overlapmatrix)[1]):
+                        print(it1,it2,np.abs(np.abs(Overlapmatrix[it1][it2])-np.abs(OLM[it1][it2])),np.sign(Overlapmatrix[it1][it2])*np.sign(OLM[it1][it2]))
                 absre.append(np.max(np.max(diff)))
         if SameSizeFlag:
             plt.scatter(cellsizes,absre,marker="x",s=125)
