@@ -1210,7 +1210,7 @@ def CheckConvergence(quantity,path='./'):
                 diff=np.abs(Overlapmatrix-OLM)
                 absre.append(np.max(np.max(diff)))
             else:
-                cellsize=float(strcut[0:2])*float(strcut[3:5])*float(strcut[6:-1])
+                cellsize=(float(strcut[0:2]),float(strcut[3:5]),float(strcut[6:-1]))
                 cellsizes.append(cellsize)
                 _,OLM=readinMatrices(path+folder)
                 print("Reading in Overlapmatrix -> Done")
@@ -1221,7 +1221,7 @@ def CheckConvergence(quantity,path='./'):
                 if OverlapMatrixFlag==False:
                     Overlapmatrix=getTransformationmatrix(Atoms,Atoms,Basis,cs)
                     OverlapMatrixFlag=True
-                diff=np.abs(Overlapmatrix-OLM)
+                diff=np.abs(np.abs(Overlapmatrix)-np.abs(OLM))
                 absre.append(np.max(np.max(diff)))
         if SameSizeFlag:
             plt.scatter(cellsizes,absre,marker="x",s=125)
@@ -1233,12 +1233,12 @@ def CheckConvergence(quantity,path='./'):
             plt.grid()
             plt.show()
         else:
-            plt.scatter(cellsizes,absre,marker="x",s=125)
-            plt.yscale('log')
-            plt.ylabel(r'$\displaystyle\text{max}_{i,j}\{\vert S_{i,j}-S_{i,j}^{\text{cp2k}}\vert\} $ ',fontsize=50)
-            plt.xlabel(r'cell volume $a$ [$\mathring{\text{A}}^3$]',fontsize=50)
-            plt.xticks(fontsize=35)
-            plt.yticks(fontsize=35)
+            fig,ax = plt.subplots()
+            ax.scatter(range(len(absre)),absre)
+            ax.set_xticks(range(len(absre)))
+            ax.set_xticklabels([str(item) for item in cellsizes],fontsize=25)
+            ax.set_yscale('log')
+            ax.set_ylabel(r'$\displaystyle\text{max}_{i,j}\{\vert S_{i,j}-S_{i,j}^{\text{cp2k}}\vert\} $ ',fontsize=50)
             plt.grid()
             plt.show()
     elif quantity=='Geo_Opt':
