@@ -241,6 +241,61 @@ def centerMolecule(path="./"):
     ## output:  -                                                           (void)
 
     cellcoordinates=getCellSize(path)
+    print(cellcoordinates)
+    #Check if the cell is orthorhombic, otherwise throw error:
+    for cellvector1 in cellcoordinates:
+        for cellvector2 in cellcoordinates:
+            absscalarproduct =np.abs(np.dot(cellvector1,cellvector2))
+            abscrossproduct = np.linalg.norm((np.cross(cellvector1,cellvector2)))
+            if absscalarproduct >10**(-10) and abscrossproduct>10**(-10):
+                ValueError("Centering of Molecule in Unit Cell makes only sense for Non-Periodic Calculations! Use Orthorhombic Unit cells for this case!")
+
+    #Compute center of Cell (assuming orthogonal basis vectors)
+    cellcenter=0.5*cellcoordinates[0]+0.5*cellcoordinates[1]+0.5*cellcoordinates[2]
+    xyzcoordinates,_,atomicsym=getCoordinatesAndMasses(path)
+    geometric_mean=np.array([0.0,0.0,0.0])
+    for coordinate in xyzcoordinates:
+        geometric_mean+=coordinate
+    geometric_mean/=len(xyzcoordinates)
+    centerofcellCoordinates=[]
+    for coordinate in xyzcoordinates:
+        centerofcellCoordinates.append(coordinate+cellcenter-geometric_mean)
+    #Compute maximum distance of atom from coordinatecenter
+    maxdistx=0
+    maxdisty=0
+    maxdistz=0
+    for coordinates in xyzcoordinates:
+        distx=np.abs(coordinates[0])
+        disty=np.abs(coordinates[1])
+        distz=np.abs(coordinates[2])
+        if distx > maxdistx:
+            maxdistx=distx
+        if disty > maxdisty:
+            maxdisty=disty
+        if distz > maxdistz:
+            maxdistz=distz
+    #Add cutoff to maximum distance
+    cutoff=2
+    mincellsizex=cutoff+maxdistx
+    mincellsizey=cutoff+maxdisty
+    mincellsizez=cutoff+maxdistz
+    #Check if molecule fits into box otherwise shift coordinates to center of cell
+    
+    if mincellsizex<=0.5*distx:
+        ValueError("Increase cell size in z direction to at least ",2*mincellsizez)
+    if mincellsizey<=0.5*disty:
+        ValueError("Increase cell size in y direction to at least ",2*mincellsizey)
+    if mincellsizez<=0.5*distz:
+        ValueError("Increase cell size in z direction to at least ",2*mincellsizez)
+    
+    writexyzfile(atomicsym,centerofcellCoordinates,path)
+#-------------------------------------------------------------------------
+def getPrincipleAxisCoordinates(path="./"):
+    ## Function to center the molecule in the unit cell & align the principle Axis 
+    ## and orient priciple axis along x y z
+    ## input: (opt.)   path   path to the folder of the calculation         (string)
+    ## output:  -                                                           (void)
+    cellcoordinates=getCellSize(path)
     #Check if the cell is orthorhombic, otherwise throw error:
     for cellvector1 in cellcoordinates:
         for cellvector2 in cellcoordinates:
@@ -252,6 +307,7 @@ def centerMolecule(path="./"):
     #Compute center of Cell (assuming orthogonal basis vectors)
     cellcenter=0.5*cellcoordinates[0]+0.5*cellcoordinates[1]+0.5*cellcoordinates[2]
     xyzcoordinates,masses,atomicsym=getCoordinatesAndMasses(path)
+
 
     #Compute the Intertia Tensor
     I=getInertiaTensor(xyzcoordinates,masses)
@@ -272,6 +328,8 @@ def centerMolecule(path="./"):
     v3=principleAxis[:,2]
     if v1[0]<0.0:
         v1*=-1.0
+    if v2[0]<0.0:
+        v2*=-1.0
     #This makes Principle Axis righthanded
     B=np.zeros((3,3))
     B[:,0]=v1
@@ -279,7 +337,7 @@ def centerMolecule(path="./"):
     B[:,2]=v3
     determinant=np.linalg.det(B)
     if determinant<0:
-        v2*=-1.0
+        v3*=-1.0
     principleaxiscoordinates=[]
     for coordinate in centerofmasscoordinates:
         v1coordinate=np.dot(coordinate,v1)
@@ -318,7 +376,6 @@ def centerMolecule(path="./"):
         ValueError("Increase cell size in z direction to at least ",2*mincellsizez)
     
     writexyzfile(atomicsym,centerofcellCoordinates,path)
-#-------------------------------------------------------------------------
 def writexyzfile(atomicsym,coordinates,readpath="./",writepath="./"):
     xyzfilename=getxyzfilename(readpath)
     xyzfilename=xyzfilename.split("/")[-1]
@@ -1233,9 +1290,6 @@ def CheckConvergence(quantity,path='./'):
                     Overlapmatrix=getTransformationmatrix(Atoms,Atoms,Basis,cs)
                     OverlapMatrixFlag=True
                 diff=np.abs(Overlapmatrix-OLM)
-                for it1 in range(np.shape(Overlapmatrix)[0]):
-                    for it2 in range(it1,np.shape(Overlapmatrix)[1]):
-                        print(it1,it2,np.abs(np.abs(Overlapmatrix[it1][it2])-np.abs(OLM[it1][it2])),np.sign(Overlapmatrix[it1][it2])*np.sign(OLM[it1][it2]))
                 absre.append(np.max(np.max(diff)))
         if SameSizeFlag:
             plt.scatter(cellsizes,absre,marker="x",s=125)
