@@ -8,18 +8,12 @@ modulespath="/home/max/Sync/PhD_TUM/Code/CP2K/CP2K_Python_Modules"
 #########################################################################
 ## Packages to import
 #########################################################################
-from fileinput import filename
-from functools import reduce
-from pdb import run
-from sre_parse import State
 import numpy as np
 import scipy as sci
 import os
 import sys
 from subprocess import Popen, PIPE
-import copy
 import matplotlib.pyplot as plt
-import time
 #For standard Latex fonts
 plt.rc('text', usetex=True)
 plt.rc('font', family='serif')
@@ -1516,8 +1510,7 @@ def checkforSpinMultiplicity(path="./"):
     pathtofile = path+"/"+inp_files[0]
     mul=1
     with open(pathtofile,"r") as f:
-        lines=f.readlines()
-        for line in lines:
+        for line in f:
             if len(line.split())>1:
                 if line.split()[0]=="MULTIPLICITY":
                     mul=int(line.split()[1])
@@ -3514,13 +3507,20 @@ def is_number(s):
         return True
     except ValueError:
         return False
-def CompressFolder():
+def CompressFolder(writeexcludelist=False):
     dirs=[x[0] for x in os.walk("./")]
     dirs=dirs[1:]
+    excludelist=[]
     for it in progressbar(range(len(dirs)),"Compression Progress:",40):
         try:
             compressKSfile(dirs[it])
+            excludelist.append(dirs[it])
         except:
             pass
+    if writeexcludelist:
+        with open("rsync_exclude.txt","w") as f:
+            for element in excludelist:
+                f.write(element[2:]+"\n")
+
 
 
