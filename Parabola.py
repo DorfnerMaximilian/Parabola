@@ -12,7 +12,6 @@ import numpy as np
 import scipy as sci
 import os
 import sys
-from subprocess import Popen, PIPE
 import matplotlib.pyplot as plt
 #For standard Latex fonts
 plt.rc('text', usetex=True)
@@ -558,42 +557,6 @@ def R_CutoffTest_inputs(RCutoffs,parentpath="./",binaryloc=pathtobinaries,binary
         centerMolecule(parentpath+work_dir)
         os.system("ln -s "+binaryloc+"/"+binary+" "+parentpath+work_dir+"/")
 #-------------------------------------------------------------------------
-def R_CutoffTest_run(no_proc_to_use,parentpath="./",binary="cp2k.popt"):
-    dirs=[f for f in os.listdir(parentpath) if f.endswith('A')]
-    for it in progressbar(range(len(dirs)),"Cutoff Radius Test:",40):
-        work_dir=dirs[it]
-        inp_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('.inp')]
-        if len(inp_files) != 1:
-            raise ValueError('InputError: There should be only one .inp file in the '+work_dir+' directory')
-        out_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('.out')]
-        KSHamiltonianFiles=[f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('KSHamiltonian')]
-        Restart_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('-RESTART.wfn')]
-        if len(Restart_files) != 1:
-            raise ValueError('InputError: There should be exactly one Restart file in the current directory')
-        Restart_filename = Restart_files[0]
-        runthroughflag=False
-        if len(out_files) != 0:
-            #Check if the calculation has run through
-            if len(out_files)>1:
-                raise ValueError('InputError: There should be at most .out file in the '+work_dir+' directory')
-            with open(parentpath+"/"+work_dir+"/"+out_files[0],'r') as f:
-                for line in f:
-                    if len(line.split())>4:
-                        if line.split()[0]=="The" and line.split()[1]=="number" and line.split()[2]=="of" and line.split()[3]=="warnings":
-                            runthroughflag=True
-            if runthroughflag:
-                print("Skipping folder "+str(work_dir)+"! Has been already calculated.")
-            else:
-                os.system("rm "+parentpath+"/"+work_dir+"/"+out_files[0])
-                if len(KSHamiltonianFiles)>=1:
-                    for files in KSHamiltonianFiles:
-                        os.system("rm "+parentpath+"/"+work_dir+"/"+files)
-                os.system("rm "+parentpath+"/"+work_dir+"/"+Restart_filename)
-                os.system("cp "+parentpath+"/"+Restart_filename+" "+parentpath+"/"+work_dir+"/"+Restart_filename)
-        if not runthroughflag:
-            process = Popen( "mpirun -n "+str(no_proc_to_use)+" ./"+binary+" -o output_file.out "+inp_files[0], shell=True, universal_newlines=True,stdin=PIPE, stdout=PIPE, stderr=PIPE ,cwd=parentpath+work_dir)
-            process.communicate()
-#-------------------------------------------------------------------------
 def changeRelCutoff(origin,source,RelCutoff):
     inp_files = [f for f in os.listdir(origin) if f.endswith('.inp')]
     if len(inp_files) != 1:
@@ -699,42 +662,6 @@ def CutoffTest_inputs(Cutoffs,parentpath="./",binaryloc=pathtobinaries,binary="c
         centerMolecule(parentpath+work_dir)
         os.system("ln -s "+binaryloc+"/"+binary+" "+parentpath+work_dir+"/")
 #-------------------------------------------------------------------------
-def CutoffTest_run(no_proc_to_use,parentpath="./",binary="cp2k.popt"):
-    dirs=[f for f in os.listdir(parentpath) if f.endswith('Ry')]
-    for it in progressbar(range(len(dirs)),"Cutoff Test:",40):
-        work_dir=dirs[it]
-        inp_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('.inp')]
-        if len(inp_files) != 1:
-            raise ValueError('InputError: There should be only one .inp file in the '+work_dir+' directory')
-        out_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('.out')]
-        KSHamiltonianFiles=[f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('KSHamiltonian')]
-        Restart_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('-RESTART.wfn')]
-        if len(Restart_files) != 1:
-            raise ValueError('InputError: There should be exactly one Restart file in the current directory')
-        Restart_filename = Restart_files[0]
-        runthroughflag=False
-        if len(out_files) != 0:
-            #Check if the calculation has run through
-            if len(out_files)>1:
-                raise ValueError('InputError: There should be at most .out file in the '+work_dir+' directory')
-            with open(parentpath+"/"+work_dir+"/"+out_files[0],'r') as f:
-                for line in f:
-                    if len(line.split())>4:
-                        if line.split()[0]=="The" and line.split()[1]=="number" and line.split()[2]=="of" and line.split()[3]=="warnings":
-                            runthroughflag=True
-            if runthroughflag:
-                print("Skipping folder "+str(work_dir)+"! Has been already calculated.")
-            else:
-                os.system("rm "+parentpath+"/"+work_dir+"/"+out_files[0])
-                if len(KSHamiltonianFiles)>=1:
-                    for files in KSHamiltonianFiles:
-                        os.system("rm "+parentpath+"/"+work_dir+"/"+files)
-                os.system("rm "+parentpath+"/"+work_dir+"/"+Restart_filename)
-                os.system("cp "+parentpath+"/"+Restart_filename+" "+parentpath+"/"+work_dir+"/"+Restart_filename)
-        if not runthroughflag:
-            process = Popen( "mpirun -n "+str(no_proc_to_use)+" ./"+binary+" -o output_file.out "+inp_files[0], shell=True, universal_newlines=True,stdin=PIPE, stdout=PIPE, stderr=PIPE ,cwd=parentpath+work_dir)
-            process.communicate()
-#-------------------------------------------------------------------------
 def changeCellSize(origin,source,CellX,CellY,CellZ):
     inp_files = [f for f in os.listdir(origin) if f.endswith('.inp')]
     if len(inp_files) != 1:
@@ -773,18 +700,6 @@ def CellSizeTest_inputs(Cell_Dims,parentpath="./",binaryloc=pathtobinaries,binar
         centerMolecule(parentpath+work_dir)
         os.system("ln -s "+binaryloc+"/"+binary+" "+parentpath+work_dir+"/")
 #-------------------------------------------------------------------------
-def CellSizeTest_run(no_proc_to_use,parentpath="./",binary="cp2k.popt"):
-    dirs=[f for f in os.listdir(parentpath) if f.endswith('A')]
-    for it in progressbar(range(len(dirs)),"Cell Size Test:",40):
-        work_dir=dirs[it]
-        out_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('.out')]
-        if len(out_files) != 0:
-            raise ValueError('InputError: There should be no .out file in the '+work_dir+' directory')
-        inp_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('.inp')]
-        if len(inp_files) != 1:
-            raise ValueError('InputError: There should be only one .inp file in the '+work_dir+' directory')
-        process = Popen( "mpirun -n "+str(no_proc_to_use)+" ./"+binary+" -o output_file.out input_file.inp", shell=True, universal_newlines=True,stdin=PIPE, stdout=PIPE, stderr=PIPE ,cwd=parentpath+work_dir)
-        process.communicate()
 def progressbar(it, prefix="", size=60, out=sys.stdout): # Python3.3+
     count = len(it)
     def show(j):
@@ -965,84 +880,6 @@ def CheckinpfileforVib_Ana(parentpath):
     if not Forces_FilenameFlag:
         ValueError("Reconsider the AO_Section in the .inp file! Write 'FILENAME =Forces' !")
 
-def Vib_Ana_run(no_proc_to_use,binary="cp2k.popt",parentpath="./"):
-    work_dir="Equilibrium_Geometry"
-    inp_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('.inp')]
-    if len(inp_files) != 1:
-        raise ValueError('InputError: There should be only one .inp file in the '+parentpath+"/"+work_dir+' directory')
-    CheckinpfileforVib_Ana(parentpath+"/"+work_dir)
-    out_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('.out')]
-    KSHamiltonianFiles=[f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('KSHamiltonian')]
-    Restart_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('-RESTART.wfn')]
-    if len(Restart_files) != 1:
-        raise ValueError('InputError: There should be exactly one Restart file in the current directory')
-    Restart_filename = Restart_files[0]
-    runthroughflag=False
-    if len(out_files) != 0:
-        #Check if the calculation has run through
-        if len(out_files)>1:
-            raise ValueError('InputError: There should be at most .out file in the '+work_dir+' directory')
-        with open(parentpath+"/"+work_dir+"/"+out_files[0],'r') as f:
-            for line in f:
-                if len(line.split())>4:
-                    if line.split()[0]=="The" and line.split()[1]=="number" and line.split()[2]=="of" and line.split()[3]=="warnings":
-                        runthroughflag=True
-        if runthroughflag: 
-            print("Skipping folder "+str(work_dir)+"! Has been already calculated.")
-        else:
-            os.system("rm "+parentpath+"/"+work_dir+"/"+out_files[0])
-            if len(KSHamiltonianFiles)>=1:
-                for files in KSHamiltonianFiles:
-                    os.system("rm "+parentpath+"/"+work_dir+"/"+files)
-            os.system("rm "+parentpath+"/"+work_dir+"/"+Restart_filename)
-            os.system("cp "+parentpath+"/"+Restart_filename+" "+parentpath+"/"+work_dir+"/"+Restart_filename)
-    if not runthroughflag:
-        process = Popen( "mpirun -n "+str(no_proc_to_use)+" ./"+binary+" -o output_file.out "+inp_files[0], shell=True, universal_newlines=True,stdin=PIPE, stdout=PIPE, stderr=PIPE ,cwd=parentpath+work_dir)
-        process.communicate()
-        compressKSfile(parentpath+"/"+work_dir+"/")
-        print('Recalculated Equilibrium Configuration')
-    Folders = [f for f in os.listdir(parentpath) if f.startswith('vector=')]
-    it=0
-    for it in progressbar(range(len(Folders)),"Vibrational Analysis:",40):
-        #get the inp file in the current directory
-        work_dir=Folders[it]
-        inp_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('.inp')]
-        if len(inp_files) != 1:
-            raise ValueError('InputError: There should be only one .inp file in the '+parentpath+"/"+work_dir+' directory')
-        CheckinpfileforVib_Ana(parentpath+"/"+work_dir)
-        out_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('.out')]
-        KSHamiltonianFiles=[f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('KSHamiltonian')]
-        ForceFiles=[f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('Forces')]
-        Restart_files = [f for f in os.listdir(parentpath+"/"+work_dir) if f.endswith('-RESTART.wfn')]
-        if len(Restart_files) != 1:
-            raise ValueError('InputError: There should be exactly one Restart file in the current directory')
-        Restart_filename = Restart_files[0]
-        runthroughflag=False
-        if len(out_files) != 0:
-            #Check if the calculation has run through
-            if len(out_files)>1:
-                raise ValueError('InputError: There should be at most .out file in the '+work_dir+' directory')
-            with open(parentpath+"/"+work_dir+"/"+out_files[0],'r') as f:
-                for line in f:
-                    if len(line.split())>4:
-                        if line.split()[0]=="The" and line.split()[1]=="number" and line.split()[2]=="of" and line.split()[3]=="warnings":
-                            runthroughflag=True
-            if runthroughflag:
-                print("Skipping folder "+str(work_dir)+"! Has been already calculated.")
-            else:
-                os.system("rm "+parentpath+"/"+work_dir+"/"+out_files[0])
-                if len(KSHamiltonianFiles)>=1:
-                    for files in KSHamiltonianFiles:
-                        os.system("rm "+parentpath+"/"+work_dir+"/"+files)
-                if len(ForceFiles)>=1:
-                    for files in ForceFiles:
-                        os.system("rm "+parentpath+"/"+work_dir+"/"+files)
-                os.system("rm "+parentpath+"/"+work_dir+"/"+Restart_filename)
-                os.system("cp "+parentpath+"/"+Restart_filename+" "+parentpath+"/"+work_dir+"/"+Restart_filename)
-        if not runthroughflag:
-            process = Popen( "mpirun -n "+str(no_proc_to_use)+" ./"+binary+" -o output_file.out "+inp_files[0], shell=True, universal_newlines=True,stdin=PIPE, stdout=PIPE, stderr=PIPE ,cwd=parentpath+work_dir)
-            process.communicate()
-            compressKSfile(parentpath+"/"+work_dir+"/")
 #-------------------------------------------------------------------------
 def readinVibrations(parentfolder):
     try:
