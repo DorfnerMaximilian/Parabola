@@ -1971,7 +1971,27 @@ def getoverlap(R1,lm1,dalpha1,R2,lm2,dalpha2,cs):
             overlap+=d1*d2*IInt(R1,alpha1,lm1,R2,alpha2,lm2,cs)
     return overlap
 #-------------------------------------------------------------------------
-def getTransformationmatrix(Atoms1,Atoms2,Basis,cs):
+def getNeibouringCellVectors(path,neighbours=1):
+    ConFactors=ConversionFactors()
+    cellvectors=[np.array([0.0,0.0,0.0])]
+    cell=getCellSize(path)
+    if neighbours==1:
+        for cellvector in cell:
+            for sign in [-1,1]:
+                cellvectors.append(sign*cellvector*ConFactors["A->a.u."])
+    if neighbours==2:
+        for cellvector in cell:
+            for sign in [-1,1]:
+                cellvectors.append(sign*cellvector*ConFactors["A->a.u."])
+        for cellvector1 in cell:
+            for cellvector2 in cell:
+                if np.abs(cellvector1-cellvector2)>10**(-10):
+                    for sign1 in [-1,1]:
+                        for sign2 in [-1,1]:
+                            cellvectors.append(sign1*cellvector1*ConFactors["A->a.u."]+sign2*cellvector2*ConFactors["A->a.u."])
+    return cellvectors
+#-------------------------------------------------------------------------
+def getTransformationmatrix(Atoms1,Atoms2,Basis,cs,cellvectors=[np.array([0.0,0.0,0.0])]):
     ##Compute the overlap & transformation matrix of the Basis functions with respect to the conventional basis ordering
     ##input: Atoms1              atoms of the first index
     ##                           list of sublists. 
@@ -1997,6 +2017,7 @@ def getTransformationmatrix(Atoms1,Atoms2,Basis,cs):
     ##
     ##          cs               see getcs function
     ##
+    ##     cellvectors (opt.)    different cell vectors to take into account in the calculation the default inplements open boundary conditions
     ##output:   Overlapmatrix    The Transformation matrix as a numpy array
     ConFactors=ConversionFactors()
     msize=0
@@ -2023,7 +2044,9 @@ def getTransformationmatrix(Atoms1,Atoms2,Basis,cs):
                     state2=B2[itBasis2]
                     dalpha2=state2[3:]
                     lm2=state2[2][1:]
-                    overlap=getoverlap(R1,lm1,dalpha1,R2,lm2,dalpha2,cs)
+                    overlap=0.0
+                    for cellvector in cellvectors:
+                        overlap+=getoverlap(R1,lm1,dalpha1,R2+cellvector,lm2,dalpha2,cs)
                     Overlapmatrix[it1][it2]=overlap
                     it2+=1
             it1+=1
