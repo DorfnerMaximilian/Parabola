@@ -1680,7 +1680,7 @@ def getBasisSetName(path,cp2kpath=pathtocp2k):
                 elif len(l.split())>2 and not numericflag:
                     if (l.split()[0]==atoms[it] and l.split()[1]==BasisSetNames[it]) or (l.split()[0]==atoms[it] and l.split()[2]==BasisSetNames[it]):
                         ReadinFlag=True
-                    elif bool(l.split()[0] in atomStrings and l.split()[0] not in atoms) or (bool(l.split()[1] !=BasisSetNames[it])^bool(l.split()[2] !=BasisSetNames[it])) :
+                elif bool(l.split()[0] in atomStrings and l.split()[0] not in atoms) or (bool(l.split()[1] !=BasisSetNames[it]) or bool(l.split()[2] !=BasisSetNames[it])) :
                         ReadinFlag=False
                 if ReadinFlag:
                     BasisInfoReadin.append(l)
@@ -1985,7 +1985,7 @@ def getNeibouringCellVectors(path,neighbours=1):
                 cellvectors.append(sign*cellvector*ConFactors["A->a.u."])
         for cellvector1 in cell:
             for cellvector2 in cell:
-                if np.abs(cellvector1-cellvector2)>10**(-10):
+                if np.linalg.norm(cellvector1-cellvector2)>10**(-10):
                     for sign1 in [-1,1]:
                         for sign2 in [-1,1]:
                             cellvectors.append(sign1*cellvector1*ConFactors["A->a.u."]+sign2*cellvector2*ConFactors["A->a.u."])
@@ -2703,7 +2703,7 @@ def writemolFile(normalmodeEnergies,normalmodes,normfactors,parentfolder="./"):
             modeiter+=1
 
 
-def WFNonGrid(id=0,N1=100,N2=100,N3=100,label="",parentfolder='./'):
+def WFNonGrid(id=0,N1=100,N2=100,N3=100,parentfolder='./'):
     '''Function to represent the DFT eigenstate HOMO+id on a real space grid within the unit cell with Nx,Ny,Nz grid points
        input:   id:               (int)                   specifies the Orbital, id=0 is HOMO id=1 is LUMO id=-1 is HOMO-1 ect. 
        (opt.)   parentfolder:     (str)                   path to the .inp file of the cp2k calculation to read in the cell dimensions    
@@ -2795,8 +2795,8 @@ def WFNonGrid(id=0,N1=100,N2=100,N3=100,label="",parentfolder='./'):
     f=np.zeros((N1,N2,N3))
     f=getWavefunction(xx,yy,zz,Atoms,a,Basis,cs,voxelvolume,v1,v2,v3)
     f/=np.sqrt(voxelvolume*np.sum(np.sum(np.sum(f**2))))
-    filename=str(id)+label
-    np.save(filename,f)
+    filename=str(id)
+    np.save(parentfolder+"/"+filename,f)
     return f
 def writeCubeFile(data,filename='test.cube',parentfolder='./'):
     '''Function to write a .cube file that is readable by e.g. Jmol, the origin is assumed to be [0.0,0.0,0.0]
@@ -2951,8 +2951,194 @@ def ComputeDipolmatrixElements(State1,State2,path="./"):
     dyint=np.sum(yy*transitiondensity)*voxelvolume
     dzint=np.sum(zz*transitiondensity)*voxelvolume
     return dxint,dyint,dzint
+def getTransitionDipoleMomentsAnalytic(minweigth=0.005,path="./"):
+    '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
+       input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 
+                                                          TDDFPT calculation lies                                                
+       output:                    (void)                  
+    '''
+    def OOInt(X,lm1,lm2,A1,A2,cs,k):
+        # computes the J integral using the monomial decomposition of the 
+        # solid harmonics.
+        #Input: X (numpy.array) of the difference vector R1-R2
+        #A1: positive numerical
+        #A2: positive numerical
+        Y1=A2*X/(A1+A2)
+        Y2=-A1*X/(A1+A2)
+        Z1=cs[lm1]
+        Z2=cs[lm2]
+        integral=0.0
+        if k==0:
+            for P1 in Z1:
+                for P2 in Z2:
+                    c1=P1[1]
+                    c2=P2[1]
+                    is1=P1[0]
+                    is2=P2[0]
+                    integral+=c1*c2*KFunction(Y1,Y2,(is1[0]+1,is1[1],is1[2]),is2,A1+A2)
+        elif k==1:
+            for P1 in Z1:
+                for P2 in Z2:
+                    c1=P1[1]
+                    c2=P2[1]
+                    is1=P1[0]
+                    is2=P2[0]
+                    integral+=c1*c2*KFunction(Y1,Y2,(is1[0],is1[1]+1,is1[2]),is2,A1+A2)
+        elif k==2:
+            for P1 in Z1:
+                for P2 in Z2:
+                    c1=P1[1]
+                    c2=P2[1]
+                    is1=P1[0]
+                    is2=P2[0]
+                    integral+=c1*c2*KFunction(Y1,Y2,(is1[0],is1[1],is1[2]+1),is2,A1+A2)
+        return integral
+    #-------------------------------------------------------------------------
+    def OInt(R1,A1,lm1,R2,A2,lm2,cs,k):
+        # computes the I integral using the J integral and the Gaussian prefactor
+        # solid harmonics.
+        #input: 
+        #R1:    (numpy.array)       position of nucleii 1
+        #R2     (numpy.array)       position of nucleii 2
+        #lm1:    (string='s','py','pz','px','d-2'...)           angular momentum label for phi_s1,n1,l1,m1(R_s1)
+        #lm2:    (string='s','py','pz','px','d-2'...)           angular momentum label for phi_s2,n2,l2,m2(R_s2) 
+        #A1:    (positive real)     exponent gaussian of function 1
+        #A2:    (positive real)     exponent of gaussian of function 2
+        X=R1-R2
+        Jintegral=OOInt(X,lm1,lm2,A1,A2,cs,k)
+        A12red=-A1*A2/(A1+A2)
+        Exponent=A12red*np.dot(X,X)
+        gaussianPrefactor=np.exp(Exponent)
+        integral=gaussianPrefactor*Jintegral
+        return integral
+    #------------------------------------------------------------------------- 
+    def getContribution(R1,lm1,dalpha1,R2,lm2,dalpha2,cs,k):
+        #Compute overlap of two basis functions <phi_s1,n1,l1,m1(R_s1)|phi_s2,n2,l2,m2(R_s2)>
+        #input: 
+        #R1:    (numpy.array)                                   position of nucleii 1
+        #R2     (numpy.array)                                   position of nucleii 2
+        #lm1:    (string='s','py','pz','px','d-2'...)           angular momentum label for phi_s1,n1,l1,m1(R_s1) 
+        #dalpha1: (list of list)    specifies the first Gaussian type of wave function 
+        #lm2:    (string='s','py','pz','px','d-2'...)           angular momentum label for phi_s2,n2,l2,m2(R_s2) 
+        #dalpha2: (list of list)    specifies the second Gaussian type of wave function 
+        overlap=0.0
+        for obj1 in dalpha1:
+            for obj2 in dalpha2:
+                d1=obj1[1]
+                alpha1=obj1[0]
+                d2=obj2[1]
+                alpha2=obj2[0]
+                overlap+=d1*d2*OInt(R1,alpha1,lm1,R2,alpha2,lm2,cs,k)
+        return overlap
+    # Readin the excited states 
+    conFactors=ConversionFactors()
+    Delta=10**(8) #arbitrarily large number to get all excited states
+    states=[]
+    energies=[]
+    states=getExcitedStatesCP2K(path,minweigth,Delta)
+    ### Generate the Overlap Contribution 
+    KSHamiltonian,OLM=readinMatrices(path)
+    Sm12=LoewdinTransformation(OLM)
+    S12=sci.linalg.fractional_matrix_power(OLM, 0.5)
+    KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
+    _,A=np.linalg.eigh(KSHorth)
+    Atoms=getAtomicCoordinates(path)
+    Basis,cs=getBasis(path)
+    overlapcontribution=[]
+    Rx=np.zeros(np.shape(Sm12))
+    Ry=np.zeros(np.shape(Sm12))
+    Rz=np.zeros(np.shape(Sm12))
+    it=0
+    for itAtom in range(len(Atoms)):
+        Atom_type1=Atoms[itAtom][1]
+        for itBasis1 in range(len(Basis[Atom_type1])):
+            R1=np.array(Atoms[itAtom][2:])*conFactors['A->a.u.']
+            Rx[it][it]=R1[0]
+            Ry[it][it]=R1[1]
+            Rz[it][it]=R1[2]
+            it+=1
+    overlapcontribution_x=Sm12@Rx@S12
+    overlapcontribution_y=Sm12@Ry@S12
+    overlapcontribution_z=Sm12@Rz@S12
+    dx=np.zeros(np.shape(Sm12))
+    dy=np.zeros(np.shape(Sm12))
+    dz=np.zeros(np.shape(Sm12))
+    it1=0
+    it2=0
+    for itAtom1 in range(len(Atoms)):
+        Atom_type1=Atoms[itAtom1][1]
+        B1=Basis[Atom_type1]
+        for itBasis1 in range(len(Basis[Atom_type1])):
+            R1=np.array(Atoms[itAtom1][2:])*conFactors['A->a.u.'] #conversion from angstroem to atomic units
+            state1=B1[itBasis1]
+            dalpha1=state1[3:]
+            lm1=state1[2][1:]
+            for itAtom2 in range(len(Atoms)):
+                Atom_type2=Atoms[itAtom2][1]
+                B2=Basis[Atom_type2]
+                for itBasis2 in range(len(Basis[Atom_type2])):
+                    #get the position of the Atoms
+                    R2=np.array(Atoms[itAtom2][2:])*conFactors['A->a.u.'] #conversion from angstroem to atomic units
+                    state2=B2[itBasis2]
+                    dalpha2=state2[3:]
+                    lm2=state2[2][1:]
+                    dx[it1][it2]=getContribution(R1,lm1,dalpha1,R2,lm2,dalpha2,cs,0)
+                    dy[it1][it2]=getContribution(R1,lm1,dalpha1,R2,lm2,dalpha2,cs,1)
+                    dz[it1][it2]=getContribution(R1,lm1,dalpha1,R2,lm2,dalpha2,cs,2)
+                    it2+=1
+            it1+=1
+            it2=0
+    dx=Sm12@dx@Sm12
+    dy=Sm12@dy@Sm12
+    dz=Sm12@dz@Sm12
+    DipoleOperator_x=dx+overlapcontribution_x
+    DipoleOperator_y=dy+overlapcontribution_y
+    DipoleOperator_z=dz+overlapcontribution_z
+    id=getHOMOId(path)
+    TransitionDipolevectors=[]
+    with open("ExcitedStatesAndDipoles.dat","a") as file:
+        file.write("Python Convention of state labeling!\n")
+    for it in range(len(states)):
+        state=states[it]
+        #generate the T matrix 
 
-def OpticalAnalysis(Nx=300,Ny=300,Nz=300,minweigth=0.05,path="./"):
+        Energy=state[0]
+        energies.append(Energy)
+        composition=state[1]
+        dx=0.0
+        dy=0.0
+        dz=0.0
+        for elementaryState in composition:
+            amplitude=elementaryState[2]
+            StateLabel1=elementaryState[0]
+            StateLabel2=elementaryState[1]
+            edx=-np.dot(A[:,id+StateLabel2],DipoleOperator_x@A[:,id+StateLabel1])
+            edy=-np.dot(A[:,id+StateLabel2],DipoleOperator_y@A[:,id+StateLabel1])
+            edz=-np.dot(A[:,id+StateLabel2],DipoleOperator_z@A[:,id+StateLabel1])
+            dx+=amplitude*edx
+            dy+=amplitude*edy
+            dz+=amplitude*edz
+        TransitionDipolevectors.append(np.array([dx,dy,dz]))
+        with open("ExcitedStatesAndDipoles.dat","a") as file:
+            file.write("Excited State #:"+str(it+1)+"\n")
+            file.write("Energy [eV]:"+format(Energy,'12.6f')+"\n")
+            file.write("Dipolematrixelements (x,y,z) [eBohr]:"+format(dx,'12.6f')+format(dy,'12.6f')+format(dz,'12.6f')+"\n")
+            file.write("Dipole strength**2:"+format((dx**2+dy**2+dz**2),'12.6f')+"\n")
+            file.write("Oszillator strength: "+format(Energy/(3*conFactors["a.u.->eV"]/2)*(dx**2+dy**2+dz**2),'12.6f')+"\n")
+
+            it=0
+            for elementaryState in composition:
+                amplitude=elementaryState[2]
+                itl=elementaryState[0]
+                ith=elementaryState[1]
+                if it==0:
+                    file.write("Dominant state transition:"+"HOMO-"+str(int(itl))+"->"+"LUMO+"+str(ith-1)+"\n")
+                    file.write("Excited State is composed of the individual excitations:\n") 
+                file.write(format(itl,'3.0f')+" ->"+format(ith,'3.0f')+":"+format(amplitude,'12.6f')+"\n")
+                it+=1
+    np.save("Energies_Excited_States",energies)
+    np.save("Transitiondipolevectors",TransitionDipolevectors)
+def getTransitionDipoleMomentsNumerical(Nx=300,Ny=300,Nz=300,minweigth=0.05,path="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
        input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 
                                                           TDDFPT calculation lies                                                
