@@ -1680,7 +1680,7 @@ def getBasisSetName(path,cp2kpath=pathtocp2k):
                 elif len(l.split())>2 and not numericflag:
                     if (l.split()[0]==atoms[it] and l.split()[1]==BasisSetNames[it]) or (l.split()[0]==atoms[it] and l.split()[2]==BasisSetNames[it]):
                         ReadinFlag=True
-                elif bool(l.split()[0] in atomStrings and l.split()[0] not in atoms) or (bool(l.split()[1] !=BasisSetNames[it]) or bool(l.split()[2] !=BasisSetNames[it])) :
+                    elif bool(l.split()[0] in atomStrings and l.split()[0] not in atoms) or (bool(l.split()[1] !=BasisSetNames[it]) or bool(l.split()[2] !=BasisSetNames[it])) :
                         ReadinFlag=False
                 if ReadinFlag:
                     BasisInfoReadin.append(l)
@@ -2017,7 +2017,7 @@ def getTransformationmatrix(Atoms1,Atoms2,Basis,cs,cellvectors=[np.array([0.0,0.
     ##
     ##          cs               see getcs function
     ##
-    ##     cellvectors (opt.)    different cell vectors to take into account in the calculation the default inplements open boundary conditions
+    ##     cellvectors (opt.)    different cell vectors to take into account in the calculation the default implements open boundary conditions
     ##output:   Overlapmatrix    The Transformation matrix as a numpy array
     ConFactors=ConversionFactors()
     msize=0
@@ -3138,7 +3138,7 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.005,path="./"):
                 it+=1
     np.save("Energies_Excited_States",energies)
     np.save("Transitiondipolevectors",TransitionDipolevectors)
-def getTransitionDipoleMomentsNumerical(Nx=300,Ny=300,Nz=300,minweigth=0.05,path="./"):
+def getTransitionDipoleMomentsNumerical(Nx=100,Ny=100,Nz=100,minweigth=0.05,path="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
        input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 
                                                           TDDFPT calculation lies                                                
