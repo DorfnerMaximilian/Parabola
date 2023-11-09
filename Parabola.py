@@ -2465,8 +2465,16 @@ def getHessian(parentfolder="./",writeMolFile=True):
         folderplus='vector='+str(lambd+1)+'sign=+'
         folderminus='vector='+str(lambd+1)+'sign=-'
         #Project out the Force components into direction of rotation and translation D.O.F.
-        Fplus=np.dot(Orthogonalprojector,np.array(readinForces(parentfolder+"/"+folderplus)))
-        Fminus=np.dot(Orthogonalprojector,np.array(readinForces(parentfolder+"/"+folderminus)))
+        try:
+            Fplus=np.dot(Orthogonalprojector,np.array(readinForces(parentfolder+"/"+folderplus)))
+        except:
+            print("Error in folder: "+parentfolder+"/"+folderplus)
+            exit()
+        try:
+            Fminus=np.dot(Orthogonalprojector,np.array(readinForces(parentfolder+"/"+folderminus)))
+        except:
+            print("Error in folder: "+parentfolder+"/"+folderminus)
+            exit()
         diffofforces=(Fplus-Fminus)/(2*delta)
         for s1alpha1 in range(3*numofatoms):
             partialFpartialY[s1alpha1][lambd]=diffofforces[s1alpha1]
@@ -3247,8 +3255,20 @@ def getHOMOId(parentfolder):
     iter=np.floor(numofE/2)
     HOMOit=iter-1+remainder
     return int(HOMOit)
-def ConstructManyBodyCouplings(states,couplingConstants,HOMO_id):
-	energies=np.zeros((len(states)+1,len(states)+1))
+def getManyBodyCouplings(states,couplingConstants,HOMO_id):
+    ##   Function to obtain the Many-Body Coupling Constants from the CP2K TDDFT excited states and the DFT Coupling constants
+    ##   input:   states:         (np.array)            numpy array which encodes the states
+    ##                                                  required structure: states[n] encodes the n th excited state
+    ##                                                                      states[n][0] is its energy
+    ##                                                                      states[n][1] is a list of lists, where each list in this list contains 
+    ##                                                                      list[0] hole index list[1] particle index and list[2] the weight of this 
+    ##                                                                      particle hole state
+    ##                                                                      second index first component
+    ##            couplingConstants (np.array)          the DFT coupling constants as outputted by "getLinearCouplingConstants"
+    ##                                                                        
+    ##            HOMOit                (int)           the index of the HOMO orbital (python convention)
+    
+	ElectronicHamiltonian=np.zeros((len(states)+1,len(states)+1))
 	ManyBodyCouplingConstants=np.zeros((np.shape(couplingConstants)[0],len(states)+1,len(states)+1))
 	for lamb in range(np.shape(couplingConstants)[0]):
 		for m in range(len(states)):
@@ -3256,8 +3276,8 @@ def ConstructManyBodyCouplings(states,couplingConstants,HOMO_id):
 				statem=states[m]
 				staten=states[n]
 				if n==m:
-					energy_state=statem[0]
-					energies[m+1][m+1]=energy_state
+					ElectronicHamiltonian[m+1][m+1]=staten[0]
+
 				weightsm=statem[1]
 				weightsn=staten[1]
 				Coupling=0.0
@@ -3266,6 +3286,7 @@ def ConstructManyBodyCouplings(states,couplingConstants,HOMO_id):
 						if wm[1]==wn[1] and wm[0]==wn[0] and wm[1]>wm[0]:
 							Coupling+=wm[2]*wn[2]*(couplingConstants[lamb][wm[1]+HOMO_id][wm[1]+HOMO_id]-couplingConstants[lamb][wn[0]+HOMO_id][wn[0]+HOMO_id])
 				ManyBodyCouplingConstants[lamb][m+1][n+1]=Coupling
+    #Ground State Relaxation Coupling Constants
 	for lamb in range(np.shape(couplingConstants)[0]):
 		for m in range(len(states)):
 			statem=states[m]
