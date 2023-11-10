@@ -1434,6 +1434,57 @@ def readinMatrices(parentfolder="./",filename='KSHamiltonian'):
             OLM=np.load(parentfolder+"/OLM.npy")
             KSHamiltonian=KSHamiltonian_alpha
     return KSHamiltonian,OLM
+def readinMos(parentfolder):
+    ## Reads the Molecular Orbitals from a provided file
+    ## input:
+    ## (opt.)   filename            path to the Hamiltonian file        (string)
+    ## output:  MOs                symmetric np.array(NumBasisfunctions,Numbasisfunction)       Expansion coefficients of the MOs in terms of AO's 
+    ## Example: MOs[:,0] are the expansion coefficients of the MO 0 in the canonically ordered atomic Basis
+    try:
+        lastMOstart=0
+        with open(parentfolder+"/MOs") as f:
+            lineiter=0
+            for line in f:
+                if len(line.split())>6:
+                    if line.split()[0]=="MO|" and line.split()[1]=="EIGENVALUES," and line.split()[2]=="OCCUPATION" and line.split()[3]=="NUMBERS," and line.split()[4]=="AND" and line.split()[5]=="SPHERICAL" and line.split()[6]=="EIGENVECTORS":
+                        lastMOstart=lineiter
+                lineiter+=1
+
+        print(lastMOstart)
+        MOstring=[]
+        BasisFKTIndex=-10**(-20)
+        with open(parentfolder+"/MOs") as f:
+            lineiter=0
+            for line in f:
+                if lineiter>=lastMOstart:
+                    MOstring.append(line)
+                if len(line.split())>5:
+                    if line.split()[1]=='E(Fermi):':
+                        BasisFKTIndex=lineiter-2
+                lineiter+=1
+        BasisFKTIndex-=lastMOstart
+        NUM_BASIS_FKT=int(MOstring[BasisFKTIndex].split()[1])
+        MOs=np.zeros((NUM_BASIS_FKT,NUM_BASIS_FKT))
+        Basenumber=0
+        for line in MOstring:
+            splited_line=line.split()[1:]
+            if len(splited_line)>=5:
+                if splited_line[0].isdigit() and splited_line[1].isdigit() and splited_line[2].isalpha():
+                    aoBasisindex=int(splited_line[0])-1
+                    iterator=0
+                    for number_string in splited_line[4:]:
+                        number=float(number_string)
+                        moindex=Basenumber+iterator
+                        MOs[aoBasisindex,moindex]=number
+                        iterator+=1
+                    if aoBasisindex==NUM_BASIS_FKT-1:
+                        Basenumber+=4
+        np.save("MOs",MOs)
+        os.remove(parentfolder+"/"+"MOs")
+    except:
+        np.load("MOs.npy",MOs)
+    return MOs
+
 def compressKSfile(parentfolder="./"):
     _,_=readinMatrices(parentfolder)
 #-------------------------------------------------------------------------
