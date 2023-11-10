@@ -1482,25 +1482,29 @@ def readinMos(parentfolder="./"):
     except:
         MOs=np.load("MOs.npy")
     return MOs
+def getPhaseOfMO(MO):
+    ## Definition of the phase convention
+    ## input:   MO                 np.array(NumBasisfunctions)       Expansion coefficients of the MO in terms of AO's 
+    ## output:  MOphases            list of integers            (list)       
+    ## Example: MOphases[mo_index] is the phase (in +/- 1) defined by the function below (convention)
+    si=np.sign(MO[0])
+    if si>10**(-14):
+        phase=1.0
+    elif(si)<-10**(-14):
+        phase=-1.0
+    else:
+        raise ValueError('Phase could not be dermined properly!')
+    return phase
 def getMOsPhases(filename="./"):
     ## Reads the Molecular Orbitals from a provided file
-    ## input:   MOs                 symmetric np.array(NumBasisfunctions,Numbasisfunction)       Expansion coefficients of the MOs in terms of AO's 
+    ## input:   MOs                 np.array(NumBasisfunctions,Numbasisfunction)       Expansion coefficients of the MOs in terms of AO's (index 1 AO index, index2 MO index)
     ## (opt.)   filename            path to the MOs file        (string)
     ## output:  MOphases            list of integers            (list)       
     ## Example: MOphases[mo_index] is the phase (in +/- 1) defined by the function below (convention)
     MOs=readinMos(filename)
     MOphases=[]
     for moindex in range(np.shape(MOs)[1]):
-        si=np.sign(MOs[0,moindex])
-        if si>0:
-            MOphases.append(1.0)
-        elif(si)<0:
-            MOphases.append(-1.0)
-        else:
-            for element in MOs[:,moindex]:
-                if np.abs(element)>10**(-5):
-                    MOphases.append(np.sign(element))
-                    break
+        MOphases.append(getPhaseOfMO(MOs[:,moindex]))
     return MOphases
 def compressKSfile(parentfolder="./"):
     _,_=readinMatrices(parentfolder)
