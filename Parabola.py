@@ -1434,10 +1434,10 @@ def readinMatrices(parentfolder="./",filename='KSHamiltonian'):
             OLM=np.load(parentfolder+"/OLM.npy")
             KSHamiltonian=KSHamiltonian_alpha
     return KSHamiltonian,OLM
-def readinMos(parentfolder):
+def readinMos(parentfolder="./"):
     ## Reads the Molecular Orbitals from a provided file
     ## input:
-    ## (opt.)   filename            path to the Hamiltonian file        (string)
+    ## (opt.)   filename            path to the MOs file        (string)
     ## output:  MOs                symmetric np.array(NumBasisfunctions,Numbasisfunction)       Expansion coefficients of the MOs in terms of AO's 
     ## Example: MOs[:,0] are the expansion coefficients of the MO 0 in the canonically ordered atomic Basis
     try:
@@ -1449,8 +1449,6 @@ def readinMos(parentfolder):
                     if line.split()[0]=="MO|" and line.split()[1]=="EIGENVALUES," and line.split()[2]=="OCCUPATION" and line.split()[3]=="NUMBERS," and line.split()[4]=="AND" and line.split()[5]=="SPHERICAL" and line.split()[6]=="EIGENVECTORS":
                         lastMOstart=lineiter
                 lineiter+=1
-
-        print(lastMOstart)
         MOstring=[]
         BasisFKTIndex=-10**(-20)
         with open(parentfolder+"/MOs") as f:
@@ -1482,9 +1480,28 @@ def readinMos(parentfolder):
         np.save("MOs",MOs)
         os.remove(parentfolder+"/"+"MOs")
     except:
-        np.load("MOs.npy",MOs)
+        MOs=np.load("MOs.npy")
     return MOs
-
+def getMOsPhases(filename="./"):
+    ## Reads the Molecular Orbitals from a provided file
+    ## input:   MOs                 symmetric np.array(NumBasisfunctions,Numbasisfunction)       Expansion coefficients of the MOs in terms of AO's 
+    ## (opt.)   filename            path to the MOs file        (string)
+    ## output:  MOphases            list of integers            (list)       
+    ## Example: MOphases[mo_index] is the phase (in +/- 1) defined by the function below (convention)
+    MOs=readinMos(filename)
+    MOphases=[]
+    for moindex in range(np.shape(MOs)[1]):
+        si=np.sign(MOs[0,moindex])
+        if si>0:
+            MOphases.append(1.0)
+        elif(si)<0:
+            MOphases.append(-1.0)
+        else:
+            for element in MOs[:,moindex]:
+                if np.abs(element)>10**(-5):
+                    MOphases.append(np.sign(element))
+                    break
+    return MOphases
 def compressKSfile(parentfolder="./"):
     _,_=readinMatrices(parentfolder)
 #-------------------------------------------------------------------------
@@ -1847,7 +1864,7 @@ def getBasis(filename):
                 BasisSet[key][it][it2+3][1]*=normfactor
     return BasisSet,cs
 
-def getExcitedStatesCP2K(path,minweight=0.01,Delta=2):
+def readinExcitedStatesCP2K(path,minweight=0.01,Delta=2):
     ## Parses the excited states from a TDDFPT calculation done in CP2K  
     ## input:
     ## (opt.)   minweight           minimum amplitude to consider
@@ -1899,8 +1916,41 @@ def getExcitedStatesCP2K(path,minweight=0.01,Delta=2):
 			if abs(energy-energy1)<=Delta:
 				statestoreturn.append(state)
 	return statestoreturn
-              
-
+def getUniqueExcitedStates(minweight=0.01,Delta=2,pathToExcitedStates="./",pathtoMO="./"):
+    ## Parses the excited states from a TDDFPT calculation done in CP2K  
+    ## determines the eta coefficients, with respect to the MO basis, which has 
+    ## all positive phases! (see getMOsPhases for the definition of the phase)
+    ## input:
+    ## (opt.)   minweight               minimum amplitude to consider
+    ##          Delta                   Energy scale around the first excited state to consider [eV]
+    ##          pathToExcitedStates     path to the output file of the Cp2k 
+    ## output: 
+	#get the output file 
+    try:
+        eta=np.load("eta.npy")
+        Energies=np.load("ExcitedStateEnergies.npy")
+    except:
+        states=readinExcitedStatesCP2K(pathToExcitedStates,minweight,Delta)
+        MOs=readinMos(pathtoMO)
+        eta=np.zeros((np.shape(MOs)[0],np.shape(MOs)[1],len(states)))
+        MOsphases=getMOsPhases(pathtoMO)
+        homoid=getHOMOId(pathToExcitedStates)
+        Energies=[]
+        for it in range(len(states)):
+            Energies.append(states[it][0])
+            for composition in states[it][1]:
+                holeState=composition[0]+homoid
+                particleState=composition[1]+homoid
+                unique_weight=composition[2]*MOsphases[homoid+composition[0]]*MOsphases[homoid+composition[1]]
+                eta[particleState,holeState,it]=unique_weight
+        #Choose the global phase of the excited state to be positive 
+        for it in range(len(states)):
+                index=np.argmax(np.abs(eta[:,:,it]))
+                tupel=np.unravel_index(index,(np.shape(MOs)[0],np.shape(MOs)[1]))
+                eta[:,:,it]*=np.sign(eta[tupel[0],tupel[1],it])
+        np.save(pathToExcitedStates+"/"+"eta",eta)
+        np.save(pathToExcitedStates+"/"+"ExcitedStateEnergies",Energies)
+    return Energies,eta
 
         
 #########################################################################
