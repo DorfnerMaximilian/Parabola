@@ -3515,8 +3515,12 @@ def getLinearCouplingConstants(spread=20,parentfolder="./",cleandifferentSigns=T
     KSHorth_Eq=np.transpose(Sm12_Eq)@KSHamiltonian_Eq@Sm12_Eq
     #Diagonalize to the KS Hamiltonian in the ortonormal Basis
     E_Eq,a_orth_Eq=np.linalg.eigh(KSHorth_Eq)
-    #get the normalized Eigenstates in the non-orthorgonal Basis
-    nonorthorgonalEigenstates_Eq=[Sm12_Eq@a_orth_Eq[:,it] for it in range(len(E_Eq))]
+    #get the normalized Eigenstates in the non-orthorgonal Basis & fix Phase
+    nonorthorgonalEigenstates_Eq=[]
+    for it in range(len(E_Eq)):
+        non_orth_eigenstate=Sm12_Eq@a_orth_Eq[:,it]
+        non_orth_eigenstate*=getPhaseOfMO(non_orth_eigenstate)
+        nonorthorgonalEigenstates_Eq.append(non_orth_eigenstate)
     #get the normal modes from the cartesian displacements
     VibrationalFrequencies,normalizedCartesianDisplacements,normfactors=readinVibrations(parentfolder)
     CartesianDisplacements=[normalizedCartesianDisplacements[it]*normfactors[it] for it in range(len(normfactors))]
@@ -3545,7 +3549,11 @@ def getLinearCouplingConstants(spread=20,parentfolder="./",cleandifferentSigns=T
         Eplus,a_orth_Plus=np.linalg.eigh(KSHorth_P)
         T_Eq_Plus=getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq,cs_Eq)
         #get the Eigenstates in the non-orthorgonal Basis
-        nonorthorgonalEigenstates_Plus=[Sm12_Plus@a_orth_Plus[:,it] for it in range(len(Eplus))]
+        nonorthorgonalEigenstates_Plus=[]
+        for it in range(len(Eplus)):
+            non_orth_eigenstate=Sm12_Plus@a_orth_Plus[:,it]
+            non_orth_eigenstate*=getPhaseOfMO(non_orth_eigenstate)
+            nonorthorgonalEigenstates_Plus.append(non_orth_eigenstate)
         adibaticallyConnectediters_Plus=[]
         #Get the adiabtically connected eigenvalues/states
         for it0 in range(len(E_Eq)):
@@ -3600,7 +3608,11 @@ def getLinearCouplingConstants(spread=20,parentfolder="./",cleandifferentSigns=T
         EMinus,a_orth_Minus=np.linalg.eigh(KSHorth_Minus)
         T_Eq_Minus=getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq,cs_Eq)
         #get the Eigenstates in the non-orthorgonal Basis
-        nonorthorgonalEigenstates_Minus=[Sm12_Minus@a_orth_Minus[:,it] for it in range(len(E_Eq))]
+        nonorthorgonalEigenstates_Minus=[]
+        for it in range(len(EMinus)):
+            non_orth_eigenstate=Sm12_Minus@a_orth_Minus[:,it]
+            non_orth_eigenstate*=getPhaseOfMO(non_orth_eigenstate)
+            nonorthorgonalEigenstates_Minus.append(non_orth_eigenstate)
         adibaticallyConnectediters_Minus=[]
         #Get the adiabtically connected eigenvalues/states
         for it0 in range(len(E_Eq)):
