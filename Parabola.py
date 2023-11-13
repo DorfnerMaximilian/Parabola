@@ -1487,7 +1487,13 @@ def getPhaseOfMO(MO):
     ## input:   MO                 np.array(NumBasisfunctions)       Expansion coefficients of the MO in terms of AO's 
     ## output:  MOphases            list of integers            (list)       
     ## Example: MOphases[mo_index] is the phase (in +/- 1) defined by the function below (convention)
-    si=np.sign(MO[0])
+    
+    #The first non-vanishing element
+    si=0
+    for it in range(len(MO)):
+        if np.abs(MO[it])>10**(-14):
+            si=MO[it]
+            break
     if si>10**(-14):
         phase=1.0
     elif(si)<-10**(-14):
@@ -1920,7 +1926,7 @@ def readinExcitedStatesCP2K(path,minweight=0.01,Delta=2):
 			if abs(energy-energy1)<=Delta:
 				statestoreturn.append(state)
 	return statestoreturn
-def getUniqueExcitedStates(minweight=0.01,Delta=2,pathToExcitedStates="./",pathtoMO="./"):
+def getUniqueExcitedStates(minweight=0.01,Delta=20,pathToExcitedStates="./",pathtoMO="./"):
     ## Parses the excited states from a TDDFPT calculation done in CP2K  
     ## determines the eta coefficients, with respect to the MO basis, which has 
     ## all positive phases! (see getMOsPhases for the definition of the phase)
@@ -1951,7 +1957,10 @@ def getUniqueExcitedStates(minweight=0.01,Delta=2,pathToExcitedStates="./",patht
         for it in range(len(states)):
                 index=np.argmax(np.abs(eta[:,:,it]))
                 tupel=np.unravel_index(index,(np.shape(MOs)[0],np.shape(MOs)[1]))
+                print(tupel)
                 eta[:,:,it]*=np.sign(eta[tupel[0],tupel[1],it])
+        np.shape(eta)
+        
         np.save(pathToExcitedStates+"/"+"eta",eta)
         np.save(pathToExcitedStates+"/"+"ExcitedStateEnergies",Energies)
     return Energies,eta
@@ -3064,7 +3073,7 @@ def ComputeDipolmatrixElements(State1,State2,path="./"):
     dyint=np.sum(yy*transitiondensity)*voxelvolume
     dzint=np.sum(zz*transitiondensity)*voxelvolume
     return dxint,dyint,dzint
-def getTransitionDipoleMomentsAnalytic(minweigth=0.005,path="./"):
+def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcitedstates="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
        input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 
                                                           TDDFPT calculation lies                                                
@@ -3146,18 +3155,18 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.005,path="./"):
     # Readin the excited states 
     conFactors=ConversionFactors()
     Delta=10**(8) #arbitrarily large number to get all excited states
-    states=[]
-    energies=[]
-    states=getExcitedStatesCP2K(path,minweigth,Delta)
+    energies,eta=getUniqueExcitedStates(minweigth,Delta,pathtoExcitedstates,pathtoMO)
     ### Generate the Overlap Contribution 
-    KSHamiltonian,OLM=readinMatrices(path)
+    KSHamiltonian,OLM=readinMatrices(pathtoExcitedstates)
     Sm12=LoewdinTransformation(OLM)
     S12=sci.linalg.fractional_matrix_power(OLM, 0.5)
     KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
     _,A=np.linalg.eigh(KSHorth)
-    Atoms=getAtomicCoordinates(path)
-    Basis,cs=getBasis(path)
-    overlapcontribution=[]
+    #Fix the Phase
+    for it in range(np.shape(A)[1]):
+        A[:,it]*=getPhaseOfMO(Sm12@A[:,it])
+    Atoms=getAtomicCoordinates(pathtoExcitedstates)
+    Basis,cs=getBasis(pathtoExcitedstates)
     Rx=np.zeros(np.shape(Sm12))
     Ry=np.zeros(np.shape(Sm12))
     Rz=np.zeros(np.shape(Sm12))
@@ -3207,24 +3216,23 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.005,path="./"):
     DipoleOperator_x=dx+overlapcontribution_x
     DipoleOperator_y=dy+overlapcontribution_y
     DipoleOperator_z=dz+overlapcontribution_z
-    id=getHOMOId(path)
+    id=getHOMOId(pathtoExcitedstates)
     TransitionDipolevectors=[]
     with open("ExcitedStatesAndDipoles.dat","a") as file:
         file.write("Python Convention of state labeling!\n")
-    for it in range(len(states)):
-        state=states[it]
+    for it in range(len(energies)):
+        i_index,m_index=np.where(np.abs(eta[:,:,it]>minweigth))
         #generate the T matrix 
 
-        Energy=state[0]
-        energies.append(Energy)
-        composition=state[1]
+        Energy=energies[it]
         dx=0.0
         dy=0.0
         dz=0.0
-        for elementaryState in composition:
-            amplitude=elementaryState[2]
-            StateLabel1=elementaryState[0]
-            StateLabel2=elementaryState[1]
+        for id,i in enumerate(i_index):
+            m=m_index[id]
+            amplitude=eta[i,m,it]
+            StateLabel1=m
+            StateLabel2=i
             edx=-np.dot(A[:,id+StateLabel2],DipoleOperator_x@A[:,id+StateLabel1])
             edy=-np.dot(A[:,id+StateLabel2],DipoleOperator_y@A[:,id+StateLabel1])
             edz=-np.dot(A[:,id+StateLabel2],DipoleOperator_z@A[:,id+StateLabel1])
@@ -3239,17 +3247,15 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.005,path="./"):
             file.write("Dipole strength**2:"+format((dx**2+dy**2+dz**2),'12.6f')+"\n")
             file.write("Oszillator strength: "+format(Energy/(3*conFactors["a.u.->eV"]/2)*(dx**2+dy**2+dz**2),'12.6f')+"\n")
 
-            it=0
-            for elementaryState in composition:
-                amplitude=elementaryState[2]
-                itl=elementaryState[0]
-                ith=elementaryState[1]
-                if it==0:
-                    file.write("Dominant state transition:"+"HOMO-"+str(int(itl))+"->"+"LUMO+"+str(ith-1)+"\n")
-                    file.write("Excited State is composed of the individual excitations:\n") 
-                file.write(format(itl,'3.0f')+" ->"+format(ith,'3.0f')+":"+format(amplitude,'12.6f')+"\n")
-                it+=1
-    np.save("Energies_Excited_States",energies)
+            #it1=0
+            #for id2,i2 in enumerate(i_index):
+            #    m2=m_index[id2]
+            #    amplitude2=eta[i2,m2,it1]
+            #    if it1==0:
+            #        file.write("Dominant state transition:"+"HOMO-"+str(int(itl))+"->"+"LUMO+"+str(ith-1)+"\n")
+            #        file.write("Excited State is composed of the individual excitations:\n") 
+            #    file.write(format(itl,'3.0f')+" ->"+format(ith,'3.0f')+":"+format(amplitude,'12.6f')+"\n")
+            #    it1+=1
     np.save("Transitiondipolevectors",TransitionDipolevectors)
 def getTransitionDipoleMomentsNumerical(Nx=100,Ny=100,Nz=100,minweigth=0.05,path="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
@@ -3382,7 +3388,6 @@ def getManyBodyCouplings(states,couplingConstants,HOMO_id):
 				staten=states[n]
 				if n==m:
 					ElectronicHamiltonian[m+1][m+1]=staten[0]
-
 				weightsm=statem[1]
 				weightsn=staten[1]
 				Coupling=0.0
@@ -3422,7 +3427,7 @@ def getManyBodyCouplings(states,couplingConstants,HOMO_id):
 			ManyBodyCouplingConstants[lamb][elements[0]+1][elements[1]+1]+=couplingConstants[lamb][elements[2]][elements[3]]*elements[4]
 		for elements in secondsummond:
 			ManyBodyCouplingConstants[lamb][elements[0]+1][elements[1]+1]+=couplingConstants[lamb][elements[2]][elements[3]]*elements[4]				
-	return energies,ManyBodyCouplingConstants
+	return ElectronicHamiltonian,ManyBodyCouplingConstants
 
 def LoewdinTransformation(S,algorithm='Schur-Pade'):
     ##  Function to compute S^(-0.5) for the Loewdin orthogonalization
