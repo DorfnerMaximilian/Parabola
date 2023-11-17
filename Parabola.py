@@ -10,6 +10,7 @@ modulespath="/home/max/Sync/PhD_TUM/Code/CP2K/CP2K_Python_Modules"
 #########################################################################
 import numpy as np
 import scipy as sci
+import copy as cp
 import os
 import sys
 import matplotlib.pyplot as plt
@@ -229,7 +230,6 @@ def getCellSize(path="./"):
     return cellvectors
 def centerMolecule(path="./"):
     ## Function to center the molecule in the unit cell 
-    ## and orient priciple axis along x y z
     ## input: (opt.)   path   path to the folder of the calculation         (string)
     ## output:  -                                                           (void)
 
@@ -298,13 +298,12 @@ def getPrincipleAxisCoordinates(path="./"):
                 ValueError("Centering of Molecule in Unit Cell makes only sense for Non-Periodic Calculations! Use Orthorhombic Unit cells for this case!")
 
     #Compute center of Cell (assuming orthogonal basis vectors)
-    cellcenter=0.5*cellcoordinates[0]+0.5*cellcoordinates[1]+0.5*cellcoordinates[2]
     xyzcoordinates,masses,atomicsym=getCoordinatesAndMasses(path)
 
 
     #Compute the Intertia Tensor
     I=getInertiaTensor(xyzcoordinates,masses)
-    centerofmasscoordinates,centerofMass=getCenterOfMassCoordinates(xyzcoordinates,masses)
+    centerofmasscoordinates,_=ComputeCenterOfMassCoordinates(xyzcoordinates,masses)
     #Get the principle Axis
     _,principleAxis=np.linalg.eigh(I)
     #Check that the principle axis are orthorgonal (Could be not the case in case of degeneracy)
@@ -337,38 +336,16 @@ def getPrincipleAxisCoordinates(path="./"):
         v2coordinate=np.dot(coordinate,v2)
         v3coordinate=np.dot(coordinate,v3)
         principleaxiscoordinates.append(np.array([v1coordinate,v2coordinate,v3coordinate]))
-    centerofcellCoordinates=[]
-    for coordinate in principleaxiscoordinates:
-        centerofcellCoordinates.append(coordinate+cellcenter)
-    #Compute maximum distance of atom from coordinatecenter
-    maxdistx=0
-    maxdisty=0
-    maxdistz=0
-    for coordinates in principleaxiscoordinates:
-        distx=np.abs(coordinates[0])
-        disty=np.abs(coordinates[1])
-        distz=np.abs(coordinates[2])
-        if distx > maxdistx:
-            maxdistx=distx
-        if disty > maxdisty:
-            maxdisty=disty
-        if distz > maxdistz:
-            maxdistz=distz
-    #Add cutoff to maximum distance
-    cutoff=2
-    mincellsizex=cutoff+maxdistx
-    mincellsizey=cutoff+maxdisty
-    mincellsizez=cutoff+maxdistz
-    #Check if molecule fits into box otherwise shift coordinates to center of cell
-    
-    if mincellsizex<=0.5*distx:
-        ValueError("Increase cell size in z direction to at least ",2*mincellsizez)
-    if mincellsizey<=0.5*disty:
-        ValueError("Increase cell size in y direction to at least ",2*mincellsizey)
-    if mincellsizez<=0.5*distz:
-        ValueError("Increase cell size in z direction to at least ",2*mincellsizez)
-    
-    writexyzfile(atomicsym,centerofcellCoordinates,path)
+    writexyzfile(atomicsym,principleaxiscoordinates,path)
+def getCenterOFMassCoordinates(path="./"):
+    ## Function to center the origin in the center of mass
+    ## input: (opt.)   path   path to the folder of the calculation         (string)
+    ## output:  -                                                           (void)
+
+    #Compute center of Cell (assuming orthogonal basis vectors)
+    xyzcoordinates,masses,atomicsym=getCoordinatesAndMasses(path)
+    comc,_=ComputeCenterOfMassCoordinates(xyzcoordinates,masses)
+    writexyzfile(atomicsym,comc,path)
 def writexyzfile(atomicsym,coordinates,readpath="./",writepath="./"):
     xyzfilename=getxyzfilename(readpath)
     xyzfilename=xyzfilename.split("/")[-1]
@@ -1874,11 +1851,10 @@ def getBasis(filename):
                 BasisSet[key][it][it2+3][1]*=normfactor
     return BasisSet,cs
 
-def readinExcitedStatesCP2K(path,minweight=0.01,Delta=2):
+def readinExcitedStatesCP2K(path,minweight=0.01):
     ## Parses the excited states from a TDDFPT calculation done in CP2K  
     ## input:
     ## (opt.)   minweight           minimum amplitude to consider
-    ##          Delta               Energy scale around the first excited state to consider [eV]
     ## output: 
 	#get the output file 
 	out_files = [f for f in os.listdir(path) if f.endswith('.out')]
@@ -1919,14 +1895,8 @@ def readinExcitedStatesCP2K(path,minweight=0.01,Delta=2):
 									states.append([energies[it-1],stateiterator])
 									stateiterator=[]
 								stateiteratorflag=True
-		statestoreturn=[]
-		energy1=states[0][0]
-		for state in states:
-			energy=state[0]
-			if abs(energy-energy1)<=Delta:
-				statestoreturn.append(state)
-	return statestoreturn
-def getUniqueExcitedStates(minweight=0.01,Delta=20,pathToExcitedStates="./",pathtoMO="./"):
+	return states
+def getUniqueExcitedStates(minweight=0.1,pathToExcitedStates="./",pathtoMO="./"):
     ## Parses the excited states from a TDDFPT calculation done in CP2K  
     ## determines the eta coefficients, with respect to the MO basis, which has 
     ## all positive phases! (see getMOsPhases for the definition of the phase)
@@ -1934,13 +1904,16 @@ def getUniqueExcitedStates(minweight=0.01,Delta=20,pathToExcitedStates="./",path
     ## (opt.)   minweight               minimum amplitude to consider
     ##          Delta                   Energy scale around the first excited state to consider [eV]
     ##          pathToExcitedStates     path to the output file of the Cp2k 
-    ## output: 
+    ## output:  eta                     excited states represented as a NBasis x NBasis x NStates numpy array
+    ##                                  NBasis is the number of used Basis functions 
+    ##                                  NStates is the number of computed excited states
+    ##          Energies                Excited state energies as a np array unit [eV]
 	#get the output file 
     try:
         eta=np.load("eta.npy")
         Energies=np.load("ExcitedStateEnergies.npy")
     except:
-        states=readinExcitedStatesCP2K(pathToExcitedStates,minweight,Delta)
+        states=readinExcitedStatesCP2K(pathToExcitedStates,minweight)
         MOs=readinMos(pathtoMO)
         eta=np.zeros((np.shape(MOs)[0],np.shape(MOs)[1],len(states)))
         MOsphases=getMOsPhases(pathtoMO)
@@ -1957,10 +1930,8 @@ def getUniqueExcitedStates(minweight=0.01,Delta=20,pathToExcitedStates="./",path
         for it in range(len(states)):
                 index=np.argmax(np.abs(eta[:,:,it]))
                 tupel=np.unravel_index(index,(np.shape(MOs)[0],np.shape(MOs)[1]))
-                print(tupel)
                 eta[:,:,it]*=np.sign(eta[tupel[0],tupel[1],it])
-        np.shape(eta)
-        
+        print(np.trace(np.transpose(eta[:,:,0])@eta[:,:,0]))
         np.save(pathToExcitedStates+"/"+"eta",eta)
         np.save(pathToExcitedStates+"/"+"ExcitedStateEnergies",Energies)
     return Energies,eta
@@ -2344,7 +2315,7 @@ def getJMJTranspose(masses):
     #get the mass matrix
     J=getJ(masses)
     return J@M@np.transpose(J)
-def getCenterOfMassCoordinates(coordinates,masses):
+def ComputeCenterOfMassCoordinates(coordinates,masses):
     # Computes the center of mass of a molecule w.r.t. the basis of the coordinate file
     #input: 
     #coordinates:               (Nx3 numpy.array)  coordinates of the atoms w.r.t. some Basis, arbitrary origin
@@ -2374,7 +2345,7 @@ def getInertiaTensor(coordinates,masses):
     #masses:         (N numpy.array)    masses of the atoms as a numpy array, requires same ordering as the coordinates
 
     #Compute the coordinates in the frame where the origin is the center of mass
-    centerofmasscoordinates,_=getCenterOfMassCoordinates(coordinates,masses)
+    centerofmasscoordinates,_=ComputeCenterOfMassCoordinates(coordinates,masses)
     #get the moments of inertia tensor
     Ixx=0.0
     Iyy=0.0
@@ -2424,7 +2395,7 @@ def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",re
     coordinates,masses,_=getCoordinatesAndMasses(pathtoEquilibriumxyz)
     #Compute the Intertia Tensor
     I=getInertiaTensor(coordinates,masses)
-    centerofmasscoordinates,_=getCenterOfMassCoordinates(coordinates,masses)
+    centerofmasscoordinates,_=ComputeCenterOfMassCoordinates(coordinates,masses)
 
     #Get the principle Axis
     _,principleAxis=np.linalg.eigh(I)
@@ -2889,11 +2860,17 @@ def WFNonGrid(id=0,N1=100,N2=100,N3=100,parentfolder='./'):
                 it+=1
         return res
     Homoid=getHOMOId(parentfolder)
-    KSHamiltonian,OLM=readinMatrices(parentfolder)
-    Sm12=LoewdinTransformation(OLM)
-    KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
-    _,A=np.linalg.eigh(KSHorth)
-    a=Sm12@A[:,id+Homoid]
+    try:
+        MOs=np.load("MOs.npy")
+        a=MOs[:,id+Homoid]
+    except:
+        KSHamiltonian,OLM=readinMatrices(parentfolder)
+        Sm12=LoewdinTransformation(OLM)
+        KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
+        _,A=np.linalg.eigh(KSHorth)
+        a=Sm12@A[:,id+Homoid]
+    #Fix Phase of this orbital
+    a*=getPhaseOfMO(a)
     Atoms=getAtomicCoordinates(parentfolder)
     Basis,cs=getBasis(parentfolder)
     Cellvectors=getCellSize(parentfolder)
@@ -3073,7 +3050,7 @@ def ComputeDipolmatrixElements(State1,State2,path="./"):
     dyint=np.sum(yy*transitiondensity)*voxelvolume
     dzint=np.sum(zz*transitiondensity)*voxelvolume
     return dxint,dyint,dzint
-def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcitedstates="./"):
+def getTransitionDipoleMomentsAnalytic(minweigth=0.05,pathtoMO="./",pathtoExcitedstates="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
        input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 
                                                           TDDFPT calculation lies                                                
@@ -3154,17 +3131,24 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcite
         return overlap
     # Readin the excited states 
     conFactors=ConversionFactors()
-    Delta=10**(8) #arbitrarily large number to get all excited states
-    energies,eta=getUniqueExcitedStates(minweigth,Delta,pathtoExcitedstates,pathtoMO)
+    energies,eta=getUniqueExcitedStates(minweigth,pathtoExcitedstates,pathtoMO)
+    id_homo=getHOMOId(pathtoExcitedstates)
     ### Generate the Overlap Contribution 
-    KSHamiltonian,OLM=readinMatrices(pathtoExcitedstates)
+    KSHamiltonian,OLM=readinMatrices(pathtoMO)
     Sm12=LoewdinTransformation(OLM)
     S12=sci.linalg.fractional_matrix_power(OLM, 0.5)
-    KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
-    _,A=np.linalg.eigh(KSHorth)
-    #Fix the Phase
-    for it in range(np.shape(A)[1]):
-        A[:,it]*=getPhaseOfMO(Sm12@A[:,it])
+    try:
+        a=np.load("MOs.npy")
+        #Fix the Phase
+        for it in range(np.shape(A)[1]):
+            a[:,it]*=getPhaseOfMO(a[:,it])
+        A=S12@a
+    except:
+        KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
+        _,A=np.linalg.eigh(KSHorth)
+        #Fix the Phase
+        for it in range(np.shape(A)[1]):
+            A[:,it]*=getPhaseOfMO(Sm12@A[:,it])
     Atoms=getAtomicCoordinates(pathtoExcitedstates)
     Basis,cs=getBasis(pathtoExcitedstates)
     Rx=np.zeros(np.shape(Sm12))
@@ -3216,7 +3200,6 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcite
     DipoleOperator_x=dx+overlapcontribution_x
     DipoleOperator_y=dy+overlapcontribution_y
     DipoleOperator_z=dz+overlapcontribution_z
-    id=getHOMOId(pathtoExcitedstates)
     TransitionDipolevectors=[]
     with open("ExcitedStatesAndDipoles.dat","a") as file:
         file.write("Python Convention of state labeling!\n")
@@ -3233,31 +3216,38 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcite
             amplitude=eta[i,m,it]
             StateLabel1=m
             StateLabel2=i
-            edx=-np.dot(A[:,id+StateLabel2],DipoleOperator_x@A[:,id+StateLabel1])
-            edy=-np.dot(A[:,id+StateLabel2],DipoleOperator_y@A[:,id+StateLabel1])
-            edz=-np.dot(A[:,id+StateLabel2],DipoleOperator_z@A[:,id+StateLabel1])
+            edx=-np.dot(A[:,StateLabel2],DipoleOperator_x@A[:,StateLabel1])
+            edy=-np.dot(A[:,StateLabel2],DipoleOperator_y@A[:,StateLabel1])
+            edz=-np.dot(A[:,StateLabel2],DipoleOperator_z@A[:,StateLabel1])
             dx+=amplitude*edx
             dy+=amplitude*edy
             dz+=amplitude*edz
-        TransitionDipolevectors.append(np.array([dx,dy,dz]))
+        TransitionDipolevectors.append(np.array([dx,dy,dz])) 
         with open("ExcitedStatesAndDipoles.dat","a") as file:
             file.write("Excited State #:"+str(it+1)+"\n")
             file.write("Energy [eV]:"+format(Energy,'12.6f')+"\n")
             file.write("Dipolematrixelements (x,y,z) [eBohr]:"+format(dx,'12.6f')+format(dy,'12.6f')+format(dz,'12.6f')+"\n")
             file.write("Dipole strength**2:"+format((dx**2+dy**2+dz**2),'12.6f')+"\n")
             file.write("Oszillator strength: "+format(Energy/(3*conFactors["a.u.->eV"]/2)*(dx**2+dy**2+dz**2),'12.6f')+"\n")
-
-            #it1=0
-            #for id2,i2 in enumerate(i_index):
-            #    m2=m_index[id2]
-            #    amplitude2=eta[i2,m2,it1]
-            #    if it1==0:
-            #        file.write("Dominant state transition:"+"HOMO-"+str(int(itl))+"->"+"LUMO+"+str(ith-1)+"\n")
-            #        file.write("Excited State is composed of the individual excitations:\n") 
-            #    file.write(format(itl,'3.0f')+" ->"+format(ith,'3.0f')+":"+format(amplitude,'12.6f')+"\n")
-            #    it1+=1
+            sorted_m_index=[]
+            sorted_i_index=[]
+            eta_prime=cp.deepcopy(eta)
+            for id in enumerate(i_index):
+                imax,mmax=np.unravel_index(np.argmax(np.abs(eta_prime[:,:,it])),np.shape(eta_prime[:,:,it]))
+                sorted_i_index.append(imax)
+                sorted_m_index.append(mmax)
+                eta_prime[imax,mmax,it]=0.0
+            it1=0
+            for id2,i2 in enumerate(sorted_i_index):
+                m2=sorted_m_index[id2]
+                amplitude2=eta[i2,m2,it]
+                if it1==0:
+                    file.write("Dominant state transition:"+"HOMO-"+str(int(np.abs(m2-id_homo)))+"->"+"LUMO+"+str(i2-id_homo-1)+"\n")
+                    file.write("Excited State is composed of the individual particle-hole excitations:\n") 
+                file.write(format(m2-id_homo,'3.0f')+" ->"+format(i2-id_homo,'3.0f')+":"+format(amplitude2,'12.6f')+"\n")
+                it1+=1
     np.save("Transitiondipolevectors",TransitionDipolevectors)
-def getTransitionDipoleMomentsNumerical(Nx=100,Ny=100,Nz=100,minweigth=0.05,path="./"):
+def getTransitionDipoleMomentsNumerical(minweigth=0.05,Nx=100,Ny=100,Nz=100,pathtoExcitedstates="./",pathtoMO="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
        input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 
                                                           TDDFPT calculation lies                                                
@@ -3265,44 +3255,39 @@ def getTransitionDipoleMomentsNumerical(Nx=100,Ny=100,Nz=100,minweigth=0.05,path
     '''
     # Readin the excited states 
     conFactors=ConversionFactors()
-    Delta=10**(8) #arbitrarily large number to get all excited states
-    states=[]
     energies=[]
-    states=getExcitedStatesCP2K(path,minweigth,Delta)
+    energies,eta=getUniqueExcitedStates(minweigth,pathtoExcitedstates,pathtoMO)
+    id_homo=getHOMOId(pathtoExcitedstates)
     TransitionDipolevectors=[]
     with open("ExcitedStatesAndDipoles.dat","a") as file:
         file.write("Python Convention of state labeling!\n")
-    for it in range(len(states)):
-        state=states[it]
-        #generate the T matrix 
-
-        Energy=state[0]
-        energies.append(Energy)
-        composition=state[1]
+    for it in range(len(energies)):
+        i_index,m_index=np.where(np.abs(eta[:,:,it]>minweigth))
+        Energy=energies[it]
         dx=0.0
         dy=0.0
         dz=0.0
-        for elementaryState in composition:
-            amplitude=elementaryState[2]
-            StateLabel1=elementaryState[0]
-            StateLabel2=elementaryState[1]
+        for id,i in enumerate(i_index):
+            m=m_index[id]
+            amplitude=eta[i,m,it]
+            StateLabel1=m-id_homo
+            StateLabel2=i-id_homo
             try:
                 State1=np.load(str(StateLabel1)+".npy")    
             except:
                 print("Have not found state #: "+str(StateLabel1)+"\n")
                 print("Creating it from scratch. This may take a while!\n")
-                State1=WFNonGrid(StateLabel1,Nx,Ny,Nz,path)
+                State1=WFNonGrid(StateLabel1,Nx,Ny,Nz,pathtoMO)
             try:
                 State2=np.load(str(StateLabel2)+".npy")
             except:
                 print("Have not found state #: "+str(StateLabel2)+"\n")
                 print("Creating it from scratch. This may take a while!\n")
-                State2=WFNonGrid(StateLabel2,Nx,Ny,Nz,path)
-            #compute the dipole matrix elements of the elementary transitions
-            edx,edy,edz=ComputeDipolmatrixElements(State2,State1,path)
-            dx+=amplitude*edx
-            dy+=amplitude*edy
-            dz+=amplitude*edz
+                State2=WFNonGrid(StateLabel2,Nx,Ny,Nz,pathtoMO)
+            edx,edy,edz=ComputeDipolmatrixElements(State2,State1,pathtoMO)
+            dx+=-amplitude*edx
+            dy+=-amplitude*edy
+            dz+=-amplitude*edz
         TransitionDipolevectors.append(np.array([dx,dy,dz]))
         with open("ExcitedStatesAndDipoles.dat","a") as file:
             file.write("Excited State #:"+str(it+1)+"\n")
@@ -3310,18 +3295,6 @@ def getTransitionDipoleMomentsNumerical(Nx=100,Ny=100,Nz=100,minweigth=0.05,path
             file.write("Dipolematrixelements (x,y,z) [eBohr]:"+format(dx,'12.6f')+format(dy,'12.6f')+format(dz,'12.6f')+"\n")
             file.write("Dipole strength**2:"+format((dx**2+dy**2+dz**2),'12.6f')+"\n")
             file.write("Oszillator strength: "+format(Energy/(3*conFactors["a.u.->eV"]/2)*(dx**2+dy**2+dz**2),'12.6f')+"\n")
-
-            it=0
-            for elementaryState in composition:
-                amplitude=elementaryState[2]
-                itl=elementaryState[0]
-                ith=elementaryState[1]
-                if it==0:
-                    file.write("Dominant state transition:"+"HOMO-"+str(int(itl))+"->"+"LUMO+"+str(ith-1)+"\n")
-                    file.write("Excited State is composed of the individual excitations:\n") 
-                file.write(format(itl,'3.0f')+" ->"+format(ith,'3.0f')+":"+format(amplitude,'12.6f')+"\n")
-                it+=1
-    np.save("Energies_Excited_States",energies)
     np.save("Transitiondipolevectors",TransitionDipolevectors)
     return TransitionDipolevectors
 
@@ -3366,9 +3339,9 @@ def getHOMOId(parentfolder):
     iter=np.floor(numofE/2)
     HOMOit=iter-1+remainder
     return int(HOMOit)
-def getManyBodyCouplings(states,couplingConstants,HOMO_id):
+def getManyBodyCouplings(eta,LCC,id_homo):
     ##   Function to obtain the Many-Body Coupling Constants from the CP2K TDDFT excited states and the DFT Coupling constants
-    ##   input:   states:         (np.array)            numpy array which encodes the states
+    ##   input:   eta:         (np.array)            numpy array which encodes the states
     ##                                                  required structure: states[n] encodes the n th excited state
     ##                                                                      states[n][0] is its energy
     ##                                                                      states[n][1] is a list of lists, where each list in this list contains 
@@ -3378,56 +3351,35 @@ def getManyBodyCouplings(states,couplingConstants,HOMO_id):
     ##            couplingConstants (np.array)          the DFT coupling constants as outputted by "getLinearCouplingConstants"
     ##                                                                        
     ##            HOMOit                (int)           the index of the HOMO orbital (python convention)
-    
-	ElectronicHamiltonian=np.zeros((len(states)+1,len(states)+1))
-	ManyBodyCouplingConstants=np.zeros((np.shape(couplingConstants)[0],len(states)+1,len(states)+1))
-	for lamb in range(np.shape(couplingConstants)[0]):
-		for m in range(len(states)):
-			for n in range(len(states)):
-				statem=states[m]
-				staten=states[n]
-				if n==m:
-					ElectronicHamiltonian[m+1][m+1]=staten[0]
-				weightsm=statem[1]
-				weightsn=staten[1]
-				Coupling=0.0
-				for wm in weightsm:
-					for wn in weightsn:
-						if wm[1]==wn[1] and wm[0]==wn[0] and wm[1]>wm[0]:
-							Coupling+=wm[2]*wn[2]*(couplingConstants[lamb][wm[1]+HOMO_id][wm[1]+HOMO_id]-couplingConstants[lamb][wn[0]+HOMO_id][wn[0]+HOMO_id])
-				ManyBodyCouplingConstants[lamb][m+1][n+1]=Coupling
-    #Ground State Relaxation Coupling Constants
-	for lamb in range(np.shape(couplingConstants)[0]):
-		for m in range(len(states)):
-			statem=states[m]
-			weightsm=statem[1]
-			Coupling=0.0
-			for wm in weightsm:
-				Coupling+=wm[2]*couplingConstants[lamb][wm[1]+HOMO_id][wm[0]+HOMO_id]
-			ManyBodyCouplingConstants[lamb][0][m+1]=Coupling
-			ManyBodyCouplingConstants[lamb][m+1][0]=Coupling
-	
-	for lamb in range(np.shape(couplingConstants)[0]):
-		firstsummond=[]
-		secondsummond=[]
-		for m in range(len(states)):
-			for n in range(len(states)):
-				statem=states[m]
-				staten=states[n]
-				weightsm=statem[1]
-				weightsn=staten[1]
-				Coupling=0.0
-				for wm in weightsm:
-					for wn in weightsn:
-						if wn[0]==wm[0] and wn[0]!=wn[1] and wn[1]!=wm[1]:
-							firstsummond.append([m,n,wn[1]+HOMO_id,wm[1]+HOMO_id,wn[2]*wm[2]])
-						if wn[1]==wm[1] and wn[0]!=wn[1] and wn[0]!=wm[0]:
-							secondsummond.append([m,n,wn[0]+HOMO_id,wm[0]+HOMO_id,-wn[2]*wm[2]])
-		for elements in firstsummond:
-			ManyBodyCouplingConstants[lamb][elements[0]+1][elements[1]+1]+=couplingConstants[lamb][elements[2]][elements[3]]*elements[4]
-		for elements in secondsummond:
-			ManyBodyCouplingConstants[lamb][elements[0]+1][elements[1]+1]+=couplingConstants[lamb][elements[2]][elements[3]]*elements[4]				
-	return ElectronicHamiltonian,ManyBodyCouplingConstants
+    #generate g matrix, h matrix and k matrices
+    g=LCC[:,id_homo+1:,id_homo+1:]
+    h=LCC[:,:id_homo+1,:id_homo+1]*(-1) # minus 1 due to fermionic commutator!
+    k=LCC[:,:id_homo+1,id_homo+1:]
+    #get the number of excited States to take into account
+    Num_OfExciteStates=np.shape(eta)[-1]
+    Num_OfModes=np.shape(LCC)[0]
+    #Normalize the eta
+    for k in range(Num_OfExciteStates):
+        eta[:,:,k]/=np.trace(np.transpose(eta[:,:,k])@eta[:,:,k])
+    K=np.zeros((Num_OfModes,Num_OfExciteStates)) #Coupling of excited state to ground state
+    for k in range(Num_OfExciteStates):
+        etak=eta[id_homo+1:,:id_homo+1,k] #First index electrons second hole
+        for lamb in range(Num_OfModes):
+            klamb=k[lamb,:,:]
+            K[lamb,k]=np.trace(klamb@etak)
+    H=np.zeros((Num_OfModes,Num_OfExciteStates,Num_OfExciteStates)) #Coupling between the excited states
+    for k in range(Num_OfExciteStates):
+        for q in range(k,Num_OfExciteStates):
+            etak=eta[id_homo+1:,:id_homo+1,k] #First index electrons second hole
+            etaq=eta[id_homo+1:,:id_homo+1,q]
+            for lamb in range(Num_OfModes):
+                glamb=g[lamb,:,:]
+                hlamb=h[lamb,:,:]
+                H[lamb,q,k]=np.trace(np.transpose(etaq)@glamb@etak)+np.trace(etaq@hlamb@np.transpose(etak))
+                H[lamb,k,q]=H[lamb,q,k]
+    np.save("H_CouplingConstants",H)
+    np.save("K_CouplingConstants",K)
+    return H,K
 
 def LoewdinTransformation(S,algorithm='Schur-Pade'):
     ##  Function to compute S^(-0.5) for the Loewdin orthogonalization
@@ -3461,7 +3413,7 @@ def getElectronicCouplings(parentfolder="./Equilibrium_Geometry/",algorithm='Sch
 #######################################################################################################
 #Function to Compute the local Coupling constants g 
 #######################################################################################################
-def getLinearCouplingConstants(spread=20,parentfolder="./",cleandifferentSigns=True):
+def getLinearCouplingConstants(spread=50,parentfolder="./",cleandifferentSigns=True):
     ''' input:   parentfolder:         (string)            absolute/relative path, where the geometry optimized .xyz file lies 
                                                           in the subfolders there we find the electronic structure at displaced geometries        
                     
@@ -3534,12 +3486,6 @@ def getLinearCouplingConstants(spread=20,parentfolder="./",cleandifferentSigns=T
     #This has index convention lambda,mu
     partialY_mupartialX_lambda=[(Tinv@M_salpha_timesX_salpha_lambda[it])*ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[it])**(1.5) for it in range(len(M_salpha_timesX_salpha_lambda))]
     hijs=[]
-    #get the index of the HOMO
-    HOMOit=getHOMOId(parentfolder)
-    lowindex=0
-    highindex=HOMOit+spread+2
-    if HOMOit-spread-2>0:
-        lowindex=HOMOit-spread-2
     for mu in progressbar(range(3*numofatoms),"Coupling Constants:",40):
         #----------------------------------------------------------------------
         # Positively displaced 
@@ -3584,9 +3530,9 @@ def getLinearCouplingConstants(spread=20,parentfolder="./",cleandifferentSigns=T
                 ValueError("Some eigenstates appear more then once as maximum weight states! Check your inputs!")
         couplingConstants_Plus=np.zeros((len(E_Eq),len(E_Eq)))
         #statelabel in the equilibrium system
-        for i in range(HOMOit-spread-2,HOMOit+spread+2):
+        for i in range(len(E_Eq)):
             #the adibatically connected state in the displaced system
-            for k in range(HOMOit-spread-2,HOMOit+spread+2):
+            for k in range(len(E_Eq)):
                 #get the local coupling constants if equal 
                 if i==k:
                     partialepsilonpartialYmu=(Eplus[adibaticallyConnectediters_Plus[k]]-E_Eq[i])/delta
@@ -3643,9 +3589,9 @@ def getLinearCouplingConstants(spread=20,parentfolder="./",cleandifferentSigns=T
                 ValueError("Some eigenstates appear more then once as maximum weight states! Check your inputs!")
         couplingConstants_Minus=np.zeros((len(E_Eq),len(E_Eq)))
         #statelabel in the equilibrium system
-        for i in range(lowindex,highindex):
+        for i in range(len(E_Eq)):
             #the adibatically connected state in the displaced system
-            for k in range(lowindex,highindex):
+            for k in range(len(E_Eq)):
                 #get the local coupling constants if equal 
                 if i==k:
                     partialepsilonpartialYmu=(E_Eq[i]-EMinus[adibaticallyConnectediters_Minus[k]])/delta
@@ -3661,8 +3607,8 @@ def getLinearCouplingConstants(spread=20,parentfolder="./",cleandifferentSigns=T
         couplingConstantsCombined=np.zeros(np.shape(couplingConstants_Plus))
         #Check if the two coupling constants have the same sign otherwise set them to zero 
         if not cleandifferentSigns:
-            for it1 in range(lowindex,highindex):
-                for it2 in range(lowindex,highindex):
+            for it1 in range(len(E_Eq)):
+                for it2 in range(len(E_Eq)):
                     if couplingConstants_Plus[it1][it2]*couplingConstants_Minus[it1][it2]>0.0:
                         couplingConstantsCombined[it1][it2]=0.5*(couplingConstants_Plus[it1][it2]+couplingConstants_Minus[it1][it2])
         else:
@@ -3670,11 +3616,6 @@ def getLinearCouplingConstants(spread=20,parentfolder="./",cleandifferentSigns=T
         couplingConstantsCombined=0.5*(couplingConstantsCombined+np.transpose(couplingConstantsCombined))
         hijs.append(couplingConstantsCombined)
     couplingConstantsfinal=np.tensordot(np.array(partialY_mupartialX_lambda),np.array(hijs),(1,0))
-    for it1 in range(np.shape(couplingConstantsfinal)[0]):
-        for it2 in range(np.shape(couplingConstantsfinal)[1]):
-            for it3 in range(np.shape(couplingConstantsfinal)[2]):
-                if (not it2 in range(lowindex,highindex)) or (not it3 in range(lowindex,highindex)):
-                    couplingConstantsfinal[it1,it2,it3]=float('NaN')
     np.save("Linear_Coupling_Constants",couplingConstantsfinal)
 
 def Parametrize():
