@@ -3359,24 +3359,24 @@ def getManyBodyCouplings(eta,LCC,id_homo):
     Num_OfExciteStates=np.shape(eta)[-1]
     Num_OfModes=np.shape(LCC)[0]
     #Normalize the eta
-    for k in range(Num_OfExciteStates):
-        eta[:,:,k]/=np.trace(np.transpose(eta[:,:,k])@eta[:,:,k])
+    for p in range(Num_OfExciteStates):
+        eta[:,:,p]/=np.trace(np.transpose(eta[:,:,p])@eta[:,:,p])
     K=np.zeros((Num_OfModes,Num_OfExciteStates)) #Coupling of excited state to ground state
-    for k in range(Num_OfExciteStates):
-        etak=eta[id_homo+1:,:id_homo+1,k] #First index electrons second hole
+    for m in range(Num_OfExciteStates):
+        etap=eta[id_homo+1:,:id_homo+1,m] #First index electrons second hole
         for lamb in range(Num_OfModes):
             klamb=k[lamb,:,:]
-            K[lamb,k]=np.trace(klamb@etak)
+            K[lamb,m]=np.trace(klamb@etap)
     H=np.zeros((Num_OfModes,Num_OfExciteStates,Num_OfExciteStates)) #Coupling between the excited states
-    for k in range(Num_OfExciteStates):
-        for q in range(k,Num_OfExciteStates):
-            etak=eta[id_homo+1:,:id_homo+1,k] #First index electrons second hole
+    for p in range(Num_OfExciteStates):
+        for q in range(p,Num_OfExciteStates):
+            etap=eta[id_homo+1:,:id_homo+1,p] #First index electrons second hole
             etaq=eta[id_homo+1:,:id_homo+1,q]
             for lamb in range(Num_OfModes):
                 glamb=g[lamb,:,:]
                 hlamb=h[lamb,:,:]
-                H[lamb,q,k]=np.trace(np.transpose(etaq)@glamb@etak)+np.trace(etaq@hlamb@np.transpose(etak))
-                H[lamb,k,q]=H[lamb,q,k]
+                H[lamb,q,p]=np.trace(np.transpose(etaq)@glamb@etap)+np.trace(etaq@hlamb@np.transpose(etap))
+                H[lamb,p,q]=H[lamb,q,p]
     np.save("H_CouplingConstants",H)
     np.save("K_CouplingConstants",K)
     return H,K
@@ -3395,19 +3395,15 @@ def LoewdinTransformation(S,algorithm='Schur-Pade'):
     else:
         ValueError("Algorithm not recognized! Currently available 'Schur-Pade' and 'Diagonalization'")
     return Sm12
-def getElectronicCouplings(parentfolder="./Equilibrium_Geometry/",algorithm='Schur-Pade'):
+def getElectronicCouplings(parentfolder="./Equilibrium_Geometry/"):
     ##  Function to compute the electronic energies from the equilibrium file
     ##   input:   parentfolder:         (string)            absolute/relative path, where the geometry optimized .xyz file lies 
     ##                                                      in the subfolders there we find the electronic structure at displaced geometries                         
     KSHamiltonian,OLM=readinMatrices(parentfolder)
-    Atoms=getAtomicCoordinates(parentfolder)
-    Basis,cs=getBasis(parentfolder)
-    Overlapmatrix=getTransformationmatrix(Atoms,Atoms,Basis,cs)
-    print(np.shape(Overlapmatrix))
-    Sm12=LoewdinTransformation(Overlapmatrix)
+    Sm12=LoewdinTransformation(OLM)
     KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
     E,_=np.linalg.eigh(KSHorth)
-    np.save("KS-Eigenvalues[Ha]",E)
+    np.save("KS-Eigenvalues",E)
     return 
 
 #######################################################################################################
