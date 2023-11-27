@@ -1896,7 +1896,7 @@ def readinExcitedStatesCP2K(path,minweight=0.01):
 									stateiterator=[]
 								stateiteratorflag=True
 	return states
-def getUniqueExcitedStates(minweight=0.1,pathToExcitedStates="./",pathtoMO="./"):
+def getUniqueExcitedStates(minweight=0.05,pathToExcitedStates="./",pathtoMO="./"):
     ## Parses the excited states from a TDDFPT calculation done in CP2K  
     ## determines the eta coefficients, with respect to the MO basis, which has 
     ## all positive phases! (see getMOsPhases for the definition of the phase)
@@ -1909,18 +1909,22 @@ def getUniqueExcitedStates(minweight=0.1,pathToExcitedStates="./",pathtoMO="./")
     ##                                  NStates is the number of computed excited states
     ##          Energies                Excited state energies as a np array unit [eV]
 	#get the output file 
+    ConFactors=ConversionFactors()
     try:
         eta=np.load("eta.npy")
         Energies=np.load("ExcitedStateEnergies.npy")
     except:
         states=readinExcitedStatesCP2K(pathToExcitedStates,minweight)
+        KSEnergies=getElectronicCouplings(pathToExcitedStates)
+        KSEnergies*=ConFactors["a.u.->eV"]
         MOs=readinMos(pathtoMO)
         eta=np.zeros((np.shape(MOs)[0],np.shape(MOs)[1],len(states)))
         MOsphases=getMOsPhases(pathtoMO)
         homoid=getHOMOId(pathToExcitedStates)
         Energies=[]
         for it in range(len(states)):
-            Energies.append(states[it][0])
+            exitedstateenergy=states[it][0]
+            Energies.append(exitedstateenergy)
             for composition in states[it][1]:
                 holeState=composition[0]+homoid
                 particleState=composition[1]+homoid
@@ -1931,7 +1935,11 @@ def getUniqueExcitedStates(minweight=0.1,pathToExcitedStates="./",pathtoMO="./")
                 index=np.argmax(np.abs(eta[:,:,it]))
                 tupel=np.unravel_index(index,(np.shape(MOs)[0],np.shape(MOs)[1]))
                 eta[:,:,it]*=np.sign(eta[tupel[0],tupel[1],it])
-        print(np.trace(np.transpose(eta[:,:,0])@eta[:,:,0]))
+        #Normalize the State 
+        #for it in range(len(states)):
+        #    normalization=np.trace(np.transpose(eta[:,:,it])@eta[:,:,it])
+        #    print(normalization)
+        #    eta[:,:,it]/=np.sqrt(normalization)
         np.save(pathToExcitedStates+"/"+"eta",eta)
         np.save(pathToExcitedStates+"/"+"ExcitedStateEnergies",Energies)
     return Energies,eta
@@ -3050,7 +3058,7 @@ def ComputeDipolmatrixElements(State1,State2,path="./"):
     dyint=np.sum(yy*transitiondensity)*voxelvolume
     dzint=np.sum(zz*transitiondensity)*voxelvolume
     return dxint,dyint,dzint
-def getTransitionDipoleMomentsAnalytic(minweigth=0.05,pathtoMO="./",pathtoExcitedstates="./"):
+def getTransitionDipoleMomentsAnalytic(minweigth=0.001,pathtoMO="./",pathtoExcitedstates="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
        input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 
                                                           TDDFPT calculation lies                                                
@@ -3395,16 +3403,19 @@ def LoewdinTransformation(S,algorithm='Schur-Pade'):
     else:
         ValueError("Algorithm not recognized! Currently available 'Schur-Pade' and 'Diagonalization'")
     return Sm12
-def getElectronicCouplings(parentfolder="./Equilibrium_Geometry/"):
+def getElectronicCouplings(parentfolder="./"):
     ##  Function to compute the electronic energies from the equilibrium file
     ##   input:   parentfolder:         (string)            absolute/relative path, where the geometry optimized .xyz file lies 
     ##                                                      in the subfolders there we find the electronic structure at displaced geometries                         
-    KSHamiltonian,OLM=readinMatrices(parentfolder)
-    Sm12=LoewdinTransformation(OLM)
-    KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
-    E,_=np.linalg.eigh(KSHorth)
-    np.save("KS-Eigenvalues",E)
-    return 
+    try:
+        E=np.load(parentfolder+"/KS-Eigenvalues.npy")
+    except:
+        KSHamiltonian,OLM=readinMatrices(parentfolder)
+        Sm12=LoewdinTransformation(OLM)
+        KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
+        E,_=np.linalg.eigh(KSHorth)
+        np.save(parentfolder+"/KS-Eigenvalues",E)
+    return E
 
 #######################################################################################################
 #Function to Compute the local Coupling constants g 
