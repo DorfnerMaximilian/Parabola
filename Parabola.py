@@ -346,7 +346,7 @@ def getCenterOFMassCoordinates(path="./"):
     xyzcoordinates,masses,atomicsym=getCoordinatesAndMasses(path)
     comc,_=ComputeCenterOfMassCoordinates(xyzcoordinates,masses)
     writexyzfile(atomicsym,comc,path)
-def writexyzfile(atomicsym,coordinates,readpath="./",writepath="./"):
+def writexyzfile(atomicsym,coordinates,readpath="./",writepath="./",append=False):
     xyzfilename=getxyzfilename(readpath)
     xyzfilename=xyzfilename.split("/")[-1]
     # generate new xyz file
@@ -365,12 +365,14 @@ def writexyzfile(atomicsym,coordinates,readpath="./",writepath="./"):
     if len(inp_files) == 0:
         os.system("touch "+xyzfilename)
 
-    g=open(writepath+"/"+xyzfilename,'r+')
-    # kill its content
-    g.truncate(0)
+    g=open(writepath+"/"+xyzfilename,'a')
+    if not append:
+        # kill its content
+        g.truncate(0)
     #generate the new content
     for line in xyzinput:
         g.write(line)
+    g.close()
 def getNewXYZ(path='.'):
     ## Script to readout the last iteration of the GeoOpt file and 
     ## generate new oldxyzfile_opt.xyz file for Vibrational Analysis
@@ -1936,10 +1938,10 @@ def getUniqueExcitedStates(minweight=0.05,pathToExcitedStates="./",pathtoMO="./"
                 tupel=np.unravel_index(index,(np.shape(MOs)[0],np.shape(MOs)[1]))
                 eta[:,:,it]*=np.sign(eta[tupel[0],tupel[1],it])
         #Normalize the State 
-        #for it in range(len(states)):
-        #    normalization=np.trace(np.transpose(eta[:,:,it])@eta[:,:,it])
-        #    print(normalization)
-        #    eta[:,:,it]/=np.sqrt(normalization)
+        for it in range(len(states)):
+            normalization=np.trace(np.transpose(eta[:,:,it])@eta[:,:,it])
+            print(normalization)
+            eta[:,:,it]/=np.sqrt(normalization)
         np.save(pathToExcitedStates+"/"+"eta",eta)
         np.save(pathToExcitedStates+"/"+"ExcitedStateEnergies",Energies)
     return Energies,eta
@@ -2868,17 +2870,18 @@ def WFNonGrid(id=0,N1=100,N2=100,N3=100,parentfolder='./'):
                 it+=1
         return res
     Homoid=getHOMOId(parentfolder)
+    KSHamiltonian,OLM=readinMatrices(parentfolder)
+    Sm12=LoewdinTransformation(OLM)
+    S12=sci.linalg.fractional_matrix_power(OLM, 0.5)
     try:
         MOs=np.load("MOs.npy")
         a=MOs[:,id+Homoid]
+        a*=getPhaseOfMO(S12@a)
     except:
-        KSHamiltonian,OLM=readinMatrices(parentfolder)
-        Sm12=LoewdinTransformation(OLM)
         KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
         _,A=np.linalg.eigh(KSHorth)
+        A[:,id+Homoid]*=getPhaseOfMO(A[:,id+Homoid])
         a=Sm12@A[:,id+Homoid]
-    #Fix Phase of this orbital
-    a*=getPhaseOfMO(a)
     Atoms=getAtomicCoordinates(parentfolder)
     Basis,cs=getBasis(parentfolder)
     Cellvectors=getCellSize(parentfolder)
@@ -2901,6 +2904,7 @@ def WFNonGrid(id=0,N1=100,N2=100,N3=100,parentfolder='./'):
     xx,yy,zz=np.meshgrid(grid1,grid2,grid3,indexing="ij")
     f=np.zeros((N1,N2,N3))
     f=getWavefunction(xx,yy,zz,Atoms,a,Basis,cs,voxelvolume,v1,v2,v3)
+    print(voxelvolume*np.sum(np.sum(np.sum(f**2))))
     f/=np.sqrt(voxelvolume*np.sum(np.sum(np.sum(f**2))))
     filename=str(id)
     np.save(parentfolder+"/"+filename,f)
@@ -3058,7 +3062,7 @@ def ComputeDipolmatrixElements(State1,State2,path="./"):
     dyint=np.sum(yy*transitiondensity)*voxelvolume
     dzint=np.sum(zz*transitiondensity)*voxelvolume
     return dxint,dyint,dzint
-def getTransitionDipoleMomentsAnalytic(minweigth=0.001,pathtoMO="./",pathtoExcitedstates="./"):
+def getTransitionDipoleMomentsAnalytic(minweigth=0.05,pathtoMO="./",pathtoExcitedstates="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
        input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 
                                                           TDDFPT calculation lies                                                
@@ -3149,14 +3153,14 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.001,pathtoMO="./",pathtoExcit
         a=np.load("MOs.npy")
         #Fix the Phase
         for it in range(np.shape(A)[1]):
-            a[:,it]*=getPhaseOfMO(a[:,it])
+            a[:,it]*=getPhaseOfMO(S12@a[:,it])
         A=S12@a
     except:
         KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
         _,A=np.linalg.eigh(KSHorth)
         #Fix the Phase
         for it in range(np.shape(A)[1]):
-            A[:,it]*=getPhaseOfMO(Sm12@A[:,it])
+            A[:,it]*=getPhaseOfMO(A[:,it])
     Atoms=getAtomicCoordinates(pathtoExcitedstates)
     Basis,cs=getBasis(pathtoExcitedstates)
     Rx=np.zeros(np.shape(Sm12))
@@ -3252,7 +3256,8 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.001,pathtoMO="./",pathtoExcit
                 if it1==0:
                     file.write("Dominant state transition:"+"HOMO-"+str(int(np.abs(m2-id_homo)))+"->"+"LUMO+"+str(i2-id_homo-1)+"\n")
                     file.write("Excited State is composed of the individual particle-hole excitations:\n") 
-                file.write(format(m2-id_homo,'3.0f')+" ->"+format(i2-id_homo,'3.0f')+":"+format(amplitude2,'12.6f')+"\n")
+                if np.abs(amplitude2)>0.1:
+                    file.write(format(m2-id_homo,'3.0f')+" ->"+format(i2-id_homo,'3.0f')+":"+format(amplitude2,'12.6f')+"\n")
                 it1+=1
     np.save("Transitiondipolevectors",TransitionDipolevectors)
 def getTransitionDipoleMomentsNumerical(minweigth=0.05,Nx=100,Ny=100,Nz=100,pathtoExcitedstates="./",pathtoMO="./"):
@@ -3420,7 +3425,7 @@ def getElectronicCouplings(parentfolder="./"):
 #######################################################################################################
 #Function to Compute the local Coupling constants g 
 #######################################################################################################
-def getLinearCouplingConstants(spread=50,parentfolder="./",cleandifferentSigns=True):
+def getLinearCouplingConstants(parentfolder="./"):
     ''' input:   parentfolder:         (string)            absolute/relative path, where the geometry optimized .xyz file lies 
                                                           in the subfolders there we find the electronic structure at displaced geometries        
                     
@@ -3480,11 +3485,11 @@ def getLinearCouplingConstants(spread=50,parentfolder="./",cleandifferentSigns=T
     #Diagonalize to the KS Hamiltonian in the ortonormal Basis
     E_Eq,a_orth_Eq=np.linalg.eigh(KSHorth_Eq)
     #get the normalized Eigenstates in the non-orthorgonal Basis & fix Phase
-    nonorthorgonalEigenstates_Eq=[]
+    orthorgonalEigenstates_Eq=[]
     for it in range(len(E_Eq)):
-        non_orth_eigenstate=Sm12_Eq@a_orth_Eq[:,it]
-        non_orth_eigenstate*=getPhaseOfMO(non_orth_eigenstate)
-        nonorthorgonalEigenstates_Eq.append(non_orth_eigenstate)
+        orth_eigenstate=a_orth_Eq[:,it]
+        orth_eigenstate*=getPhaseOfMO(orth_eigenstate)
+        orthorgonalEigenstates_Eq.append(orth_eigenstate)
     #get the normal modes from the cartesian displacements
     VibrationalFrequencies,normalizedCartesianDisplacements,normfactors=readinVibrations(parentfolder)
     CartesianDisplacements=[normalizedCartesianDisplacements[it]*normfactors[it] for it in range(len(normfactors))]
@@ -3506,28 +3511,24 @@ def getLinearCouplingConstants(spread=50,parentfolder="./",cleandifferentSigns=T
         KSHorth_P=np.dot(Sm12_Plus,np.dot(KSHamiltonian_Plus,Sm12_Plus))
         Eplus,a_orth_Plus=np.linalg.eigh(KSHorth_P)
         T_Eq_Plus=getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq,cs_Eq)
+        Tmatrix_Plus=Sm12_Eq@T_Eq_Plus@Sm12_Plus
         #get the Eigenstates in the non-orthorgonal Basis
-        nonorthorgonalEigenstates_Plus=[]
+        orthorgonalEigenstates_Plus=[]
         for it in range(len(Eplus)):
-            non_orth_eigenstate=Sm12_Plus@a_orth_Plus[:,it]
-            non_orth_eigenstate*=getPhaseOfMO(non_orth_eigenstate)
-            nonorthorgonalEigenstates_Plus.append(non_orth_eigenstate)
+            orth_eigenstate=a_orth_Plus[:,it]
+            orth_eigenstate*=getPhaseOfMO(orth_eigenstate)
+            orthorgonalEigenstates_Plus.append(orth_eigenstate)
         adibaticallyConnectediters_Plus=[]
         #Get the adiabtically connected eigenvalues/states
         for it0 in range(len(E_Eq)):
-            maximumOverlap=0.0
             maximumAbsOverlap=0.0
             iter1=-1
             for it1 in range(len(E_Eq)):
-                overlap=np.dot(nonorthorgonalEigenstates_Eq[it0],T_Eq_Plus@nonorthorgonalEigenstates_Plus[it1])
+                overlap=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus@orthorgonalEigenstates_Plus[it1])
                 absoverlap=np.abs(overlap)
                 if absoverlap>maximumAbsOverlap:
                     iter1=it1
                     maximumAbsOverlap=absoverlap
-                    maximumOverlap=overlap
-            # Fix Orientation of the adiabtically connected eigenstates
-            if maximumOverlap<0.0:
-                nonorthorgonalEigenstates_Plus[iter1]*=-1.0
             adibaticallyConnectediters_Plus.append(iter1)
             if maximumAbsOverlap<0.5:
                 ValueError("Maximum Overlap small! Check your inputs!")
@@ -3545,11 +3546,11 @@ def getLinearCouplingConstants(spread=50,parentfolder="./",cleandifferentSigns=T
                     partialepsilonpartialYmu=(Eplus[adibaticallyConnectediters_Plus[k]]-E_Eq[i])/delta
                     couplingConstants_Plus[i][k]=partialepsilonpartialYmu
                 else:
-                    ak=nonorthorgonalEigenstates_Plus[adibaticallyConnectediters_Plus[k]]
-                    ek=Eplus[adibaticallyConnectediters_Plus[k]]
+                    ak=orthorgonalEigenstates_Plus[adibaticallyConnectediters_Plus[k]]
+                    ek=E_Eq[k]
                     ei=E_Eq[i]
-                    ai=nonorthorgonalEigenstates_Eq[i]
-                    partialOLPpartialY=np.dot(ai,T_Eq_Plus@ak)/delta
+                    ai=orthorgonalEigenstates_Eq[i]
+                    partialOLPpartialY=np.dot(ai,Tmatrix_Plus@ak)/delta
                     couplingConstants_Plus[i][k]=(ek-ei)*partialOLPpartialY
         #----------------------------------------------------------------------
         # Negatively displaced 
@@ -3565,31 +3566,28 @@ def getLinearCouplingConstants(spread=50,parentfolder="./",cleandifferentSigns=T
         #Diagonalize the KS Hamiltonian in the orthorgonal Basis
         EMinus,a_orth_Minus=np.linalg.eigh(KSHorth_Minus)
         T_Eq_Minus=getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq,cs_Eq)
+        T_Matrix_Minus=Sm12_Eq@T_Eq_Minus@Sm12_Minus
         #get the Eigenstates in the non-orthorgonal Basis
-        nonorthorgonalEigenstates_Minus=[]
+        orthorgonalEigenstates_Minus=[]
         for it in range(len(EMinus)):
-            non_orth_eigenstate=Sm12_Minus@a_orth_Minus[:,it]
-            non_orth_eigenstate*=getPhaseOfMO(non_orth_eigenstate)
-            nonorthorgonalEigenstates_Minus.append(non_orth_eigenstate)
+            orth_eigenstate=a_orth_Minus[:,it]
+            orth_eigenstate*=getPhaseOfMO(orth_eigenstate)
+            orthorgonalEigenstates_Minus.append(orth_eigenstate)
         adibaticallyConnectediters_Minus=[]
         #Get the adiabtically connected eigenvalues/states
         for it0 in range(len(E_Eq)):
-            maximumOverlap=0.0
             maximumAbsOverlap=0.0
             iter1=-1
             for it1 in range(len(E_Eq)):
-                overlap=np.dot(nonorthorgonalEigenstates_Eq[it0],T_Eq_Minus@nonorthorgonalEigenstates_Minus[it1])
+                overlap=np.dot(orthorgonalEigenstates_Eq[it0],T_Matrix_Minus@orthorgonalEigenstates_Minus[it1])
                 absoverlap=np.abs(overlap)
                 if absoverlap>maximumAbsOverlap:
                     iter1=it1
                     maximumAbsOverlap=absoverlap
-                    maximumOverlap=overlap
-            # Fix Orientation of the adiabtically connected eigenstates
-            if maximumOverlap<0.0:
-                nonorthorgonalEigenstates_Minus[iter1]*=-1.0
             adibaticallyConnectediters_Minus.append(iter1)
             if maximumAbsOverlap<0.5:
                 ValueError("Maximum Overlap small! Check your inputs!")
+        print(adibaticallyConnectediters_Minus)
         #Check that each iterator is exactly once in the adibaticallyConnectediters set
         for it in range(len(E_Eq)):
             if adibaticallyConnectediters_Minus.count(it)!=1:
@@ -3604,23 +3602,15 @@ def getLinearCouplingConstants(spread=50,parentfolder="./",cleandifferentSigns=T
                     partialepsilonpartialYmu=(E_Eq[i]-EMinus[adibaticallyConnectediters_Minus[k]])/delta
                     couplingConstants_Minus[i][k]=partialepsilonpartialYmu
                 else:
-                    ak=nonorthorgonalEigenstates_Minus[adibaticallyConnectediters_Minus[k]]
-                    ek=EMinus[adibaticallyConnectediters_Minus[k]]
+                    ak=orthorgonalEigenstates_Minus[adibaticallyConnectediters_Minus[k]]
+                    ek=E_Eq[k]
                     ei=E_Eq[i]
-                    ai=nonorthorgonalEigenstates_Eq[i]
-                    partialOLPpartialY=-1.0*np.dot(ai,T_Eq_Minus@ak)/delta
-                    couplingConstants_Minus[i][k]=(ek-ei)*partialOLPpartialY
+                    ai=orthorgonalEigenstates_Eq[i]
+                    partialOLPpartialY=np.dot(ai,T_Matrix_Minus@ak)/delta
+                    couplingConstants_Minus[i][k]=-(ek-ei)*partialOLPpartialY
         #Combine the Coupling constants
         couplingConstantsCombined=np.zeros(np.shape(couplingConstants_Plus))
-        #Check if the two coupling constants have the same sign otherwise set them to zero 
-        if not cleandifferentSigns:
-            for it1 in range(len(E_Eq)):
-                for it2 in range(len(E_Eq)):
-                    if couplingConstants_Plus[it1][it2]*couplingConstants_Minus[it1][it2]>0.0:
-                        couplingConstantsCombined[it1][it2]=0.5*(couplingConstants_Plus[it1][it2]+couplingConstants_Minus[it1][it2])
-        else:
-            couplingConstantsCombined=0.5*(couplingConstants_Plus+couplingConstants_Minus)
-        couplingConstantsCombined=0.5*(couplingConstantsCombined+np.transpose(couplingConstantsCombined))
+        couplingConstantsCombined=0.5*(couplingConstants_Plus+couplingConstants_Minus)
         hijs.append(couplingConstantsCombined)
     couplingConstantsfinal=np.tensordot(np.array(partialY_mupartialX_lambda),np.array(hijs),(1,0))
     np.save("Linear_Coupling_Constants",couplingConstantsfinal)
