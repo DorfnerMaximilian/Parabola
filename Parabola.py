@@ -5,6 +5,7 @@
 pathtocp2k="/home/max/cp2k-2022.2"
 pathtobinaries=pathtocp2k+"/exe/local/"
 modulespath="/home/max/Sync/PhD_TUM/Code/CP2K/CP2K_Python_Modules"
+pathtocpp_lib=lib = "/home/max/Sync/PhD_TUM/Code/CP2K/CP2K_Python_Modules/Parabola/Cpp_Extension/bin/get_T_Matrix.so" 
 #########################################################################
 ## Packages to import
 #########################################################################
@@ -14,6 +15,8 @@ import copy as cp
 import os
 import sys
 import matplotlib.pyplot as plt
+from ctypes import c_char_p, cdll, POINTER, c_double, c_int
+from copy import deepcopy
 #For standard Latex fonts
 plt.rc('text', usetex=True)
 plt.rc('font', family='serif')
@@ -1067,10 +1070,10 @@ def CheckConvergence(quantity,path='./'):
                 print("Reading in Overlapmatrix -> Done")
                 Atoms=getAtomicCoordinates(path+folder)
                 print("Reading in Atomic Coordinates -> Done")
-                Basis,cs=getBasis(path+folder)
+                Basis=getBasis(path+folder)
                 print("Construct carthesian Basis and spherical to cartesian Transformations -> Done")
                 if OverlapMatrixFlag==False:
-                    Overlapmatrix=getTransformationmatrix(Atoms,Atoms,Basis,cs)
+                    Overlapmatrix=getTransformationmatrix(Atoms,Atoms,Basis)
                     OverlapMatrixFlag=True
                 diff=np.abs(Overlapmatrix-OLM)
                 absre.append(np.max(np.max(diff)))
@@ -1081,10 +1084,10 @@ def CheckConvergence(quantity,path='./'):
                 print("Reading in Overlapmatrix -> Done")
                 Atoms=getAtomicCoordinates(path+folder)
                 print("Reading in Atomic Coordinates -> Done")
-                Basis,cs=getBasis(path+folder)
+                Basis=getBasis(path+folder)
                 print("Construct carthesian Basis and spherical to cartesian Transformations -> Done")
                 if OverlapMatrixFlag==False:
-                    Overlapmatrix=getTransformationmatrix(Atoms,Atoms,Basis,cs)
+                    Overlapmatrix=getTransformationmatrix(Atoms,Atoms,Basis)
                     OverlapMatrixFlag=True
                 diff=np.abs(Overlapmatrix-OLM)
                 absre.append(np.max(np.max(diff)))
@@ -1749,8 +1752,6 @@ def getBasis(filename):
     ##                              sublist[3:] are lists with two elements.
     ##                              The first corresponds the the exponent of the Gaussian
     ##                              The second one corresponds to the contraction coefficient
-    ##          cs                  see getcs function
-    cs=getcs()
     BasisInfoReadin=getBasisSetName(filename)
     atoms=['H','He','Li','Be','B','C','N','O','F','Ne','Na','Mg','Al','Si','P','S','Cl','Ar','K','Ca','Sc','Ti','V','Cr','Mn','Fe','Co','Ni','Cu','Zn','Ga','Ge','As','Se','Br','Kr']
     BasisSet={}
@@ -1835,10 +1836,10 @@ def getBasis(filename):
             #Check normalization
             R1=np.array([0.0,0.0,0.0])
             R2=np.array([0.0,0.0,0.0])
-            normfactor=1.0/np.sqrt(getoverlap(R1,lm1,dalpha1,R2,lm2,dalpha2,cs))
+            normfactor=1.0/np.sqrt(getoverlap(R1,lm1,dalpha1,R2,lm2,dalpha2))
             for it2 in range(len(BasisSet[key][it])-3):
                 BasisSet[key][it][it2+3][1]*=normfactor
-    return BasisSet,cs
+    return BasisSet
 
 def readinExcitedStatesCP2K(path,minweight=0.01):
     ## Parses the excited states from a TDDFPT calculation done in CP2K  
@@ -1996,27 +1997,65 @@ def KFunction(Y1,Y2,iis,jjs,alpha):
     ## output:      output             the  value of the integral      (float)
     return np.prod([Kcomponent(Y1[it],Y2[it],iis[it],jjs[it],alpha) for it in range(len(Y1))])
 #-------------------------------------------------------------------------
-def JInt(X,lm1,lm2,A1,A2,cs):
+def JInt(X,lm1,lm2,A1,A2):
     # computes the J integral using the monomial decomposition of the 
     # solid harmonics.
     #Input: X (numpy.array) of the difference vector R1-R2
     #A1: positive numerical
     #A2: positive numerical
+
+
+    ###############################################################################################################################
+    ###############################################################################################################################
+    #Define the cs hash map for the coefficients of the solid harmonics to homigenious monomials
+    #returns the representation of a given solid harmonics (l,m) in terms of homogenious monomials
+    #input:    
+    #format: 
+    # cs
+    # is=cs[it][0] is the representation of the monomial in terms of 
+    # x^is[0]y^is[1]z^is[2]
+    # and cs[it][1] the corresponding prefactor (consistent with CP2K convention)
+    cs={}
+
+    cs['s']=[[[0,0,0],0.5/np.sqrt(np.pi)]]
+
+    cs['py']=[[[0,1,0],np.sqrt(3./(4.0*np.pi))]]
+    cs['pz']=[[[0,0,1],np.sqrt(3./(4.0*np.pi))]]
+    cs['px']=[[[1,0,0],np.sqrt(3./(4.0*np.pi))]]
+
+    cs['d-2']=[[[1,1,0],0.5*np.sqrt(15./np.pi)]]
+    cs['d-1']=[[[0,1,1],0.5*np.sqrt(15./np.pi)]]
+    cs['d0']=[[[2,0,0],-0.25*np.sqrt(5./np.pi)],[[0,2,0],-0.25*np.sqrt(5./np.pi)],[[0,0,2],0.5*np.sqrt(5./np.pi)]]
+    cs['d+1']=[[[1,0,1],0.5*np.sqrt(15./np.pi)]]
+    cs['d+2']=[[[2,0,0],0.25*np.sqrt(15./np.pi)],[[0,2,0],-0.25*np.sqrt(15./np.pi)]]
+
+    cs['f-3']=[[[2,1,0],0.75*np.sqrt(35./2./np.pi)],[[0,3,0],-0.25*np.sqrt(35./2./np.pi)]]
+    cs['f-2']=[[[1,1,1],0.5*np.sqrt(105./np.pi)]]
+    cs['f-1']=[[[0,1,2],np.sqrt(21./2./np.pi)],[[2,1,0],-0.25*np.sqrt(21./2./np.pi)],[[0,3,0],-0.25*np.sqrt(21./2./np.pi)]]
+    cs['f0']=[[[0,0,3],0.5*np.sqrt(7./np.pi)],[[2,0,1],-0.75*np.sqrt(7/np.pi)],[[0,2,1],-0.75*np.sqrt(7/np.pi)]]
+    cs['f+1']=[[[1,0,2],np.sqrt(21./2./np.pi)],[[1,2,0],-0.25*np.sqrt(21./2./np.pi)],[[3,0,0],-0.25*np.sqrt(21./2./np.pi)]]
+    cs['f+2']=[[[2,0,1],0.25*np.sqrt(105./np.pi)],[[0,2,1],-0.25*np.sqrt(105./np.pi)]]
+    cs['f+3']=[[[3,0,0],0.25*np.sqrt(35./2./np.pi)],[[1,2,0],-0.75*np.sqrt(35./2./np.pi)]]
+
+    cs['g-4']=[[[3,1,0],0.75*np.sqrt(35./np.pi)],[[1,3,0],-0.75*np.sqrt(35./np.pi)]] 
+    cs['g-3']=[[[2,1,1],9.0*np.sqrt(35./(2*np.pi))/4.0],[[0,3,1],-0.75*np.sqrt(35./(2.*np.pi))]] 
+    cs['g-2']=[[[1,1,2],18.0*np.sqrt(5./(np.pi))/4.0],[[3,1,0],-3.*np.sqrt(5./(np.pi))/4.0],[[1,3,0],-3.*np.sqrt(5./(np.pi))/4.0]] 
+    cs['g-1']=[[[0,1,3],3.0*np.sqrt(5./(2*np.pi))],[[2,1,1],-9.0*np.sqrt(5./(2*np.pi))/4.0],[[0,3,1],-9.0*np.sqrt(5./(2*np.pi))/4.0]] 
+    cs['g0']=[[[0,0,4],3.0*np.sqrt(1./(np.pi))/2.0],[[4,0,0],9.0*np.sqrt(1./(np.pi))/16.0],[[0,4,0],9.0*np.sqrt(1./(np.pi))/16.0],[[2,0,2],-9.0*np.sqrt(1./np.pi)/2.0],[[0,2,2],-9.0*np.sqrt(1./np.pi)/2.0],[[2,2,0],9.0*np.sqrt(1./np.pi)/8.0]]
+    cs['g+1']=[[[1,0,3],3.0*np.sqrt(5./(2*np.pi))],[[1,2,1],-9.0*np.sqrt(5./(2*np.pi))/4.0],[[3,0,1],-9.0*np.sqrt(5./(2*np.pi))/4.0]]
+    cs['g+2']=[[[2,0,2],18.0*np.sqrt(5./(np.pi))/8.0],[[0,2,2],-18.*np.sqrt(5./(np.pi))/8.0],[[0,4,0],3.*np.sqrt(5./(np.pi))/8.0],[[4,0,0],-3.*np.sqrt(5./(np.pi))/8.0]]
+    cs['g+3']=[[[1,2,1],-9.0*np.sqrt(35./(2*np.pi))/4.0],[[3,0,1],0.75*np.sqrt(35./(2.*np.pi))]]
+    cs['g+4']=[[[4,0,0],3.0*np.sqrt(35./np.pi)/16.0],[[2,2,0],-18.0*np.sqrt(35./np.pi)/16.0],[[0,4,0],3.0*np.sqrt(35./np.pi)/16.0]]
+    ###############################################################################################################################
+    ###############################################################################################################################
     Y1=A2*X/(A1+A2)
     Y2=-A1*X/(A1+A2)
     Z1=cs[lm1]
     Z2=cs[lm2]
-    integral=0.0
-    for P1 in Z1:
-        for P2 in Z2:
-            c1=P1[1]
-            c2=P2[1]
-            is1=P1[0]
-            is2=P2[0]
-            integral+=c1*c2*KFunction(Y1,Y2,is1,is2,A1+A2)
+    integral=np.sum([Z1[it1][1]*Z2[it2][1]*KFunction(Y1,Y2,Z1[it1][0],Z2[it2][0],A1+A2) for it1 in range(len(Z1)) for it2 in range(len(Z2))])
     return integral
 #-------------------------------------------------------------------------
-def IInt(R1,A1,lm1,R2,A2,lm2,cs):
+def IInt(R1,A1,lm1,R2,A2,lm2):
     # computes the I integral using the J integral and the Gaussian prefactor
     # solid harmonics.
     #input: 
@@ -2027,14 +2066,14 @@ def IInt(R1,A1,lm1,R2,A2,lm2,cs):
     #A1:    (positive real)     exponent gaussian of function 1
     #A2:    (positive real)     exponent of gaussian of function 2
     X=R1-R2
-    Jintegral=JInt(X,lm1,lm2,A1,A2,cs)
+    Jintegral=JInt(X,lm1,lm2,A1,A2)
     A12red=-A1*A2/(A1+A2)
     Exponent=A12red*np.dot(X,X)
     gaussianPrefactor=np.exp(Exponent)
     integral=gaussianPrefactor*Jintegral
     return integral
 #------------------------------------------------------------------------- 
-def getoverlap(R1,lm1,dalpha1,R2,lm2,dalpha2,cs):
+def getoverlap(R1,lm1,dalpha1,R2,lm2,dalpha2):
     #Compute overlap of two basis functions <phi_s1,n1,l1,m1(R_s1)|phi_s2,n2,l2,m2(R_s2)>
     #input: 
     #R1:    (numpy.array)                                   position of nucleii 1
@@ -2044,13 +2083,7 @@ def getoverlap(R1,lm1,dalpha1,R2,lm2,dalpha2,cs):
     #lm2:    (string='s','py','pz','px','d-2'...)           angular momentum label for phi_s2,n2,l2,m2(R_s2) 
     #dalpha2: (list of list)    specifies the second Gaussian type of wave function 
     overlap=0.0
-    for obj1 in dalpha1:
-        for obj2 in dalpha2:
-            d1=obj1[1]
-            alpha1=obj1[0]
-            d2=obj2[1]
-            alpha2=obj2[0]
-            overlap+=d1*d2*IInt(R1,alpha1,lm1,R2,alpha2,lm2,cs)
+    overlap=np.sum([dalpha1[it1][1]*dalpha2[it2][1]*IInt(R1,dalpha1[it1][0],lm1,R2,dalpha2[it2][0],lm2) for it1 in range(len(dalpha1)) for it2 in range(len(dalpha2))])
     return overlap
 #-------------------------------------------------------------------------
 def getNeibouringCellVectors(path,neighbours=1):
@@ -2073,7 +2106,7 @@ def getNeibouringCellVectors(path,neighbours=1):
                             cellvectors.append(sign1*cellvector1*ConFactors["A->a.u."]+sign2*cellvector2*ConFactors["A->a.u."])
     return cellvectors
 #-------------------------------------------------------------------------
-def getTransformationmatrix(Atoms1,Atoms2,Basis,cs,cellvectors=[np.array([0.0,0.0,0.0])]):
+def getTransformationMatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtocpp_lib="/home/max/Sync/PhD_TUM/Code/CP2K/CP2K_Python_Modules/Parabola/Cpp_Extension/bin/get_T_Matrix.so"):
     ##Compute the overlap & transformation matrix of the Basis functions with respect to the conventional basis ordering
     ##input: Atoms1              atoms of the first index
     ##                           list of sublists. 
@@ -2097,45 +2130,130 @@ def getTransformationmatrix(Atoms1,Atoms2,Basis,cs,cellvectors=[np.array([0.0,0.
     ##                           The first corresponds the the exponent of the Gaussian
     ##                           The second one corresponds to the contraction coefficient
     ##
-    ##          cs               see getcs function
     ##
     ##     cellvectors (opt.)    different cell vectors to take into account in the calculation the default implements open boundary conditions
     ##output:   Overlapmatrix    The Transformation matrix as a numpy array
-    ConFactors=ConversionFactors()
-    msize=0
-    for atom in Atoms1:
-        Atom_type=atom[1]
-        msize+=len(Basis[Atom_type])
-    Overlapmatrix=np.zeros((msize,msize))
-    it1=0
-    it2=0
+    
+    # Load the shared library
+    lib = cdll.LoadLibrary(pathtocpp_lib)
+    
+    # Conversion factors and other initialization
+    ConFactors = ConversionFactors()
+
+    # Initialize the python lists for Basis Set 1
+    atoms_set1 = []
+    positions_set1 = []
+    alphas_lengths_set1 = []
+    alphas_set1 = []
+    contr_coef_set1 = []
+    lms_set1 = []
+
+    # Create Python lists for input (Set 1)
     for itAtom1 in range(len(Atoms1)):
-        Atom_type1=Atoms1[itAtom1][1]
-        B1=Basis[Atom_type1]
+        Atom_type1 = Atoms1[itAtom1][1]
+        B1 = Basis[Atom_type1]
         for itBasis1 in range(len(Basis[Atom_type1])):
-            R1=np.array(Atoms1[itAtom1][2:])*ConFactors['A->a.u.'] #conversion from angstroem to atomic units
-            state1=B1[itBasis1]
-            dalpha1=state1[3:]
-            lm1=state1[2][1:]
-            for itAtom2 in range(len(Atoms2)):
-                Atom_type2=Atoms2[itAtom2][1]
-                B2=Basis[Atom_type2]
-                for itBasis2 in range(len(Basis[Atom_type2])):
-                    #get the position of the Atoms
-                    R2=np.array(Atoms2[itAtom2][2:])*ConFactors['A->a.u.'] #conversion from angstroem to atomic units
-                    state2=B2[itBasis2]
-                    dalpha2=state2[3:]
-                    lm2=state2[2][1:]
-                    overlap=0.0
-                    for cellvector in cellvectors:
-                        overlap+=getoverlap(R1,lm1,dalpha1,R2+cellvector,lm2,dalpha2,cs)
-                    Overlapmatrix[it1][it2]=overlap
-                    it2+=1
-            it1+=1
-            it2=0
-    #Symmetrize the Overlapmatrix
-    Overlapmatrix=0.5*(Overlapmatrix+np.transpose(Overlapmatrix))
-    return Overlapmatrix
+            atoms_set1.append(Atom_type1)
+            R1 = np.array(Atoms1[itAtom1][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            for it1 in range(len(R1)):
+                positions_set1.append(R1[it1])
+            state1 = B1[itBasis1]
+            dalpha1 = state1[3:]
+            alphas_lengths_set1.append(len(dalpha1))
+            for it2 in range(len(dalpha1)):
+                alphas_set1.append(dalpha1[it2][0])
+                contr_coef_set1.append(dalpha1[it2][1])
+            lm1 = state1[2][1:]
+            lms_set1.append(lm1)
+
+    contr_coef_lengths_set1 = alphas_lengths_set1  # Lengths of contr_coef for each basis function in Set 1
+
+    # Initialize the python lists for Basis Set 2
+    atoms_set2 = []
+    positions_set2 = []
+    alphas_lengths_set2 = []
+    alphas_set2 = []
+    contr_coef_set2 = []
+    lms_set2 = []
+
+    # Fill Python lists for input (Set 2)
+    for itAtom2 in range(len(Atoms2)):
+        Atom_type2 = Atoms2[itAtom2][1]
+        B2 = Basis[Atom_type2]
+        for itBasis2 in range(len(Basis[Atom_type2])):
+            atoms_set2.append(Atom_type2)
+            R2 = np.array(Atoms2[itAtom2][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            for it1 in range(len(R2)):
+                positions_set2.append(R2[it1])
+            state2 = B2[itBasis2]
+            dalpha2 = state2[3:]
+            alphas_lengths_set2.append(len(dalpha2))
+            for it2 in range(len(dalpha2)):
+                alphas_set2.append(dalpha2[it2][0])
+                contr_coef_set2.append(dalpha2[it2][1])
+            lm2 = state2[2][1:]
+            lms_set2.append(lm2)
+
+    contr_coef_lengths_set2 = alphas_lengths_set2  # Lengths of contr_coef for each basis function in Set 1
+
+    # Define the function signature
+    get_T_Matrix = lib.get_T_Matrix
+    get_T_Matrix.restype = POINTER(c_double)
+    get_T_Matrix.argtypes = [POINTER(c_char_p),
+                             POINTER(c_double),
+                             POINTER(c_double),
+                             POINTER(c_int),
+                             POINTER(c_double),
+                             POINTER(c_int),
+                             POINTER(c_char_p),
+                             c_int,
+                             POINTER(c_char_p),
+                             POINTER(c_double),
+                             POINTER(c_double),
+                             POINTER(c_int),
+                             POINTER(c_double),
+                             POINTER(c_int),
+                             POINTER(c_char_p),
+                             c_int,
+                             POINTER(c_double),
+                             c_int]
+
+    freeArray = lib.freeOLPasArray_ptr
+    freeArray.argtypes = [POINTER(c_double)]
+
+    # Convert Python lists to pointers
+    atoms_set1_ptr = (c_char_p * len(atoms_set1))(*[s.encode("utf-8") for s in atoms_set1])
+    positions_set1_ptr = (c_double * len(positions_set1))(*positions_set1)
+    alphas_set1_ptr = (c_double * len(alphas_set1))(*alphas_set1)
+    alphas_lengths_set1_ptr = (c_int * len(alphas_lengths_set1))(*alphas_lengths_set1)
+    contr_coef_set1_ptr = (c_double * len(contr_coef_set1))(*contr_coef_set1)
+    contr_coef_lengths_set1_ptr = (c_int * len(contr_coef_lengths_set1))(*contr_coef_lengths_set1)
+    lms_set1_ptr = (c_char_p * len(lms_set1))(*[s.encode("utf-8") for s in lms_set1])
+
+    atoms_set2_ptr = (c_char_p * len(atoms_set2))(*[s.encode("utf-8") for s in atoms_set2])
+    positions_set2_ptr = (c_double * len(positions_set2))(*positions_set2)
+    alphas_set2_ptr = (c_double * len(alphas_set2))(*alphas_set2)
+    alphas_lengths_set2_ptr = (c_int * len(alphas_lengths_set2))(*alphas_lengths_set2)
+    contr_coef_set2_ptr = (c_double * len(contr_coef_set2))(*contr_coef_set2)
+    contr_coef_lengths_set2_ptr = (c_int * len(contr_coef_lengths_set2))(*contr_coef_lengths_set2)
+    lms_set2_ptr = (c_char_p * len(lms_set2))(*[s.encode("utf-8") for s in lms_set2])
+
+    cell_vectors_ptr = (c_double * len(cell_vectors))(*cell_vectors)
+
+    # Call the C++ function
+    OLP_array_ptr = get_T_Matrix(atoms_set1_ptr, positions_set1_ptr, alphas_set1_ptr, alphas_lengths_set1_ptr,
+                                  contr_coef_set1_ptr, contr_coef_lengths_set1_ptr, lms_set1_ptr, len(atoms_set1),
+                                  atoms_set2_ptr, positions_set2_ptr, alphas_set2_ptr, alphas_lengths_set2_ptr,
+                                  contr_coef_set2_ptr, contr_coef_lengths_set2_ptr, lms_set2_ptr, len(atoms_set2),
+                                  cell_vectors_ptr, len(cell_vectors))
+
+    array_data = np.ctypeslib.as_array(OLP_array_ptr, shape=(len(atoms_set2) * len(atoms_set1),))
+    array_list = deepcopy(array_data)
+    freeArray(OLP_array_ptr)
+
+    OLP = np.array(array_list).reshape((len(atoms_set1), len(atoms_set2)))
+
+    return OLP
 #########################################################################
 ## END Functions for Computing Overlap and Basis-Transformation Matrices
 #########################################################################
@@ -2870,7 +2988,8 @@ def WFNonGrid(id=0,N1=100,N2=100,N3=100,parentfolder='./'):
         A[:,id+Homoid]*=getPhaseOfMO(A[:,id+Homoid])
         a=Sm12@A[:,id+Homoid]
     Atoms=getAtomicCoordinates(parentfolder)
-    Basis,cs=getBasis(parentfolder)
+    cs=getcs()
+    Basis=getBasis(parentfolder)
     Cellvectors=getCellSize(parentfolder)
     #Convert to atomic units
     cellvector1=Cellvectors[0]*1.88972613288564
@@ -3149,7 +3268,8 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.05,pathtoMO="./",pathtoExcite
         for it in range(np.shape(A)[1]):
             A[:,it]*=getPhaseOfMO(A[:,it])
     Atoms=getAtomicCoordinates(pathtoExcitedstates)
-    Basis,cs=getBasis(pathtoExcitedstates)
+    Basis=getBasis(pathtoExcitedstates)
+    cs=getcs
     Rx=np.zeros(np.shape(Sm12))
     Ry=np.zeros(np.shape(Sm12))
     Rz=np.zeros(np.shape(Sm12))
@@ -3359,16 +3479,16 @@ def getManyBodyCouplings(eta,LCC,id_homo):
     Num_OfExciteStates=np.shape(eta)[-1]
     Num_OfModes=np.shape(LCC)[0]
     #Normalize the eta
-    for p in range(Num_OfExciteStates):
+    for p in progressbar(range(Num_OfExciteStates),"Normalizing States:",40):
         eta[:,:,p]/=np.trace(np.transpose(eta[:,:,p])@eta[:,:,p])
     K=np.zeros((Num_OfModes,Num_OfExciteStates)) #Coupling of excited state to ground state
-    for m in range(Num_OfExciteStates):
+    for m in progressbar(range(Num_OfExciteStates),"Computing Coupling to Ground State:",40):
         etap=eta[id_homo+1:,:id_homo+1,m] #First index electrons second hole
         for lamb in range(Num_OfModes):
             klamb=k[lamb,:,:]
             K[lamb,m]=np.trace(klamb@etap)
     H=np.zeros((Num_OfModes,Num_OfExciteStates,Num_OfExciteStates)) #Coupling between the excited states
-    for p in range(Num_OfExciteStates):
+    for p in progressbar(range(Num_OfExciteStates),"Computing Coupling between excited States:",40):
         for q in range(p,Num_OfExciteStates):
             etap=eta[id_homo+1:,:id_homo+1,p] #First index electrons second hole
             etaq=eta[id_homo+1:,:id_homo+1,q]
@@ -3429,16 +3549,15 @@ def getLinearCouplingConstants(parentfolder="./"):
     if len(xyz_files) != 1:
         raise ValueError('InputError: There should be only one xyz file in the directory:'+parentfolder+"/"+'Equilibrium_Geometry/')
 
-    atomicmasses=StandardAtomicWeights()
 
     #----------------------------------------------------------------------
     # Equilibrium configuration
     #----------------------------------------------------------------------
 
     #get the Equilibrium Configuration 
-    Atoms_Eq=p.getAtomicCoordinates(parentfolder+"/Equilibrium_Geometry/")
+    Atoms_Eq=getAtomicCoordinates(parentfolder+"/Equilibrium_Geometry/")
     #Construct Basis of the Equilibrium configuration
-    Basis_Eq,cs_Eq=getBasis(parentfolder+"/Equilibrium_Geometry/")
+    Basis_Eq=getBasis(parentfolder+"/Equilibrium_Geometry/")
     #Read in the KS Hamiltonian
     KSHamiltonian_Eq,S_Eq=readinMatrices(parentfolder+"/Equilibrium_Geometry/")
     #perform a Loewdin Orthogonalization
@@ -3454,7 +3573,7 @@ def getLinearCouplingConstants(parentfolder="./"):
         orthorgonalEigenstates_Eq.append(orth_eigenstate)
     _,delta=readinBasisVectors(parentfolder)
     #get the normal modes from the cartesian displacements
-    VibrationalFrequencies,normalizedCartesianDisplacements,normfactors=readinVibrations(parentfolder)
+    VibrationalFrequencies,_,normfactors=readinVibrations(parentfolder)
     #Multiply by Tinv to get partialY_mu/partialX_lambda
     #This has index convention lambda,mu
     #*ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[it])**(1.5) for it in range(len(M_salpha_timesX_salpha_lambda))
@@ -3465,13 +3584,13 @@ def getLinearCouplingConstants(parentfolder="./"):
         #----------------------------------------------------------------------
         folderplus='vector='+str(mu+1)+'sign=+'
         #Read in the KS Hamiltonian and the overlap matrix
-        KSHamiltonian_Plus,OLM_Plus=p.readinMatrices(parentfolder+"/"+folderplus+'/')
+        KSHamiltonian_Plus,OLM_Plus=readinMatrices(parentfolder+"/"+folderplus+'/')
         #Get the stompositions for the positively displaced atoms
         Atoms_Plus=getAtomicCoordinates(parentfolder+"/"+folderplus)
-        Sm12_Plus=p.LoewdinTransformation(OLM_Plus)
+        Sm12_Plus=LoewdinTransformation(OLM_Plus)
         KSHorth_P=np.dot(Sm12_Plus,np.dot(KSHamiltonian_Plus,Sm12_Plus))
         EPlus,a_orth_Plus=np.linalg.eigh(KSHorth_P)
-        T_Eq_Plus=getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq,cs_Eq)
+        T_Eq_Plus=getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq)
         Tmatrix_Plus=Sm12_Eq@T_Eq_Plus@Sm12_Plus
         folderminus='vector='+str(mu+1)+'sign=-'
         #Read in the KS Hamiltonian and the overlap matrix
@@ -3483,7 +3602,7 @@ def getLinearCouplingConstants(parentfolder="./"):
         KSHorth_Minus=np.dot(Sm12_Minus,np.dot(KSHamiltonian_Minus,Sm12_Minus))
         #Diagonalize the KS Hamiltonian in the orthorgonal Basis
         EMinus,a_orth_Minus=np.linalg.eigh(KSHorth_Minus)
-        T_Eq_Minus=getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq,cs_Eq)
+        T_Eq_Minus=getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq)
         T_Matrix_Minus=Sm12_Eq@T_Eq_Minus@Sm12_Minus
         #get the Eigenstates in the non-orthorgonal Basis
         orthorgonalEigenstates_Plus=[]
