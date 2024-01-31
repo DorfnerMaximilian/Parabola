@@ -5,7 +5,7 @@
 pathtocp2k="/home/max/cp2k-2022.2"
 pathtobinaries=pathtocp2k+"/exe/local/"
 modulespath="/home/max/Sync/PhD_TUM/Code/CP2K/CP2K_Python_Modules"
-pathtocpp_lib=lib = "/home/max/Sync/PhD_TUM/Code/CP2K/CP2K_Python_Modules/Parabola/Cpp_Extension/bin/get_T_Matrix.so" 
+pathtocpp_lib = "/media/max/SSD1/PHD/Data/CP2K/CP2K_Python_Modules/parabola/CPP_Extension/bin/get_T_Matrix.so" 
 #########################################################################
 ## Packages to import
 #########################################################################
@@ -2106,7 +2106,7 @@ def getNeibouringCellVectors(path,neighbours=1):
                             cellvectors.append(sign1*cellvector1*ConFactors["A->a.u."]+sign2*cellvector2*ConFactors["A->a.u."])
     return cellvectors
 #-------------------------------------------------------------------------
-def getTransformationMatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtocpp_lib="/home/max/Sync/PhD_TUM/Code/CP2K/CP2K_Python_Modules/Parabola/Cpp_Extension/bin/get_T_Matrix.so"):
+def getTransformationmatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib=pathtocpp_lib):
     ##Compute the overlap & transformation matrix of the Basis functions with respect to the conventional basis ordering
     ##input: Atoms1              atoms of the first index
     ##                           list of sublists. 
@@ -2135,7 +2135,7 @@ def getTransformationMatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0],
     ##output:   Overlapmatrix    The Transformation matrix as a numpy array
     
     # Load the shared library
-    lib = cdll.LoadLibrary(pathtocpp_lib)
+    lib = cdll.LoadLibrary(pathtolib)
     
     # Conversion factors and other initialization
     ConFactors = ConversionFactors()
@@ -2247,7 +2247,7 @@ def getTransformationMatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0],
                                   contr_coef_set2_ptr, contr_coef_lengths_set2_ptr, lms_set2_ptr, len(atoms_set2),
                                   cell_vectors_ptr, len(cell_vectors))
 
-    array_data = np.ctypeslib.as_array(OLP_array_ptr, shape=(len(atoms_set2) * len(atoms_set1),))
+    array_data = np.ctypeslib.as_array(OLP_array_ptr, shape=(len(atoms_set1) * len(atoms_set2),))
     array_list = deepcopy(array_data)
     freeArray(OLP_array_ptr)
 
