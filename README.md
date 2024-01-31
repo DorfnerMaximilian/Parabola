@@ -7,5 +7,5 @@ c++: OpenMp
 ## Getting started
 Up to now this is tested for Linux Ubuntu
 The only really mandatory thing is to compile the c++ part of the program.
-Just install all requirements (via apt)
+Just install all requirements (via apt), and compile the file...
 
