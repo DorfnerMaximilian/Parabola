@@ -1,5 +1,5 @@
 # Parabola
-Parabola is intended to be a backend for cp2k to compute the normal modes, their energies and the linear electron-vibration/-phonon coupling constants. It provides apart from that other useful tools that utilize 
+Parabola is intended to be a backend for cp2k to compute the normal modes, their energies and the linear electron-vibration/-phonon coupling constants. It provides apart from that other useful tools that utilize the analysis of electron-phonon coupled systems. 
 ## Prerequisites
 python3: numpy, scipy, matplotlib, ctypes
 c++: OpenMp
