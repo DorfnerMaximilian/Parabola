@@ -2,12 +2,20 @@
 ## Python Modules for the computation of exciton-phonon coupling elements
 #########################################################################
 #10.10.2022 Dorfner Maximilian
+
+#########################################################################
+## Setting paths
+#########################################################################
 pathtocp2k="/home/max/cp2k-2022.2"
 pathtobinaries=pathtocp2k+"/exe/local/"
 modulespath="/home/max/Sync/PhD_TUM/Code/CP2K/CP2K_Python_Modules"
 pathtocpp_lib = "/media/max/SSD1/PHD/Data/CP2K/CP2K_Python_Modules/parabola/CPP_Extension/bin/get_T_Matrix.so" 
 #########################################################################
-## Packages to import
+## END Setting paths
+#########################################################################
+
+#########################################################################
+## External Packages to Import
 #########################################################################
 import numpy as np
 import scipy as sci
@@ -22,11 +30,11 @@ plt.rc('text', usetex=True)
 plt.rc('font', family='serif')
 plt.rc('text.latex', preamble=r'\usepackage{amsmath}')
 #########################################################################
-## END Packages to import
+## END External Packages to Import
 #########################################################################
 
 #########################################################################
-## Dictionaries for Physical constants
+## Dictionaries for Physical constants & other information
 #########################################################################
 def StandardAtomicWeights():
     ##   List of the Standard Atomic Weight from 
@@ -146,52 +154,72 @@ def ConversionFactors():
     ConversionFactor['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']=1.7028697996*10**(6)
 
     return ConversionFactor
-#########################################################################
-## END Dictionaries for Physical constants
-#########################################################################
+#-------------------------------------------------------------------------
 def AtomSymbolToAtomnumber(Symbol):
     ## Function to convert to Atomic Symbols to Atomnumbers
     ## input:    atomic symbol  ("H", "He" ect.) to be converted            (string)
     ## output:   Atomnumber                                                 (int)
-    if Symbol=="H":
-        return 1
-    elif Symbol=="He":
-        return 2
-    elif Symbol=="Li":
-        return 3
-    elif Symbol=="Be":
-        return 4
-    elif Symbol=="B":
-        return 5
-    elif Symbol=="C":
-        return 6
-    elif Symbol=="N":
-        return 7
-    elif Symbol=="O":
-        return 8
-    elif Symbol=="F":
-        return 9
-    elif Symbol=="Ne":
-        return 10
-    elif Symbol=="Na":
-        return 11
-    elif Symbol=="Mg":
-        return 12
-    elif Symbol=="Al":
-        return 13
-    elif Symbol=="Si":
-        return 14
-    elif Symbol=="P":
-        return 15
-    elif Symbol=="S":
-        return 16
-    elif Symbol=="Cl":
-        return 17
-    elif Symbol=="Ar":
-        return 18
+    atom_mapping = {
+        "H": 1,
+        "He": 2,
+        "Li": 3,
+        "Be": 4,
+        "B": 5,
+        "C": 6,
+        "N": 7,
+        "O": 8,
+        "F": 9,
+        "Ne": 10,
+        "Na": 11,
+        "Mg": 12,
+        "Al": 13,
+        "Si": 14,
+        "P": 15,
+        "S": 16,
+        "Cl": 17,
+        "Ar": 18,
+        "K": 19,
+        "Ca": 20,
+        "Sc": 21,
+        "Ti": 22,
+        "V": 23,
+        "Cr": 24,
+        "Mn": 25,
+        "Fe": 26,
+        "Ni": 27,
+        "Co": 28,
+        "Cu": 29,
+        "Zn": 30,
+        "Ga": 31,
+        "Ge": 32,
+        "As": 33,
+        "Se": 34,
+        "Br": 35,
+        "Kr": 36,
+        "Rb": 37,
+        "Sr": 38,
+        "Y": 39,
+        "Zr": 40,
+        "Nb": 41,
+        "Mo": 42,
+        "Tc": 43,
+        "Ru": 44,
+        "Rh": 45,
+        "Pd": 46,
+        "Ag": 47,
+        "Cd": 48,
+    }
+
+    if Symbol in atom_mapping:
+        return atom_mapping[Symbol]
     else:
-        print("Not Yet More Implemented")
+        print("Atom not implemented yet")
         return -1
+#########################################################################
+## END Dictionaries for Physical constants & other Data
+#########################################################################
+
+
 #########################################################################
 ## Cp2k input changer functions
 #########################################################################
@@ -232,7 +260,7 @@ def getCellSize(path="./"):
         ValueError("Cell Vectors do not span a unit cell!")
     return cellvectors
 def centerMolecule(path="./"):
-    ## Function to center the molecule in the unit cell 
+    ## Function to center the molecule/collection of atoms in the unit cell 
     ## input: (opt.)   path   path to the folder of the calculation         (string)
     ## output:  -                                                           (void)
 
@@ -349,7 +377,7 @@ def getCenterOFMassCoordinates(path="./"):
     xyzcoordinates,masses,atomicsym=getCoordinatesAndMasses(path)
     comc,_=ComputeCenterOfMassCoordinates(xyzcoordinates,masses)
     writexyzfile(atomicsym,comc,path)
-def writexyzfile(atomicsym,coordinates,readpath="./",writepath="./",append=False):
+def writexyzfile(atomicsym,coordinates,readpath="./",writepath="./",filename="dummyname",append=False):
     xyzfilename=getxyzfilename(readpath)
     xyzfilename=xyzfilename.split("/")[-1]
     # generate new xyz file
@@ -367,8 +395,9 @@ def writexyzfile(atomicsym,coordinates,readpath="./",writepath="./",append=False
     inp_files = [f for f in os.listdir(writepath) if f.endswith('.xyz')]
     if len(inp_files) == 0:
         os.system("touch "+xyzfilename)
-
-    g=open(writepath+"/"+xyzfilename,'a')
+    if filename=="dummyname":
+        filename=xyzfilename
+    g=open(writepath+"/"+filename,'a')
     if not append:
         # kill its content
         g.truncate(0)
@@ -2369,75 +2398,24 @@ def getKineticEnergymatrix(Atoms,Basis,cs):
 #########################################################################
 ##END Functions for Computing Kinetic Energy Matrix Elements 
 #########################################################################
-def ImposeTranslationalSymmetry(Hessian,pathtoEquilibriumxyz="./Equilibrium_Geometry/"):
-    # Imposes exact relation on the Hessian, that has to be fullfilled for the Translational D.O.F. to decouple from the rest
-    #input: 
-    #Hessian:    (numpy.array)  Hessian in carthesian coordinates 
-    #Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
-    SaW=StandardAtomicWeights()
-    #Get the Atomic coordinates 
-    AtomicCoordinates=getAtomicCoordinates(pathtoEquilibriumxyz)
-    #get the center of mass 
-    MassofMolecule=0.0
-    masses=[]
-    for coords in AtomicCoordinates:
-        mass=SaW[coords[1]]
-        masses.append(mass)
-        MassofMolecule+=mass
-    J=getJ(masses)
-    Hessiantilde=np.transpose(np.linalg.inv(J))@Hessian@np.linalg.inv(J)
-    for it1 in range(3*len(masses)):
-        for it2 in range(3*len(masses)):
-            if it1>=3*len(masses)-3 or it2>=3*len(masses)-3:
-                Hessiantilde[it1][it2]=0.0
-    Hessian0=np.transpose(J)@Hessiantilde@J
-    return Hessian0
-def getJ(masses):
-    # Computes the J matrix, the linear, invertible transformation, that transforms into the Jacobi coordinates, in which the center of mass
-    # motion explicitly decouples, x_rel=J*x
-    #input: 
-    #Hessian:    (numpy.array)  Hessian in carthesian coordinates 
-    #Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
-    Rcm=np.zeros(len(masses))
-    Rcm[0]=1.0
-    Mj=masses[0]
-    Jupdown=np.zeros(((len(masses),len(masses))))
-    for j in range(1,len(masses)):
-        Rj=np.zeros(len(masses))
-        Rj[j]=1.0
-        Deltaj=Rj-Rcm
-        Jupdown[j-1][:]=Deltaj
-        Rcm=(Mj*Rcm+masses[j]*Rj)/(Mj+masses[j])
-        Mj+=masses[j]
-    Jupdown[-1][:]=Rcm
-    J=np.zeros((3*len(masses),3*len(masses)))
-    for it1 in range(len(masses)):
-        for it2 in range(len(masses)):
-            J[3*it1][3*it2]=Jupdown[it1][it2]
-            J[3*it1+1][3*it2+1]=Jupdown[it1][it2]
-            J[3*it1+2][3*it2+2]=Jupdown[it1][it2]
-    return J
-def getJMJTranspose(masses):
-    # Transforms the Mass Matrix into the Jacobi coordinates = metric of the kinetic energy in these coordinates 
-    #input: 
-    #masses:         (N numpy.array)        masses of the atoms as a numpy array, requires same ordering as the coordinates
-    #g:              (3Nx3N numpy.array)    metric of the kinetic energy in the Jacobi coordinates
-    #get the mass matrix
-    M=np.zeros((3*len(masses),3*len(masses)))
-    for it in range(3*len(masses)):
-        atomnum=int(np.floor((it/3)))
-        M[it][it]=1./masses[atomnum]
-    #get the mass matrix
-    J=getJ(masses)
-    return J@M@np.transpose(J)
 def ComputeCenterOfMassCoordinates(coordinates,masses):
-    # Computes the center of mass of a molecule w.r.t. the basis of the coordinate file
-    #input: 
-    #coordinates:               (Nx3 numpy.array)  coordinates of the atoms w.r.t. some Basis, arbitrary origin
-    #masses:                    (N numpy.array)    masses of the atoms as a numpy array, requires same ordering as the coordinates
-    #output: 
-    #centerofmasscoordinates:   (Nx3 numpy.array)  coordinates of the atoms w.r.t. some Basis, origin center of mass
-    #centerofmass:              (3x1 numpy.array)  coordinates of the center of mass w.r.t. the old frame
+    """
+    Computes the center of mass of a molecule with respect to the basis of the coordinate file.
+
+    Parameters:
+    - coordinates (Nx3 numpy.array): Coordinates of the atoms with respect to some basis (arbitrary origin).
+    - masses (N numpy.array): Masses of the atoms as a numpy array, requires the same ordering as the coordinates.
+
+    Returns:
+    - centerofmasscoordinates (Nx3 numpy.array): Coordinates of the atoms with respect to some basis, origin at the center of mass.
+    - centerofmass (3x1 numpy.array): Coordinates of the center of mass with respect to the old frame.
+
+    Notes:
+    - The coordinates provided have an arbitrary origin.
+    - The returned centerofmasscoordinates have their origin at the center of mass.
+    - The returned centerofmass is the coordinates of the center of mass with respect to the old frame.
+    - The center of mass is computed based on the provided masses and coordinates.
+    """
     MassofMolecule=0.0
     centerofmass=np.array([0.,0.,0.])
     #Compute the center of mass: 
@@ -2453,11 +2431,24 @@ def ComputeCenterOfMassCoordinates(coordinates,masses):
         centerofmasscoordinates.append(coords-centerofmass)
     return centerofmasscoordinates,centerofmass
 def getInertiaTensor(coordinates,masses):
-    # Computes the inertia tensor of a molecule w.r.t. the basis of the coordinate file, note that the inertia tensor is only a physically 
-    # meaningful object, if the coordinates have the center of mass as an origin
-    #input: 
-    #coordinates:    (Nx3 numpy.array)  coordinates of the atoms w.r.t. some Basis 
-    #masses:         (N numpy.array)    masses of the atoms as a numpy array, requires same ordering as the coordinates
+    """
+    Computes the inertia tensor of a molecule with respect to the basis of the coordinate file.
+    Note that the inertia tensor is only a physically meaningful object if the coordinates have
+    the center of mass as an origin.
+
+    Parameters:
+    - coordinates (Nx3 numpy.array): Coordinates of the atoms with respect to some basis.
+    - masses (N numpy.array): Masses of the atoms as a numpy array, requires the same ordering as the coordinates.
+
+    Returns:
+    - I (3x3 numpy.array): Moment of inertia tensor of the molecule.
+
+    Notes:
+    - This function relies on the `ComputeCenterOfMassCoordinates` function.
+    - The coordinates provided should have the center of mass as the origin.
+    - The returned inertia tensor is a 3x3 numpy array.
+    - The moments of inertia are computed along the principal axes x, y, and z.
+    """
 
     #Compute the coordinates in the frame where the origin is the center of mass
     centerofmasscoordinates,_=ComputeCenterOfMassCoordinates(coordinates,masses)
@@ -2479,13 +2470,25 @@ def getInertiaTensor(coordinates,masses):
     I=np.array([[Ixx,Ixy,Ixz],[Ixy,Iyy,Iyz],[Ixz,Iyz,Izz]])
     return I
 def getCoordinatesAndMasses(pathtoxyz="./Equilibrium_Geometry/"):
-    # Helper routine to parse coordinates and masses
-    #input:
-    #pathtoxyz:      (str)              path to the corresponding xyz file, where the data is saved
-    #output: 
-    #coordinates:    (Nx3 numpy.array)  coordinates of the atoms w.r.t. some Basis 
-    #masses:         (N numpy.array)    masses of the atoms as a numpy array, in the same ordering as the coordinates
+    """
+    Helper routine to parse coordinates and masses from an xyz file.
 
+    Parameters:
+    - pathtoxyz (str, optional): Path to the corresponding xyz file where the data is saved.
+
+    Returns:
+    - coordinates (Nx3 numpy.array): Coordinates of the atoms with respect to some basis.
+    - masses (N numpy.array): Masses of the atoms as a numpy array, in the same ordering as the coordinates.
+    - atomicsymbols (list): Atomic symbols corresponding to each atom in the same ordering as the coordinates.
+
+    Notes:
+    - This function relies on the `getAtomicCoordinates` function and the `StandardAtomicWeights` class.
+    - The `getAtomicCoordinates` function is assumed to return a list of atomic coordinates in the xyz file format.
+    - The `StandardAtomicWeights` class is assumed to provide standard atomic weights for element symbols.
+    - The returned coordinates are in the format of a numpy array with shape (number of atoms, 3).
+    - The returned masses are in the format of a numpy array with shape (number of atoms,).
+    - The returned atomicsymbols is a list of atomic symbols in the same order as the coordinates.
+    """
     SaW=StandardAtomicWeights()
     #Get the Atomic coordinates 
     AtomicCoordinates=getAtomicCoordinates(pathtoxyz)
@@ -2500,12 +2503,28 @@ def getCoordinatesAndMasses(pathtoxyz="./Equilibrium_Geometry/"):
         coordinates.append(np.array([coords[2],coords[3],coords[4]]))
     return coordinates,masses,atomicsymbols
 def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",rescale=True):
-    # Computes the Translational and rotational eigenvectors according to , Vibrational Analysis in Gaussian, Joseph W. Ochterski (1999)
-    # https://gaussian.com/wp-content/uploads/dl/vib.pdf
-    # Version 01.07.2023
-    #input: 
-    #coordinates:    (Nx3 numpy.array)  coordinates of the atoms w.r.t. some Basis 
-    #masses:         (N numpy.array)    masses of the atoms as a numpy array, requires same ordering as the coordinates
+    """
+    Computes the translational and rotational eigenvectors according to "Vibrational Analysis in Gaussian,"
+    Joseph W. Ochterski (1999).
+    Reference: https://gaussian.com/wp-content/uploads/dl/vib.pdf
+
+    Version: 01.07.2023
+
+    Parameters:
+    - pathtoEquilibriumxyz (string, optional): Path to the folder of the Equilibrium_Geometry calculation.
+    - rescale (bool, optional): Flag to rescale the eigenvectors based on atom masses. Default is True.
+
+    Returns:
+    - Transeigenvectors (list of np.arrays): Translational eigenvectors in the rescaled Cartesian Basis |\tilde{s,alpha}>.
+    - Roteigenvectors (list of np.arrays): Rotational eigenvectors in the rescaled Cartesian Basis |\tilde{s,alpha}>.
+
+    Notes:
+    - The function relies on the `getCoordinatesAndMasses`, `getInertiaTensor`, and `ComputeCenterOfMassCoordinates` functions.
+    - The rotational eigenvectors are generated based on the principle axis obtained from the inertia tensor.
+    - The translational eigenvectors are generated along each Cartesian axis.
+    - The generated eigenvectors can be rescaled based on atom masses if the `rescale` flag is set to True.
+    - All generated eigenvectors are normalized.
+    """
 
     coordinates,masses,_=getCoordinatesAndMasses(pathtoEquilibriumxyz)
     #Compute the Intertia Tensor
@@ -2549,102 +2568,87 @@ def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",re
         Transeigenvectors.append(TransEigenvector)
     
     return Transeigenvectors,Roteigenvectors
-def imposeEckertConditions(Lambda,Normalmodes,threshhold_trans,threshhold_rot,pathtoEquilibriumxyz="./Equilibrium_Geometry/"):
-    ##   Function to project out the eigenvectors of the Hessian corresponding to rotations & translations 
-    ##   and diagonalize the Hamiltonian
-    ##   input:   Lambda               (np.array(3N))       the Eigenvalues of the rescaled Hessian
-    ##            Normalmodes           (np.array(3Nx3N))   the eigenvectors of the rescaled Hessian (usual numpy format)
-    ##   (opt.)   path                  (string)            path to the folder of the Equilibium_Geometry calculation         
-    ##
-    ##   output:  normal_modes          (np.array(3N-6))    normalized eigenvectors of the rescaled Hessian corresponding to the internal coordinates                             
-    ##            normalmodeEnergies    (np.array(3N-6))    energy of the normal mode normal_modes[it] in 1/cm                         
-    ##
-
-    Transeigenvectors,Roteigenvectors=getTransAndRotEigenvectors(pathtoEquilibriumxyz) # in the rescaled carthesian Basis |\tilde{s,alpha}>
-    numofatoms=int(np.shape(Normalmodes)[0]/3)
-    Orthogonalprojector_trans=np.identity(3*numofatoms)
-    Orthogonalprojector_rot=np.identity(3*numofatoms)
-    for translation in Transeigenvectors:
-        Orthogonalprojector_trans-=np.outer(translation,translation)
-    for rotation in Roteigenvectors:
-        Orthogonalprojector_rot-=np.outer(rotation,rotation)
-    # in rescaled Basis
-    orthogonalized_Vibrations=[]
-    Vibrational_eigenvalues=[]
-    translational_subspace=[]
-    rotational_subspace=[]
-    for it in range(3*numofatoms):
-        projection_trans=np.dot(Orthogonalprojector_trans,Normalmodes[:,it])
-        weight_trans=np.sqrt(np.dot(projection_trans,projection_trans))
-        normofprojection_trans=np.sqrt(weight_trans)
-        projection_rot=np.dot(Orthogonalprojector_rot,Normalmodes[:,it])
-        weight_rot=np.sqrt(np.dot(projection_rot,projection_rot))
-        if weight_trans > threshhold_trans and weight_rot>threshhold_rot:
-            orthogonalized_Vibrations.append(projection_trans/normofprojection_trans)
-            Vibrational_eigenvalues.append(Lambda[it])
-        elif weight_trans<=threshhold_trans and weight_rot>threshhold_rot:
-            print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(weight_trans))
-            translational_subspace.append(it)
-        elif weight_trans>threshhold_trans and weight_rot<=threshhold_rot:
-            print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has rot weight "+str(weight_rot))
-            rotational_subspace.append(it)
-    normalmodeEnergies=np.array(Vibrational_eigenvalues)*np.sqrt(np.abs(np.array(Vibrational_eigenvalues)))/np.abs(np.array(Vibrational_eigenvalues))
-    normal_modes=orthogonalized_Vibrations
-    return normalmodeEnergies,normal_modes,translational_subspace,rotational_subspace
 
 #######################################################################################################
 #Reads in Forces and compute the Hessian
 #######################################################################################################
 def getHessian(parentfolder="./",writeMolFile=True):
-    '''   input:   
-       (opt.)   parentfolder:         (string)         absolute/relative path, where the geometry optimized .xyz file lies 
-                                                       in the subfolders there we find the electronic structure at displaced geometries  
-                writeMoleFile:        (bool)         
-    '''            
-    global binaryloc
+    '''   
+    input:   
+        (opt.) parentfolder:  (string) absolute/relative path, where the geometry optimized .xyz file lies 
+                               in the subfolders; electronic structure at displaced geometries is found there
+        (opt.) writeMoleFile: (bool)   flag indicating whether to write a Mole file with computed results
 
+    This function reads forces from subdirectories, computes the Hessian matrix, and extracts normal modes.
+
+    Parameters:
+        - parentfolder (string, optional): Path to the directory containing the geometry-optimized .xyz file.
+                                           Default is the current directory.
+        - writeMolFile (bool, optional):   Flag to control writing of Mole file. Default is True.
+
+    Returns:
+        None
+
+    Saves:
+        - "Normal-Mode-Energies.npy":      NumPy array containing normal mode energies in 1/cm.
+        - "normalized-Cartesian-Displacements.npy": NumPy array containing normalized Cartesian displacements
+        - "Norm-Factors.npy":              NumPy array containing normalization factors.
+
+    If writeMolFile is True, also writes a Mole file with normal mode information.
+
+    Note: This function assumes the existence of specific subdirectories and files in the parentfolder.
+
+    Usage:
+        getHessian(parentfolder="./", writeMolFile=True)
+    '''        
+    global binaryloc
+    ##########################################
+    #Reading in nessicary Data
+    ##########################################
+    #get Conversionfactors & atomic masses
     ConFactor=ConversionFactors()
     atomicmasses=StandardAtomicWeights()
-    ##################
-    #Get the .xyz file
-    ##################
+    #Get the number of atoms & the order from the xyz file
     xyz_files = [f for f in os.listdir(parentfolder) if f.endswith('.xyz')]
     if len(xyz_files) != 1:
         raise ValueError('InputError: There should be only one xyz file in the current directory')
-    ##########################################
-    #Get the number of atoms from the xyz file
-    ##########################################
     xyzfilename=xyz_files[0]
     numofatoms=0
-    EqCoordinates=[]
     with open(parentfolder+"/"+xyzfilename) as g:
         lines=g.readlines()
         numofatoms=int(lines[0])
         atomorder=[]
-        moldencoordinates=[]
         for line in lines[2:]:
             if len(line.split())>0:
                 atom=line.split()[0]
                 atomorder.append(atom)
-                moldencoordinates.append([atom,float(line.split()[1])*ConFactor['A->a.u.'],float(line.split()[2])*ConFactor['A->a.u.'],float(line.split()[3])*ConFactor['A->a.u.']])
-                EqCoordinates.append(float(line.split()[1])*ConFactor['A->a.u.'])
-                EqCoordinates.append(float(line.split()[2])*ConFactor['A->a.u.'])
-                EqCoordinates.append(float(line.split()[3])*ConFactor['A->a.u.'])
-    EqCoordinates=np.array(EqCoordinates)   
-    
-    #Read in the Basis Vectors:
-    BasisVectors,delta=readinBasisVectors(parentfolder+"/")
-    Transeigenvectors,Roteigenvectors=getTransAndRotEigenvectors(parentfolder+"/Equilibrium_Geometry/",False)
-    Orthogonalprojector=np.identity(3*numofatoms)
-    for rotation in Roteigenvectors:
-        Orthogonalprojector-=np.outer(rotation,rotation)
-    for translation in Transeigenvectors:
-        Orthogonalprojector-=np.outer(translation,translation)
     #The sqrtM matrix in terms of carthesian basis
     sqrtM=np.zeros((3*numofatoms,3*numofatoms))
     for it in range(3*numofatoms):
         atomnum=int(np.floor((it/3)))
         sqrtM[it][it]=1./(np.sqrt(atomicmasses[atomorder[atomnum]]))
+    #Get the carthesian displacement eigenvectors (not rescaled) of Translation & Rotation:
+    Transeigenvectors,Roteigenvectors=getTransAndRotEigenvectors(parentfolder+"/Equilibrium_Geometry/",False)
+    #Check if Rotations should also be projected out, this applies to Molecules/Clusters
+    Rotations_Projector_String=input("Project out Rotations? Molecule/Cluster [Y] Crystal [N]:")
+    if Rotations_Projector_String=="Y" or Rotations_Projector_String=="y":
+        Rotations_Projector_Flag=True
+    elif Rotations_Projector_String=="N" or Rotations_Projector_String=="n":
+        Rotations_Projector_Flag=False
+    else:
+        print("Have not recognized Input! Exiting function")
+        exit()
+    
+    Orthogonalprojector=np.identity(3*numofatoms)
+    
+    for translation in Transeigenvectors:
+        Orthogonalprojector-=np.outer(translation,translation)
+    if Rotations_Projector_Flag:
+        for rotation in Roteigenvectors:
+            Orthogonalprojector-=np.outer(rotation,rotation)
+    
+    #Read in the basis vectors of the finite displacements:
+    BasisVectors,delta=readinBasisVectors(parentfolder+"/")
     #Built the T matrix from b basis 
     T=np.zeros((3*numofatoms,3*numofatoms))
     for salpha in range(3*numofatoms):
@@ -2681,51 +2685,97 @@ def getHessian(parentfolder="./",writeMolFile=True):
     Hessian=-partialFpartialY@Tinv
     #Symmetrize the Hessian
     Hessian=0.5*(Hessian+np.transpose(Hessian)) 
-    Hessian=ImposeTranslationalSymmetry(Hessian,parentfolder)
-    rescaledHessian=sqrtM@Orthogonalprojector@Hessian@Orthogonalprojector@sqrtM #built the rescaled Hessian
-    rescaledHessian*=(10**(3)/1.8228884842645)*(2.19474631370540E+02)**2 # transform to units 1/cm
+    #built the rescaled Hessian
+    rescaledHessian=sqrtM@Hessian@sqrtM 
+    # transform to units 1/cm
+    rescaledHessian*=(10**(3)/1.8228884842645)*(2.19474631370540E+02)**2 
+    # Diagonalize the rescaled Hessian
     Lambda,Normalmodes=np.linalg.eigh(rescaledHessian)
+
     #Standard Values for the Translation and Rotational overlaps with Vibrations
-    threshhold_string=input("Maximally allowed Overlap of Translations/Rotations with Numerical Normal Modes [float between 0 and 1 or std for Standard Value]:")
+    threshhold_string=input("Maximally allowed Weight of Translations with Numerical Normal Modes [float between 0 and 1 or std for Standard Value]:")
     if is_number(threshhold_string):
         threshhold_trans=float(threshhold_string)
-        threshhold_rot=threshhold_trans
     elif threshhold_string=="std":
         threshhold_trans=0.999
         threshhold_rot=0.999
     else:
-        print("Have not recognized Input! Continuing with Standard values.")
+        print("Have not recognized Input! Continuing with Standard values. [0.999]")
         threshhold_trans=0.999
-        threshhold_rot=0.999
-    print(np.sqrt(np.abs(Lambda))*np.sign(Lambda))  
-    normalmodeEnergies_preliminary,normalmodes_prelimiary,trans_subspace,rot_subspace=imposeEckertConditions(Lambda,Normalmodes,threshhold_trans,threshhold_rot,parentfolder+"/Equilibrium_Geometry/")
-    Transeigenvectors,Roteigenvectors=getTransAndRotEigenvectors(parentfolder+"/Equilibrium_Geometry/")
-    Orthogonalprojector=np.identity(3*numofatoms)
-    for rotation in Roteigenvectors:
-        Orthogonalprojector-=np.outer(rotation,rotation)
+        threshhold_rot=0.999 
+    if Rotations_Projector_Flag:
+        threshhold_string=input("Maximally allowed Weight of Rotations with Numerical Normal Modes [float between 0 and 1 or std for Standard Value]:")
+        if is_number(threshhold_string):
+            threshhold_rot=float(threshhold_string)
+        elif threshhold_string=="std":
+            threshhold_rot=0.999
+        else:
+            print("Have not recognized Input! Continuing with Standard values. [0.999]")
+            threshhold_rot=0.999
+    #Get the rescaled eigenvectors of Translation & Rotation:
+    Transeigenvectors,Roteigenvectors=getTransAndRotEigenvectors(parentfolder+"/Equilibrium_Geometry/",True)
+    Orthogonalprojector_trans=np.identity(3*numofatoms)
     for translation in Transeigenvectors:
-        Orthogonalprojector-=np.outer(translation,translation)
-    vectorsToCorrect=[]
-    #Construct the subspace orthorgonal to the Rotations and Translations
-    if len(trans_subspace)!=3:
-        for it in trans_subspace:
-            vvector=np.dot(Orthogonalprojector,Normalmodes[:,it])
-            normfactor=np.sqrt(np.dot(vvector,vvector))
-            vectorsToCorrect.append(vvector/normfactor)
-    if len(rot_subspace)!=3:
-        for it in rot_subspace:
-            vvector=np.dot(Orthogonalprojector,Normalmodes[:,it])
-            normfactor=np.sqrt(np.dot(vvector,vvector))
-            vectorsToCorrect.append(vvector/normfactor)
-    print(len(vectorsToCorrect))
-    print(normalmodeEnergies_preliminary)
+        Orthogonalprojector_trans-=np.outer(translation,translation)
+    if Rotations_Projector_Flag:
+        Orthogonalprojector_rot=np.identity(3*numofatoms)
+        for rotation in Roteigenvectors:
+            Orthogonalprojector_rot-=np.outer(rotation,rotation)
+    # in rescaled Basis
+    orthogonalized_Vibrations=[]
+    Vibrational_eigenvalues=[]
+    translational_subspace=[]
+    rotational_subspace=[]
+    for it in range(3*numofatoms):
+        projection_trans=np.dot(Orthogonalprojector_trans,Normalmodes[:,it])
+        weight_trans=np.sqrt(np.dot(projection_trans,projection_trans))
+        normofprojection_trans=np.sqrt(weight_trans)
+        if Rotations_Projector_Flag:
+            projection_rot=np.dot(Orthogonalprojector_rot,Normalmodes[:,it])
+            weight_rot=np.sqrt(np.dot(projection_rot,projection_rot))
+        else:
+            weight_rot=1.0
+        if weight_trans > threshhold_trans: 
+            if Rotations_Projector_Flag:
+                if weight_rot>threshhold_rot:
+                    orthogonalized_Vibrations.append(projection_trans/normofprojection_trans)
+                    Vibrational_eigenvalues.append(Lambda[it])
+            else:
+                orthogonalized_Vibrations.append(projection_trans/normofprojection_trans)
+                Vibrational_eigenvalues.append(Lambda[it])
+        elif weight_trans<=threshhold_trans:
+            if Rotations_Projector_Flag:
+                if weight_rot>threshhold_rot:
+                    print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(weight_trans))
+                    translational_subspace.append(it)
+                else:
+                    print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(weight_trans)+" and "+"has rot weight "+str(weight_rot))
+            else:
+                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(weight_trans))
+                translational_subspace.append(it)
+        elif weight_trans>threshhold_trans and weight_rot<=threshhold_rot:
+            print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has rot weight "+str(weight_rot))
+            rotational_subspace.append(it)
+    normalmodeEnergies_preliminary=np.array(Vibrational_eigenvalues)*np.sqrt(np.abs(np.array(Vibrational_eigenvalues)))/np.abs(np.array(Vibrational_eigenvalues))
+    normalmodes_prelimiary=orthogonalized_Vibrations
+    
+    
+    #Check the correct number of the identified Translational and evtl. Rotational Subspace
+    if len(translational_subspace)!=3:
+        print("Translational Subspace has Dimension "+len(translational_subspace)+"!")
+        exit()
+    if Rotations_Projector_Flag:
+        if len(rotational_subspace)!=3:
+            print("Rotational Subspace has Dimension "+len(translational_subspace)+"!")
+            exit()
+    print("Normal-Mode-Energies [1/cm]: \n",normalmodeEnergies_preliminary)
     normalmodes=[]
     normalmodeenergies=[]
     for it in range(len(normalmodeEnergies_preliminary)):
         normalmodes.append(normalmodes_prelimiary[it])
         normalmodeenergies.append(normalmodeEnergies_preliminary[it])    
         
-       
+    
     carthesianDisplacements=[]
     normfactors=[]
     for vvector in normalmodes:
@@ -2739,11 +2789,30 @@ def getHessian(parentfolder="./",writeMolFile=True):
     np.save("Norm-Factors",normfactors)
     if writeMolFile:
         writemolFile(normalmodeenergies,carthesianDisplacements,normfactors,parentfolder)
-def CorrectNormalModeEnergies_Input(times=1,parentfolder="./"):
+def CorrectNormalModeEnergies_Input(delta=0.1,parentfolder="./"):
+    '''
+    Perform corrections on normal mode energies and generate input files for each correction.
+
+    Parameters:
+        - delta (float, optional):        Displacement magnitude for corrections. Default is 0.1.
+        - parentfolder (string):         Absolute/relative path to the directory containing input files.
+
+    Returns:
+        None
+
+    Creates a new directory named "Correction_Calc" within the specified parentfolder.
+    For each negative normal mode energy, a subdirectory is created within "Correction_Calc" 
+    with input files adjusted for corrections. The subdirectories are named "Correction_Mode_x" 
+    where x is the index of the corrected normal mode.
+
+    Note: This function assumes the existence of specific files and directories in the parentfolder.
+
+    Usage:
+        CorrectNormalModeEnergies_Input(delta=0.1, parentfolder="./")
+    '''
     os.mkdir(parentfolder+"/"+"Correction_Calc/")
     ConFactors=ConversionFactors()
-    normalmodeenergies,normalizedcarthesiandisplacements,normfactors=readinVibrations(parentfolder)
-    _,delta=readinBasisVectors(parentfolder+"/")
+    normalmodeenergies,normalizedcarthesiandisplacements,_=readinVibrations(parentfolder)
     vectorsToCorrect=[]
     for it,modeenergy in enumerate(normalmodeenergies):
         if modeenergy<0.0:
@@ -2785,24 +2854,46 @@ def CorrectNormalModeEnergies_Input(times=1,parentfolder="./"):
                 name=str(displacementnumber)+"sign="+symbolsign
                 fo = [f for f in os.listdir(folderpath) if f==name]
                 if len(fo)==0:
-                    changeConfiguration(str(displacementnumber),normalizedCartesianDisplacement,displacementnumber*times*delta*ConFactors['a.u.->A'],sign,parentfolder,folderpath)
+                    changeConfiguration(str(displacementnumber),normalizedCartesianDisplacement,displacementnumber*delta*ConFactors['a.u.->A'],sign,parentfolder,folderpath)
                     work_dir=parentfolder+"/"+"Correction_Calc"+"/"+foldername+"/"+name+"/"
                     os.system("cp "+parentfolder+inpfilename+" "+work_dir)
                     os.system("cp "+parentfolder+Restart_filename+" "+work_dir)
                     os.system("ln -s "+pathtobinaries+"/"+"cp2k.popt"+" "+work_dir)
-def CorrectNormalModeEnergies_Output(times=1,path_to_original_data="./",path_to_correctiondata="./Correction_Calc/"):
+def CorrectNormalModeEnergies_Output(delta=0.1,path_to_original_data="./",path_to_correctiondata="./Correction_Calc/"):
+    '''
+    Perform corrections on normal mode energies based on the provided correction data.
 
-    _,delta=readinBasisVectors(path_to_original_data)
+    Parameters:
+        - delta (float, optional):        Displacement magnitude for corrections. Default is 0.1.
+        - path_to_original_data (string): Absolute/relative path to the directory containing original data.
+        - path_to_correctiondata (string): Absolute/relative path to the directory containing correction data.
+
+    Returns:
+        None
+
+    Corrects normal mode energies based on the provided correction data and updates output files.
+
+    Note: This function assumes the existence of specific files and directories in the specified paths.
+
+    Usage:
+        CorrectNormalModeEnergies_Output(delta=0.1, path_to_original_data="./", path_to_correctiondata="./Correction_Calc/")
+    '''
     VibrationalFrequencies,NormCarthesianDisplacements,normfactors=readinVibrations(path_to_original_data)
+
+    # Iterate over correction directories
     for overdir in os.listdir(path_to_correctiondata):
         itmode=int(overdir[-1])
         numofatoms=int((len(VibrationalFrequencies)+6)/3)
+
+        # Get translational and rotational eigenvectors
         Transeigenvectors,Roteigenvectors=getTransAndRotEigenvectors(path_to_original_data,True)
+        # Calculate orthogonal projector
         Orthogonalprojector=np.identity(3*numofatoms)
         for translation in Transeigenvectors:
             Orthogonalprojector-=np.outer(translation,translation)
         for rotation in Roteigenvectors:
             Orthogonalprojector-=np.outer(rotation,rotation)
+        # Calculate overlap matrix
         OLP=np.zeros((len(NormCarthesianDisplacements)-1,len(NormCarthesianDisplacements)-1))
         iterator1=0
         iterator2=0
@@ -2814,11 +2905,12 @@ def CorrectNormalModeEnergies_Output(times=1,path_to_original_data="./",path_to_
             if it1!=itmode and it2!=itmode:
                 iterator2=0
                 iterator1+=1
-        #invert the OLP
+        # Invert the overlap matrix
         OLPinv=np.linalg.inv(OLP)
         iterator1=0
         iterator2=0
         Projector=np.zeros((3*numofatoms,3*numofatoms))
+        # Calculate projector based on inverted overlap matrix
         for it1,mode1 in enumerate(NormCarthesianDisplacements):
             for it2,mode2 in enumerate(NormCarthesianDisplacements):
                 if it1!=itmode and it2!=itmode:
@@ -2831,6 +2923,7 @@ def CorrectNormalModeEnergies_Output(times=1,path_to_original_data="./",path_to_
         subfolders_in_folders=[x[0] for x in os.walk(path_to_correctiondata+"/"+overdir)][2:]
         displacements=[]
         Forces=[]
+        # Iterate over subdirectories in the correction data
         for dir in subfolders_in_folders:
             splitedline=dir.split("/")[-1]
             displacement=int(splitedline.split("sign=")[0])*delta
@@ -2843,11 +2936,13 @@ def CorrectNormalModeEnergies_Output(times=1,path_to_original_data="./",path_to_
             displacement*=sign
             displacements.append(displacement)
             currentpath=dir
+            # Read forces from correction data
             outfile= [f for f in os.listdir(currentpath) if f.endswith('.out')]
             if len(outfile) != 1:
                 raise ValueError('InputError: There should be only one out file in the current directory')
             Force=readinForces(dir)
             Forces.append(np.dot(NormCarthesianDisplacements[itmode],np.dot(Orthogonalprojector,Force)))
+        # Calculate second derivative of energy with respect to displacement
         dEbydXsquared=0.0
         for it,displacement in enumerate(displacements):
             if np.abs(displacement-delta)<10**(-12):
@@ -2857,22 +2952,36 @@ def CorrectNormalModeEnergies_Output(times=1,path_to_original_data="./",path_to_
             else:
                 prefactor=0.0
             dEbydXsquared+=prefactor*Forces[it]*8.2387234983E-8/(5.29177210903*10**(-11))
-        dEbydXsquared/=-(2*times*delta)
+        dEbydXsquared/=-(2*delta)
+        # Calculate corrected mode energy based on corrected second derivative
         Energy=1.05457182*10**(-34)*np.sign(dEbydXsquared)*np.sqrt(np.abs(dEbydXsquared)/1.660539)*normfactors[itmode]*10**(13.5)/(1.602*10**(-22))
         Energy*=8.065610
+        # Update the VibrationalFrequencies array with corrected energy
         VibrationalFrequencies[itmode]=Energy
-        sortedIndices=np.argsort(VibrationalFrequencies)
+    sortedIndices=np.argsort(VibrationalFrequencies)
+    # Save the corrected data
     np.save("Normal-Mode-Energies",VibrationalFrequencies[sortedIndices])
     np.save("normalized-Carthesian-Displacements",NormCarthesianDisplacements[sortedIndices])
     np.save("Norm-Factors",normfactors[sortedIndices])
+    # Write a Mole file with corrected data
     writemolFile(VibrationalFrequencies[sortedIndices],NormCarthesianDisplacements[sortedIndices],normfactors[sortedIndices],path_to_original_data)
 
 def writemolFile(normalmodeEnergies,normalmodes,normfactors,parentfolder="./"):
-    '''Function to generate a .mol file, for use with e.g. jmol
-        input:      normalmodeEnergies:    (np.array)      the normal mode energies as a numpy array
-                    normalmodes:           (np.array)      normalized carthesian displacements, i.e. the vectors proportional to the carthesian displacements
-                                                           v=sqrt(M**(-1))@X, where X are the eigenvectors of the rescaled Hessian.
-                    normfactors:           (np.array)      the normalization factors n=sqrt(dot(v,v))
+    '''
+    Function to generate a .mol file for use with e.g., Jmol.
+    
+    Parameters:
+    - normalmodeEnergies (np.array): The normal mode energies as a numpy array.
+    - normalmodes (np.array): Normalized Cartesian displacements, i.e., vectors proportional to the Cartesian displacements.
+                              v = sqrt(M^(-1)) @ X, where X are the eigenvectors of the rescaled Hessian.
+    - normfactors (np.array): The normalization factors n = sqrt(dot(v, v)).
+    - parentfolder (str, optional): The parent folder where the .mol file will be created. Default is "./".
+
+    Notes:
+    - The function relies on the `ConversionFactors` class.
+    - The function looks for a single .xyz file in the specified directory and reads the atomic coordinates from it.
+    - The .mol file is generated with sections for frequencies, atomic coordinates, normalization factors, and vibrational modes.
+    - The generated .mol file is named "Vibrations.mol" and is saved in the specified parent folder.
     '''
     ConFactor=ConversionFactors()
     xyz_files = [f for f in os.listdir(parentfolder) if f.endswith('.xyz')]
