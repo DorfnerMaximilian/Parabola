@@ -2762,11 +2762,11 @@ def getHessian(parentfolder="./",writeMolFile=True):
     
     #Check the correct number of the identified Translational and evtl. Rotational Subspace
     if len(translational_subspace)!=3:
-        print("Translational Subspace has Dimension "+len(translational_subspace)+"!")
+        print("Translational Subspace has Dimension "+str(len(translational_subspace))+"!")
         exit()
     if Rotations_Projector_Flag:
         if len(rotational_subspace)!=3:
-            print("Rotational Subspace has Dimension "+len(translational_subspace)+"!")
+            print("Rotational Subspace has Dimension "+str(len(translational_subspace))+"!")
             exit()
     print("Normal-Mode-Energies [1/cm]: \n",normalmodeEnergies_preliminary)
     normalmodes=[]
