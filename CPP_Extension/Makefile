@@ -14,7 +14,7 @@ SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 OBJS = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(SRCS))
 
 # Executable name
-TARGET = $(BIN_DIR)/get_T_Matrix.so
+TARGET = $(BIN_DIR)/AtomicBasis.so
 
 # Default target
 all: $(TARGET)
