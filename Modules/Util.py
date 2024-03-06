@@ -1,0 +1,111 @@
+import os 
+import sys
+import Modules.Read as Read
+import numpy as np
+import scipy as sci
+def represents_int(s):
+    try: 
+        int(s)
+    except ValueError:
+        return False
+    else:
+        return True
+
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+        
+def progressbar(it, prefix="", size=60, out=sys.stdout): # Python3.3+
+    count = len(it)
+    def show(j):
+        x = int(size*j/count)
+        print("{}[{}{}] {}/{}".format(prefix, u"█"*x, "."*(size-x), j, count), 
+                end='\r', file=out, flush=True)
+    show(0)
+    for i, item in enumerate(it):
+        yield item
+        show(i+1)
+    print("\n", flush=True, file=out)
+def getxyzfilename(path="./"):
+    ##returns the xyz filename in path returns error, when in this folder are two xyz files
+    ## input:
+    ## (opt.)   folder              path to the folder of the .xyz file         (string)
+    ## output:  fileanem            list of sublists. 
+
+    #get the Projectname
+    xyz_files = [f for f in os.listdir(path) if f.endswith('.xyz')]
+    if len(xyz_files) != 1:
+        raise ValueError('InputError: There should be only one *.xyz file in the current directory')
+    filename = path+"/"+xyz_files[0]
+    return filename
+
+
+def getHOMOId(parentfolder):
+    ##   Function to get the index of the HOMO orbital, if energyeigenvalues 0,1,2,...Homoit are ordered acendingly
+    ##   input:   parentfolder:         (string)            absolute/relative path, where the geometry optimized .xyz file lies 
+    ##                                                      in the subfolders there we find the electronic structure at displaced geometries                      
+    ##   output:  HOMOit                (int)               the index of the HOMO orbital (python convention)
+    Atoms=Read.readinAtomicCoordinates(parentfolder)
+    inp_files = [f for f in os.listdir(parentfolder) if f.endswith('.inp')]
+    if len(inp_files) != 1:
+        raise ValueError('InputError: There should be only one .inp file in the current directory')
+    filename=inp_files[0]
+    #Calculate the HOMO 
+    NumberOfElectrons={}
+    Charge=0
+    with open(parentfolder+"/"+filename,'r') as f:
+        lines=f.readlines()
+        for line in lines:
+            if len(line.split())>=2:
+                if line.split()[0]=="CHARGE":
+                    Charge=int(line.split()[1])
+                if line.split()[0]=="&KIND":
+                    atomtype= line.split()[1]
+                if line.split()[0]=="POTENTIAL":
+                    PotentialName=line.split()[1]
+                    splitedPotentialName=PotentialName.split('-')
+                    if splitedPotentialName[0]=="GTH" or splitedPotentialName[1]=="GTH":
+                        numstring=splitedPotentialName[-1]
+                        numofE=int(numstring[1:])
+                        NumberOfElectrons[atomtype]=numofE
+                    else:
+                        ValueError("Yet only GTH Potentials implemented")
+    numofE=0
+    for atom in Atoms:
+        atomsymbol=atom[1]
+        numofE+=NumberOfElectrons[atomsymbol]
+    numofE+=Charge
+    remainder=numofE%2
+    iter=np.floor(numofE/2)
+    HOMOit=iter-1+remainder
+    return int(HOMOit)
+def LoewdinTransformation(S,algorithm='Schur-Pade'):
+    ##  Function to compute S^(-0.5) for the Loewdin orthogonalization
+    ##   input:   S         (numpy array)            the overlapmatrix 
+    ##
+    ##   output:  Sm12      (numpy array)            the overlapmatrix to the power 1/2                            
+    if algorithm=="Diagonalization":
+        e,U=np.linalg.eigh(S)
+        Sm12=np.diag(e**(-0.5))
+        Sm12=np.dot(U,np.dot(Sm12,np.transpose(np.conjugate(U))))
+    elif algorithm=="Schur-Pade":
+        Sm12=sci.linalg.fractional_matrix_power(S, -0.5)
+    else:
+        ValueError("Algorithm not recognized! Currently available 'Schur-Pade' and 'Diagonalization'")
+    return Sm12
+def getElectronicCouplings(parentfolder="./"):
+    ##  Function to compute the electronic energies from the equilibrium file
+    ##   input:   parentfolder:         (string)            absolute/relative path, where the geometry optimized .xyz file lies 
+    ##                                                      in the subfolders there we find the electronic structure at displaced geometries                         
+    try:
+        E=np.load(parentfolder+"/KS-Eigenvalues.npy")
+    except:
+        KSHamiltonian,OLM=Read.readinMatrices(parentfolder)
+        Sm12=LoewdinTransformation(OLM)
+        KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
+        E,_=np.linalg.eigh(KSHorth)
+        np.save(parentfolder+"/KS-Eigenvalues",E)
+    return E
