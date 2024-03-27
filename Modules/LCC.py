@@ -1,23 +1,26 @@
 import numpy as np
 import os
+import copy
 import Modules.Util as Util
-import Modules.PhysConsts as PhysConst
+import Modules.PhysConst as PhysConst
 import Modules.Read as Read
 import Modules.AtomicBasis as AtomicBasis
 import Modules.TDDFT as TDDFT
 
 def getManyBodyCouplings(eta,LCC,id_homo):
-    ##   Function to obtain the Many-Body Coupling Constants from the CP2K TDDFT excited states and the DFT Coupling constants
-    ##   input:   eta:         (np.array)            numpy array which encodes the states
-    ##                                                  required structure: states[n] encodes the n th excited state
-    ##                                                                      states[n][0] is its energy
-    ##                                                                      states[n][1] is a list of lists, where each list in this list contains 
-    ##                                                                      list[0] hole index list[1] particle index and list[2] the weight of this 
-    ##                                                                      particle hole state
-    ##                                                                      second index first component
-    ##            couplingConstants (np.array)          the DFT coupling constants as outputted by "getLinearCouplingConstants"
-    ##                                                                        
-    ##            HOMOit                (int)           the index of the HOMO orbital (python convention)
+    ''' Function to obtain the Many-Body Coupling Constants from the CP2K TDDFT excited states and the DFT Coupling constants
+        input:  eta:         (np.array)            numpy array which encodes the states
+                                                      required structure: states[n] encodes the n th excited state
+                                                                          states[n][0] is its energy
+                                                                          states[n][1] is a list of lists, where each list in this list contains 
+                                                                          list[0] hole index list[1] particle index and list[2] the weight of this 
+                                                                          particle hole state
+                                                                          second index first component
+                couplingConstants (np.array)          the DFT coupling constants as outputted by "getLinearCouplingConstants"
+                                                                            
+                HOMOit                (int)           the index of the HOMO orbital (python convention)
+    '''
+
     #generate g matrix, h matrix and k matrices
     g=LCC[:,id_homo+1:,id_homo+1:]
     h=LCC[:,:id_homo+1,:id_homo+1]*(-1) # minus 1 due to fermionic commutator!
@@ -47,7 +50,37 @@ def getManyBodyCouplings(eta,LCC,id_homo):
     np.save("H_CouplingConstants",H)
     np.save("K_CouplingConstants",K)
     return H,K
+#######################################################################################################
+#Helper routine to get the range of considered electronic states
+#######################################################################################################
+def getadiabaticallyConnectedEigenstates(orthogonalEigenstates_Eq,orthorgonalEigenstates_deflected,Tmatrix_deflected):
+    ''' input:   parentfolder:         (string)            absolute/relative path, where the geometry optimized .xyz file lies 
+                                                          in the subfolders there we find the electronic structure at displaced geometries        
+                    
+        (opt.)  spread:               (int)               compute coupling elements for orbitals HOMO-spread,HOMO-spread+1,...,LUMO+spread
+    
+                cleandifferentSigns   (bool)              if the coupling constants have different signs for the plus displacement and the
+                                                          clean them from the file 
+                                                          
+       output: saves 
+    '''
+    adibaticallyConnectediters_Plus = []
 
+    # Precompute some values
+    orthogonal_states_Plus = (np.array(orthorgonalEigenstates_deflected).T).copy()
+    Tmatrix_Plus_dot_states_Plus = Tmatrix_deflected @ orthogonal_states_Plus
+    # Get the adiabatically connected eigenvalues/states
+    for it0 in range(np.shape(orthogonalEigenstates_Eq)[0]):
+        overlaps = np.dot(orthogonalEigenstates_Eq[it0], Tmatrix_Plus_dot_states_Plus)
+        iter1 = np.argmax(np.abs(overlaps))
+        maximumAbsOverlap = np.abs(overlaps[iter1])
+        adibaticallyConnectediters_Plus.append(iter1)
+        if overlaps[iter1]<0:
+            orthorgonalEigenstates_deflected[iter1]*=-1
+        if maximumAbsOverlap < 0.5:
+            print("Maximum Overlap: ", maximumAbsOverlap)
+            raise ValueError("Maximum Overlap too small! Check your inputs!")
+    return adibaticallyConnectediters_Plus
 
 
 #######################################################################################################
@@ -87,11 +120,16 @@ def getLinearCouplingConstants(parentfolder="./"):
     #Diagonalize to the KS Hamiltonian in the ortonormal Basis
     E_Eq,a_orth_Eq=np.linalg.eigh(KSHorth_Eq)
     #get the normalized Eigenstates in the non-orthorgonal Basis & fix Phase
-    orthorgonalEigenstates_Eq=[]
+    orthorgonalEigenstates_Eq = []
+    # Precompute phases
+    phases = np.array([TDDFT.getPhaseOfMO(a_orth_Eq[:, it]) for it in range(len(E_Eq))])
+    # Compute and append normalized eigenstates
     for it in range(len(E_Eq)):
-        orth_eigenstate=a_orth_Eq[:,it]
-        orth_eigenstate*=TDDFT.getPhaseOfMO(orth_eigenstate)
+        orth_eigenstate = a_orth_Eq[:, it]  # Make a copy to avoid modifying the original data
+        phase = phases[it]
+        orth_eigenstate *= phase
         orthorgonalEigenstates_Eq.append(orth_eigenstate)
+        
     _,delta=Read.readinBasisVectors(parentfolder)
     #get the normal modes from the cartesian displacements
     VibrationalFrequencies,_,normfactors=Read.readinVibrations(parentfolder)
@@ -112,7 +150,10 @@ def getLinearCouplingConstants(parentfolder="./"):
         KSHorth_P=np.dot(Sm12_Plus,np.dot(KSHamiltonian_Plus,Sm12_Plus))
         EPlus,a_orth_Plus=np.linalg.eigh(KSHorth_P)
         T_Eq_Plus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq)
-        Tmatrix_Plus=Sm12_Eq@T_Eq_Plus@Sm12_Plus
+        T_matrix_Plus=Sm12_Eq@T_Eq_Plus@Sm12_Plus
+        #----------------------------------------------------------------------
+        # Negatively displaced 
+        #----------------------------------------------------------------------
         folderminus='vector='+str(mu+1)+'sign=-'
         #Read in the KS Hamiltonian and the overlap matrix
         KSHamiltonian_Minus,OLM_Minus=Read.readinMatrices(parentfolder+"/"+folderminus+'/')
@@ -125,58 +166,27 @@ def getLinearCouplingConstants(parentfolder="./"):
         EMinus,a_orth_Minus=np.linalg.eigh(KSHorth_Minus)
         T_Eq_Minus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq)
         T_Matrix_Minus=Sm12_Eq@T_Eq_Minus@Sm12_Minus
-        #get the Eigenstates in the non-orthorgonal Basis
+
+        #fix the phase of the Eigenstates
         orthorgonalEigenstates_Plus=[]
         for it in range(len(EPlus)):
             orth_eigenstate=a_orth_Plus[:,it]
-            orth_eigenstate*=Util.getPhaseOfMO(orth_eigenstate)
+            orth_eigenstate*=TDDFT.getPhaseOfMO(orth_eigenstate)
             orthorgonalEigenstates_Plus.append(orth_eigenstate)
-        #get the Eigenstates in the non-orthorgonal Basis
+        #fix the phase of the Eigenstates
         orthorgonalEigenstates_Minus=[]
         for it in range(len(EMinus)):
             orth_eigenstate=a_orth_Minus[:,it]
-            orth_eigenstate*=Util.getPhaseOfMO(orth_eigenstate)
+            orth_eigenstate*=TDDFT.getPhaseOfMO(orth_eigenstate)
             orthorgonalEigenstates_Minus.append(orth_eigenstate)
-        adibaticallyConnectediters_Plus=[]
-        #Get the adiabtically connected eigenvalues/states
-        for it0 in range(len(E_Eq)):
-            maximumAbsOverlap=0.0
-            maximumOverlap=0.0
-            iter1=-1
-            for it1 in range(len(E_Eq)):
-                overlap=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus@orthorgonalEigenstates_Plus[it1])
-                absoverlap=np.abs(overlap)
-                if absoverlap>maximumAbsOverlap:
-                    iter1=it1
-                    maximumOverlap=overlap
-                    maximumAbsOverlap=absoverlap
-            adibaticallyConnectediters_Plus.append(iter1)
-            if maximumOverlap<0:
-                orthorgonalEigenstates_Plus[iter1]*=(-1.0)
-            if maximumAbsOverlap<0.5:
-                ValueError("Maximum Overlap small! Check your inputs!")
+        #Get the adiabtically connected eigenvalues/states for the positive displacement
+        adibaticallyConnectediters_Plus=getadiabaticallyConnectedEigenstates(orthorgonalEigenstates_Eq,orthorgonalEigenstates_Plus,T_matrix_Plus)
         #Check that each iterator is exactly once in the adibaticallyConnectediters_Plus set
         for it in range(len(E_Eq)):
             if adibaticallyConnectediters_Plus.count(it)!=1:
                 ValueError("Some eigenstates appear more then once as maximum weight states! Check your inputs!")
         #Get the adiabtically connected eigenvalues/states for the negative displacement
-        adibaticallyConnectediters_Minus=[]
-        for it0 in range(len(E_Eq)):
-            maximumAbsOverlap=0.0
-            maxOverlap=0.0
-            iter1=-1
-            for it1 in range(len(E_Eq)):
-                overlap=np.dot(orthorgonalEigenstates_Eq[it0],T_Matrix_Minus@orthorgonalEigenstates_Minus[it1])
-                absoverlap=np.abs(overlap)
-                if absoverlap>maximumAbsOverlap:
-                    maxOverlap=overlap
-                    iter1=it1
-                    maximumAbsOverlap=absoverlap
-            adibaticallyConnectediters_Minus.append(iter1)
-            if maxOverlap<0:
-                orthorgonalEigenstates_Minus[iter1]*=(-1.0)
-            if maximumAbsOverlap<0.5:
-                ValueError("Maximum Overlap small! Check your inputs!")
+        adibaticallyConnectediters_Minus=getadiabaticallyConnectedEigenstates(orthorgonalEigenstates_Eq,orthorgonalEigenstates_Minus,T_Matrix_Minus)
         #Check that each iterator is exactly once in the adibaticallyConnectediters set
         for it in range(len(E_Eq)):
             if adibaticallyConnectediters_Minus.count(it)!=1:
@@ -188,8 +198,8 @@ def getLinearCouplingConstants(parentfolder="./"):
                     deltaE=(EPlus[adibaticallyConnectediters_Plus[it0]]-EMinus[adibaticallyConnectediters_Minus[it1]])/(2*delta)*normfactors[mu]
                     couplingConstants[mu,it0,it1]=ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*deltaE
                 else:
-                    overlap1=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus@orthorgonalEigenstates_Plus[adibaticallyConnectediters_Plus[it1]])
-                    overlap2=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus@orthorgonalEigenstates_Minus[adibaticallyConnectediters_Minus[it1]])
+                    overlap1=np.dot(orthorgonalEigenstates_Eq[it0],T_matrix_Plus@orthorgonalEigenstates_Plus[adibaticallyConnectediters_Plus[it1]])
+                    overlap2=np.dot(orthorgonalEigenstates_Eq[it0],T_Matrix_Minus@orthorgonalEigenstates_Minus[adibaticallyConnectediters_Minus[it1]])
                     deltaE=(E_Eq[it1]-E_Eq[it0])*(overlap1-overlap2)/(2*delta)*normfactors[mu]
                     couplingConstants[mu,it0,it1]=ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*deltaE
     np.save("Linear_Coupling_Constants",couplingConstants)
