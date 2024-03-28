@@ -2,103 +2,53 @@
 ## Python Modules for the computation of exciton-phonon coupling elements
 #########################################################################
 #10.10.2022 Dorfner Maximilian
-
-#########################################################################
-## Setting paths
-#########################################################################
-pathtocp2k="/home/max/cp2k-2024.1"
-modulespath="/home/max/Sync/PhD_TUM/Code/CP2K/CP2K_Python_Modules"
-pathtocpp_lib = "/media/max/SSD1/PHD/Data/CP2K/CP2K_Python_Modules/parabola/CPP_Extension/bin/AtomicBasis.so" 
-#########################################################################
-## END Setting paths
-#########################################################################
-
 #########################################################################
 ## External Packages to Import
 #########################################################################
-import numpy as np
-import scipy as sci
-import copy as cp
 import os
-import sys
-
-
 #########################################################################
-## END External Packages to Import
+## Setting paths & environmental variables
 #########################################################################
-
 os.environ["cp2kpath"] = "/home/max/cp2k-2024.1/"
-os.environ["parabolapath"] = "/media/max/SSD1/PHD/Data/CP2K/CP2K_Python_Modules/parabola/"
-
+os.environ["parabolapath"] =__file__.split("/Parabola.py")[0]+"/"
 #########################################################################
 ## Dictionaries for Physical constants & other information
 #########################################################################
 import Modules.PhysConst as PhysConst
 #########################################################################
-## END Dictionaries for Physical constants & other Data
-#########################################################################
-
-#########################################################################
 ## Gaussian Basis Construction Routines
 #########################################################################
 import Modules.AtomicBasis as AtomicBasis
 #########################################################################
-## END Gaussian Basis Construction Routines
-#########################################################################
-
-
-#########################################################################
-## Module to read in KS Hamiltonian, OLM, MOS, .cube file, Forces, Vibrations
+## Module to read in KS Hamiltonian,OLM, .cube file, Forces, Vibrations
 #########################################################################
 import Modules.Read as Read
 #########################################################################
-## END Module to read in KS Hamiltonian, OLM, MOS ect.
-#########################################################################
-
-#########################################################################
-## Module to write .cube, .xsf, .mol
+## Module to write .cube, .xsf, .mol, ect.
 #########################################################################
 import Modules.Write as Write
 #########################################################################
-## END Module to read in KS Hamiltonian, OLM, MOS ect.
-#########################################################################
-
-#########################################################################
-## utility module unclude 
+## utility module include 
 #########################################################################
 import Modules.Util as Util
-#########################################################################
-## END Module to read in KS Hamiltonian, OLM, MOS ect.
-#########################################################################
-
 #########################################################################
 ## module to modify the molecular/crystalline geometry
 #########################################################################
 import Modules.Geometry as Geometry
 #########################################################################
-## END module to modify the molecular/crystalline geometry
-#########################################################################
-
-#########################################################################
 ## module to perform & analize Vibrational Analysis
 #########################################################################
 import Modules.VibAna as VibAna
 #########################################################################
-## END module to perform & analize Vibrational Analysis
-#########################################################################
-#########################################################################
-## module to perform & analize Convergence Checks of num. Parameters
+## module to analize TDDFT calculations, Transition diplole moments ect.
 #########################################################################
 import Modules.TDDFT as TDDFT
-#########################################################################
-## END module to perform & analize Convergence Checks of num. Parameters
-#########################################################################
 #########################################################################
 ## module to perform & analize Convergence Checks of num. Parameters
 #########################################################################
 import Modules.ConvTests as ConvTests
 #########################################################################
-## END module to perform & analize Convergence Checks of num. Parameters
+##  module to compute the linear coupling constants
 #########################################################################
 import Modules.LCC as LCC
 
