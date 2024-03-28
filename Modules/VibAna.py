@@ -404,20 +404,20 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
                     orthogonalized_Vibrations.append(projection_trans/normofprojection_trans)
                     Vibrational_eigenvalues.append(Lambda[it])
             elif weight_rot<=threshhold_rot and weight_trans>threshhold_trans:
-                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has rot weight "+str(weight_rot))
+                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has rot weight "+str(1.0-weight_rot))
                 rotational_subspace.append(it)
             elif weight_rot>threshhold_rot and weight_trans<=threshhold_trans:
-                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(weight_trans))
+                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(1.0-weight_trans))
                 translational_subspace.append(it)
             else:
-                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(weight_trans)+" and has rot weight "+str(weight_rot)+"!")
+                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(1.0-weight_trans)+" and has rot weight "+str(1.0-weight_rot)+"!")
                 exit()
         else:
             if weight_trans>threshhold_trans:
                 orthogonalized_Vibrations.append(projection_trans/normofprojection_trans)
                 Vibrational_eigenvalues.append(Lambda[it])
             else:
-                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(weight_trans))
+                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(1.0-weight_trans))
                 translational_subspace.append(it)
     normalmodeEnergies_preliminary=np.array(Vibrational_eigenvalues)*np.sqrt(np.abs(np.array(Vibrational_eigenvalues)))/np.abs(np.array(Vibrational_eigenvalues))
     normalmodes_prelimiary=orthogonalized_Vibrations
@@ -447,9 +447,9 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
         normfactor=np.sqrt(np.dot(vvector,vvector))
         normfactors.append(normfactor)
         carthesianDisplacements.append(vvector/normfactor)
-    np.save("Normal-Mode-Energies",normalmodeenergies)
-    np.save("normalized-Carthesian-Displacements",carthesianDisplacements)
-    np.save("Norm-Factors",normfactors)
+    np.save(parentfolder+"/Normal-Mode-Energies",normalmodeenergies)
+    np.save(parentfolder+"/normalized-Carthesian-Displacements",carthesianDisplacements)
+    np.save(parentfolder+"/Norm-Factors",normfactors)
     if writeMolFile:
         Write.writemolFile(normalmodeenergies,carthesianDisplacements,normfactors,parentfolder)
 def CorrectNormalModeEnergies_Input(delta=0.1,parentfolder="./"):

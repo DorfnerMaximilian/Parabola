@@ -318,11 +318,11 @@ def readinAtomicCoordinates(folder="./"):
             it+=1
     f.close()
     return Atoms
-def readinVibrations(parentfolder):
+def readinVibrations(parentfolder="./"):
     try:
-        VibrationalFrequencies=np.load("Normal-Mode-Energies.npy")
-        CarthesianDisplacements=np.load("normalized-Carthesian-Displacements.npy")
-        normfactors=np.load("Norm-Factors.npy")
+        VibrationalFrequencies=np.load(parentfolder+"/Normal-Mode-Energies.npy")
+        CarthesianDisplacements=np.load(parentfolder+"/normalized-Carthesian-Displacements.npy")
+        normfactors=np.load(parentfolder+"/Norm-Factors.npy")
     except:   
         #Open the Molden file
         mol_files = [f for f in os.listdir(parentfolder) if f.endswith('.mol')]

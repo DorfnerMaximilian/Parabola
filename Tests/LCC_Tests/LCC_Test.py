@@ -2,6 +2,7 @@ import unittest
 import Parabola as p
 import numpy as np
 import time 
+import os
 def getadibaticallyConnectedEigenstates_original(orthorgonalEigenstates_Eq,orthorgonalEigenstates_Plus,Tmatrix_Plus):
     adibaticallyConnectediters_Plus=[]
     #Get the adiabtically connected eigenvalues/states
@@ -60,12 +61,21 @@ class TestLCC(unittest.TestCase):
             orthorgonalEigenstates_Plus.append(orth_eigenstate)
         start_time1 = time.time()
         adibaticallyConnectediters_original=getadibaticallyConnectedEigenstates_original(orthorgonalEigenstates_Eq,orthorgonalEigenstates_Plus,Tmatrix_Plus)
-        print("Original Implimentation Timings: ", time.time()-start_time1)
+        print("Original Implementation Timings: ", time.time()-start_time1)
         start_time2 = time.time()
         adibaticallyConnectediters_Parabola=p.LCC.getadiabaticallyConnectedEigenstates(orthorgonalEigenstates_Eq,orthorgonalEigenstates_Plus,Tmatrix_Plus)
         print("New Implementation Timings: ", time.time()-start_time2)
         np.testing.assert_array_almost_equal(adibaticallyConnectediters_Parabola, adibaticallyConnectediters_original,13,"adibaticallyConnectedEigenstates Test failed!")
-
+        print("Finished getadibaticallyConnectedEigenstates Test")
+    def test_getLinearCouplingConstants(self):
+        print("Started getLinearCouplingConstants Test")
+        parentfolder="./getLCC/Linear_Coupling_Constants/"
+        LCC_Comparison=np.load(parentfolder+"Linear_Coupling_Constants_Comparison.npy")
+        p.LCC.getLinearCouplingConstants(parentfolder,0,15)
+        LCC_Test=np.load(parentfolder+"Linear_Coupling_Constants.npy")
+        np.testing.assert_array_almost_equal(LCC_Test,LCC_Comparison,10,"adibaticallyConnectedEigenstates Test failed!")
+        os.system("rm "+parentfolder+"/Linear_Coupling_Constant.npy")
+        print("Finished getLinearCouplingConstants Test")
 	
 if __name__ == '__main__':
     unittest.main()
