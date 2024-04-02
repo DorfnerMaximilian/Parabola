@@ -397,9 +397,9 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
         projection_trans=np.dot(Orthogonalprojector_trans,Normalmodes[:,it])
         weight_trans=np.sqrt(np.dot(projection_trans,projection_trans))
         normofprojection_trans=np.sqrt(weight_trans)
-        projection_rot=np.dot(Orthogonalprojector_rot,Normalmodes[:,it])
-        weight_rot=np.sqrt(np.dot(projection_rot,projection_rot))
         if Rotations_Projector_Flag:
+            projection_rot=np.dot(Orthogonalprojector_rot,Normalmodes[:,it])
+            weight_rot=np.sqrt(np.dot(projection_rot,projection_rot))
             if weight_rot>threshhold_rot and weight_trans>threshhold_trans:
                     orthogonalized_Vibrations.append(projection_trans/normofprojection_trans)
                     Vibrational_eigenvalues.append(Lambda[it])
