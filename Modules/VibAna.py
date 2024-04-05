@@ -547,7 +547,7 @@ def CorrectNormalModeEnergies_Output(delta=0.1,path_to_original_data="./",path_t
     # Iterate over correction directories
     for overdir in os.listdir(path_to_correctiondata):
         itmode=int(overdir[-1])
-        numofatoms=int((len(VibrationalFrequencies)+6)/3)
+        numofatoms=int(len(NormCarthesianDisplacements[0])/3)
 
         # Get translational and rotational eigenvectors
         Transeigenvectors,Roteigenvectors=getTransAndRotEigenvectors(path_to_original_data,True)
