@@ -49,10 +49,10 @@ def Vib_Ana_inputs(delta,vectors=[],linktobinary=True,binary="cp2k.popt",parentp
             vectors.append(vector)
     else: 
         if vectors!=3*numberofatoms:
-            print('InputError: Not enough vectors given for the Normal Mode Analysis!')
+            print('Warning: Not enough vectors given for the Normal Mode Analysis!')
         if np.linalg.matrix_rank(vectors)!=len(vectors):
             #do a second check based on SVD 
-            print('InputError: The set of vectors given do not form a basis!')
+            print('Warning: The set of vectors given do not form a basis!')
 
     with open(parentpath+"BasisHessian","w+") as g:
         g.write("delta="+str(delta)+"\n")
@@ -73,7 +73,7 @@ def Vib_Ana_inputs(delta,vectors=[],linktobinary=True,binary="cp2k.popt",parentp
     os.system("cp "+parentpath+Restart_filename+" "+parentpath+"Equilibrium_Geometry")
     if linktobinary:
         os.system("ln -s "+binaryloc+"/"+binary+" "+parentpath+"Equilibrium_Geometry"+"/")
-    for it in range(3*numberofatoms):
+    for it in range(len(vectors)):
         folderlabel='vector='+str(it+1)
         for sign in [0,1]:
             if sign==0:
