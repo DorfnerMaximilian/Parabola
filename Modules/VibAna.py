@@ -163,6 +163,69 @@ def CheckinpfileforVib_Ana(parentpath):
         ValueError("Reconsider the FORCES Section in the .inp file! Write 'NDIGITS 15' !")
     if not Forces_FilenameFlag:
         ValueError("Reconsider the AO_Section in the .inp file! Write 'FILENAME =Forces' !")
+def ImposeTranslationalSymmetry(Hessian,pathtoEquilibriumxyz="./Equilibrium_Geometry/"):
+    # Imposes exact relation on the Hessian, that has to be fullfilled for the Translational D.O.F. to decouple from the rest
+    #input: 
+    #Hessian:    (numpy.array)  Hessian in carthesian coordinates 
+    #Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
+    SaW=PhysConst.StandardAtomicWeights()
+    #Get the Atomic coordinates 
+    AtomicCoordinates=Read.readinAtomicCoordinates(pathtoEquilibriumxyz)
+    #get the center of mass 
+    MassofMolecule=0.0
+    masses=[]
+    for coords in AtomicCoordinates:
+        mass=SaW[coords[1]]
+        masses.append(mass)
+        MassofMolecule+=mass
+    J=getJ(masses)
+    Hessiantilde=np.transpose(np.linalg.inv(J))@Hessian@np.linalg.inv(J)
+    for it1 in range(3*len(masses)):
+        for it2 in range(3*len(masses)):
+            if it1>=3*len(masses)-3 or it2>=3*len(masses)-3:
+                Hessiantilde[it1][it2]=0.0
+    Hessian0=np.transpose(J)@Hessiantilde@J
+    return Hessian0
+def getJ(masses):
+    # Computes the J matrix, the linear, invertible transformation, that transforms into the Jacobi coordinates, in which the center of mass
+    # motion explicitly decouples, x_rel=J*x
+    #input: 
+    #Hessian:    (numpy.array)  Hessian in carthesian coordinates 
+    #Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
+    Rcm=np.zeros(len(masses))
+    Rcm[0]=1.0
+    Mj=masses[0]
+    Jupdown=np.zeros(((len(masses),len(masses))))
+    for j in range(1,len(masses)):
+        Rj=np.zeros(len(masses))
+        Rj[j]=1.0
+        Deltaj=Rj-Rcm
+        Jupdown[j-1][:]=Deltaj
+        Rcm=(Mj*Rcm+masses[j]*Rj)/(Mj+masses[j])
+        Mj+=masses[j]
+    Jupdown[-1][:]=Rcm
+    J=np.zeros((3*len(masses),3*len(masses)))
+    for it1 in range(len(masses)):
+        for it2 in range(len(masses)):
+            J[3*it1][3*it2]=Jupdown[it1][it2]
+            J[3*it1+1][3*it2+1]=Jupdown[it1][it2]
+            J[3*it1+2][3*it2+2]=Jupdown[it1][it2]
+    return J
+def getJMJTranspose(masses):
+    # Transforms the Mass Matrix into the Jacobi coordinates = metric of the kinetic energy in these coordinates 
+    #input: 
+    #masses:         (N numpy.array)        masses of the atoms as a numpy array, requires same ordering as the coordinates
+    #g:              (3Nx3N numpy.array)    metric of the kinetic energy in the Jacobi coordinates
+    #get the mass matrix
+    M=np.zeros((3*len(masses),3*len(masses)))
+    for it in range(3*len(masses)):
+        atomnum=int(np.floor((it/3)))
+        M[it][it]=1./masses[atomnum]
+    #get the mass matrix
+    J=getJ(masses)
+    return J@M@np.transpose(J)
+
+
 def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",rescale=True):
     """
     Computes the translational and rotational eigenvectors according to "Vibrational Analysis in Gaussian,"
@@ -345,7 +408,8 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
             partialFpartialY[s1alpha1][lambd]=diffofforces[s1alpha1]
     Hessian=-partialFpartialY@Tinv
     #Symmetrize the Hessian
-    Hessian=0.5*(Hessian+np.transpose(Hessian)) 
+    Hessian=0.5*(Hessian+np.transpose(Hessian))
+    Hessian=ImposeTranslationalSymmetry(Hessian,parentfolder+"/Equilibrium_Geometry/")
     #built the rescaled Hessian
     rescaledHessian=sqrtM@Hessian@sqrtM 
     # transform to units 1/cm
