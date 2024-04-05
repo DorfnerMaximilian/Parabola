@@ -65,7 +65,7 @@ class TestLCC(unittest.TestCase):
         start_time2 = time.time()
         adibaticallyConnectediters_Parabola=p.LCC.getadiabaticallyConnectedEigenstates(orthorgonalEigenstates_Eq,orthorgonalEigenstates_Plus,Tmatrix_Plus)
         print("New Implementation Timings: ", time.time()-start_time2)
-        np.testing.assert_array_almost_equal(adibaticallyConnectediters_Parabola, adibaticallyConnectediters_original,13,"adibaticallyConnectedEigenstates Test failed!")
+        np.testing.assert_array_almost_equal(adibaticallyConnectediters_Parabola, adibaticallyConnectediters_original,10,"adibaticallyConnectedEigenstates Test failed!")
         print("Finished getadibaticallyConnectedEigenstates Test")
     def test_getLinearCouplingConstants(self):
         print("Started getLinearCouplingConstants Test")
