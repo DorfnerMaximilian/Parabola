@@ -109,3 +109,19 @@ def getElectronicCouplings(parentfolder="./"):
         E,_=np.linalg.eigh(KSHorth)
         np.save(parentfolder+"/KS-Eigenvalues",E)
     return E
+def compressKSfile(parentfolder="./"):
+    _,_=Read.readinMatrices(parentfolder)
+def CompressFolder(writeexcludelist=False):
+    dirs=[x[0] for x in os.walk("./")]
+    dirs=dirs[1:]
+    excludelist=[]
+    for it in progressbar(range(len(dirs)),"Compression Progress:",40):
+        try:
+            compressKSfile(dirs[it])
+            excludelist.append(dirs[it])
+        except:
+            pass
+    if writeexcludelist:
+        with open("rsync_exclude.txt","w") as f:
+            for element in excludelist:
+                f.write(element[2:]+"\n")
