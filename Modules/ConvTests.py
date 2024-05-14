@@ -373,7 +373,7 @@ def CheckConvergence(quantity,path='./'):
                 Basis=AtomicBasis.getBasis(path+folder)
                 print("Construct carthesian Basis and spherical to cartesian Transformations -> Done")
                 if OverlapMatrixFlag==False:
-                    Overlapmatrix=getTransformationmatrix(Atoms,Atoms,Basis)
+                    Overlapmatrix=AtomicBasis.getTransformationmatrix(Atoms,Atoms,Basis)
                     OverlapMatrixFlag=True
                 diff=np.abs(Overlapmatrix-OLM)
                 absre.append(np.max(np.max(diff)))
@@ -387,7 +387,7 @@ def CheckConvergence(quantity,path='./'):
                 Basis=AtomicBasis.getBasis(path+folder)
                 print("Construct carthesian Basis and spherical to cartesian Transformations -> Done")
                 if OverlapMatrixFlag==False:
-                    Overlapmatrix=getTransformationmatrix(Atoms,Atoms,Basis)
+                    Overlapmatrix=AtomicBasis.getTransformationmatrix(Atoms,Atoms,Basis)
                     OverlapMatrixFlag=True
                 diff=np.abs(Overlapmatrix-OLM)
                 absre.append(np.max(np.max(diff)))

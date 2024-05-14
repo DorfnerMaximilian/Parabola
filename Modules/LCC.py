@@ -30,7 +30,7 @@ def getManyBodyCouplings(eta,LCC,id_homo):
                 HOMOit                (int)           the index of the HOMO orbital (python convention)
     '''
 
-    #generate g matrix, h matrix and k matrices
+            #generate g matrix, h matrix and k matrices
     g=LCC[:,id_homo+1:,id_homo+1:]
     h=LCC[:,:id_homo+1,:id_homo+1]*(-1) # minus 1 due to fermionic commutator!
     k=LCC[:,:id_homo+1,id_homo+1:]
@@ -47,8 +47,8 @@ def getManyBodyCouplings(eta,LCC,id_homo):
             klamb=k[lamb,:,:]
             K[lamb,m]=np.trace(klamb@etap)
     H=np.zeros((Num_OfModes,Num_OfExciteStates,Num_OfExciteStates)) #Coupling between the excited states
-    for p in Util.progressbar(range(Num_OfExciteStates),"Computing Coupling between excited States:",40):
-        for q in range(p,Num_OfExciteStates):
+    for p in Util.progressbar(range(Num_OfExciteStates),"Computing Coupling between Excited State 1:",40):
+        for q in Util.progressbar(range(p,Num_OfExciteStates),"Computing Coupling between Excited State 2:",40):
             etap=eta[id_homo+1:,:id_homo+1,p] #First index electrons second hole
             etaq=eta[id_homo+1:,:id_homo+1,q]
             for lamb in range(Num_OfModes):
@@ -106,7 +106,7 @@ def getadiabaticallyConnectedEigenstates(orthogonalEigenstates_Eq,orthorgonalEig
         adibaticallyConnectediters_Plus.append(iter1)
         if overlaps[iter1]<0:
             orthorgonalEigenstates_deflected[iter1]*=-1
-        if maximumAbsOverlap < 0.5:
+        if maximumAbsOverlap < 0.3:
             print("Maximum Overlap: ", maximumAbsOverlap)
             raise ValueError("Maximum Overlap too small! Check your inputs!")
     return adibaticallyConnectediters_Plus
