@@ -170,9 +170,12 @@ def readinMatrices(parentfolder="./",filename='KSHamiltonian'):
                         iter+=1
             np.save(parentfolder+"/"+"KSHamiltonian",KSHamiltonian)
             np.save(parentfolder+"/"+"OLM",OLM)
+            KSHamiltonian_alpha=KSHamiltonian
+            KSHamiltonian_beta=KSHamiltonian_alpha
             os.remove(parentfolder+"/"+"KSHamiltonian")
         except:
-            KSHamiltonian=np.load(parentfolder+"/KSHamiltonian.npy")
+            KSHamiltonian_alpha=np.load(parentfolder+"/KSHamiltonian.npy")
+            KSHamiltonian_beta=KSHamiltonian_alpha
             OLM=np.load(parentfolder+"/OLM.npy")
     elif mul==2:
         try:
@@ -217,7 +220,7 @@ def readinMatrices(parentfolder="./",filename='KSHamiltonian'):
             KSHamiltonian_beta=np.load(parentfolder+"/KSHamiltonian_beta.npy")
             OLM=np.load(parentfolder+"/OLM.npy")
             KSHamiltonian=KSHamiltonian_alpha
-    return KSHamiltonian,OLM
+    return KSHamiltonian_alpha,KSHamiltonian_beta,OLM
 def readinMos(parentfolder="./"):
     ## Reads the Molecular Orbitals from a provided file
     ## input:
@@ -278,12 +281,12 @@ def readCubeFile(filename,parentfolder="./"):
         lines=file.readlines()
         it=0
         Cubedata=False
-        for line in lines:
-            if it==3:
+        for line in lines[2:]:
+            if it==1:
                 Nx=int(line.split()[0])
-            if it==4:
+            if it==2:
                 Ny=int(line.split()[0])
-            if it==5:
+            if it==3:
                 Nz=int(line.split()[0])
             if len(line.split())==6:
                 Cubedata=True

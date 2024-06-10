@@ -101,16 +101,52 @@ def getElectronicCouplings(parentfolder="./"):
     ##   input:   parentfolder:         (string)            absolute/relative path, where the geometry optimized .xyz file lies 
     ##                                                      in the subfolders there we find the electronic structure at displaced geometries                         
     try:
-        E=np.load(parentfolder+"/KS-Eigenvalues.npy")
+        E_alpha=np.load(parentfolder+"/KS_Eigenvalues_alpha.npy")
+        E_beta=np.load(parentfolder+"/KS_Eigenvalues_beta.npy")
     except:
-        KSHamiltonian,OLM=Read.readinMatrices(parentfolder)
+        KSHamiltonian_alpha,KSHamiltonian_beta,OLM=Read.readinMatrices(parentfolder)
         Sm12=LoewdinTransformation(OLM)
-        KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
-        E,_=np.linalg.eigh(KSHorth)
-        np.save(parentfolder+"/KS-Eigenvalues",E)
-    return E
+        KSHorth_alpha=np.dot(Sm12,np.dot(KSHamiltonian_alpha,Sm12))
+        E_alpha,_=np.linalg.eigh(KSHorth_alpha)
+        KSHorth_beta=np.dot(Sm12,np.dot(KSHamiltonian_beta,Sm12))
+        E_beta,_=np.linalg.eigh(KSHorth_beta)
+        np.save(parentfolder+"/KS_Eigenvalues_alpha",E_alpha)
+        np.save(parentfolder+"/KS_Eigenvalues_beta",E_beta)
+    return E_alpha,E_beta
 def compressKSfile(parentfolder="./"):
-    _,_=Read.readinMatrices(parentfolder)
+    _,_,_=Read.readinMatrices(parentfolder)
+def compressCubefile(parentfolder="./"):
+    spinmultiplicity=Read.checkforSpinMultiplicity(parentfolder)
+    cubefiles = [f for f in os.listdir(parentfolder) if f.endswith('.cube')]
+    for file in cubefiles:
+        with open(file,"r") as f:
+            summand=0
+            for it,line in enumerate(f):
+                if it<=1:
+                    if it==1:
+                        print(line)
+                        if line.split()[3]=="1":
+                            spin="alpha"
+                        elif line.split()[3]=="2":
+                            spin="beta"
+                        else:
+                            ValueError("Spin Values other then 1 or 2 are not implemented")
+                        if line.split()[5]=="HOMO":
+                            summand=0
+                        elif line.split()[5]=="LUMO":
+                            summand=1
+                        else:
+                            ValueError("Fourth column should be either HOMO or LUMO!")
+                        number=int(line.split()[7])
+                        if spinmultiplicity==1:
+                            filename=str(summand+number)
+                        if spinmultiplicity==2:
+                            filename=str(summand+number)+"_"+spin
+                else:
+                    break
+        Orbital=Read.readCubeFile(file)
+        np.save(parentfolder+"/"+filename,Orbital)
+        os.remove(parentfolder+"/"+file)
 def CompressFolder(writeexcludelist=False):
     dirs=[x[0] for x in os.walk("./")]
     dirs=dirs[1:]

@@ -366,7 +366,7 @@ def CheckConvergence(quantity,path='./'):
                 SameSizeFlag=True
                 cellsize=float(strcut[:-1])
                 cellsizes.append(cellsize)
-                _,OLM=Read.readinMatrices(path+folder)
+                _,_,OLM=Read.readinMatrices(path+folder)
                 print("Reading in Overlapmatrix -> Done")
                 Atoms=Read.readinAtomicCoordinates(path+folder)
                 print("Reading in Atomic Coordinates -> Done")
@@ -380,7 +380,7 @@ def CheckConvergence(quantity,path='./'):
             else:
                 cellsize=(float(strcut[0:2]),float(strcut[3:5]),float(strcut[6:-1]))
                 cellsizes.append(cellsize)
-                _,OLM=Read.readinMatrices(path+folder)
+                _,_,OLM=Read.readinMatrices(path+folder)
                 print("Reading in Overlapmatrix -> Done")
                 Atoms=Read.readinAtomicCoordinates(path+folder)
                 print("Reading in Atomic Coordinates -> Done")
