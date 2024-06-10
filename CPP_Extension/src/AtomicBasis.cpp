@@ -223,88 +223,6 @@ double IJ_Int(const std::array<double, 3>& X, const std::vector<Monomial>& lm1,c
 
     return integral;
 }
-double O_Int(const std::array<double, 3>& X,std::vector<Monomial>& lm1,std::vector<Monomial>& lm2, double A1, double A2,int direction) {
-    // computes the O integral used in the real space rep for the  using the monomial decomposition of the 
-    // solid harmonics.
-    //Input: X of the difference vector R1-R2
-    //A1: positive numerical
-    //A2: positive numerical
-
-    //Initialize all constants
-    double Jintegral=0.0;
-    std::array<double,3> Y1={A2*X[0]/(A1+A2),A2*X[1]/(A1+A2),A2*X[2]/(A1+A2)};
-    std::array<double,3> Y2={-1.0*A1*X[0]/(A1+A2),-1.0*A1*X[1]/(A1+A2),-1.0*A1*X[2]/(A1+A2)};
-    double alpha=A1+A2;
-    if(direction==0){
-    //Perform the sum 
-    for (auto& Z1 : lm1) {
-        for (const auto& Z2 : lm2) {
-            Z1.increaseIndex1();
-            Jintegral += Z1.prefactor * Z2.prefactor * KFunction(Y1, Y2, Z1.indices, Z2.indices, alpha);
-        }
-    }
-    double A12red = -1.0*A1 * A2 / (A1 + A2);
-    double Exponent = A12red * (X[0]*X[0]+X[1]*X[1]+X[2]*X[2]);
-    double gaussianPrefactor = std::exp(Exponent);
-    double integral = gaussianPrefactor * Jintegral;
-
-    return integral;
-    }else if (direction==1){
-    
-    //Perform the sum 
-    for (auto& Z1 : lm1) {
-        for (const auto& Z2 : lm2) {
-            Z1.increaseIndex2();
-            Jintegral += Z1.prefactor * Z2.prefactor * KFunction(Y1, Y2, Z1.indices, Z2.indices, alpha);
-        }
-    }
-    double A12red = -1.0*A1 * A2 / (A1 + A2);
-    double Exponent = A12red * (X[0]*X[0]+X[1]*X[1]+X[2]*X[2]);
-    double gaussianPrefactor = std::exp(Exponent);
-    double integral = gaussianPrefactor * Jintegral;
-
-    return integral;
-
-    }else if (direction==2){
-        //Perform the sum 
-    for (auto& Z1 : lm1) {
-        for (const auto& Z2 : lm2) {
-            Z1.increaseIndex3();
-            Jintegral += Z1.prefactor * Z2.prefactor * KFunction(Y1, Y2, Z1.indices, Z2.indices, alpha);
-        }
-    }
-    double A12red = -1.0*A1 * A2 / (A1 + A2);
-    double Exponent = A12red * (X[0]*X[0]+X[1]*X[1]+X[2]*X[2]);
-    double gaussianPrefactor = std::exp(Exponent);
-    double integral = gaussianPrefactor * Jintegral;
-
-    return integral;
-
-    }else{
-        return 0.0;
-    }
-}
-
-double DipoleBasisFunctionContribution(const std::array<double,3>& R1,
-                  const std::vector<double>& contr_coeff1,
-                  const std::vector<double>& alphas1,
-                  std::vector<Monomial>& lm1,
-                  const std::array<double,3>& R2,
-                  const std::vector<double>& contr_coeff2,
-                  const std::vector<double>& alphas2,
-                  std::vector<Monomial>& lm2,
-                  int direction) {
-
-    double DipoleBasisFunctionContribution_sum = 0.0;
-        // Compute the overlap for the shifted positions
-        for (size_t it1 = 0; it1 < alphas1.size(); ++it1) {
-            for (size_t it2 = 0; it2 < alphas2.size(); ++it2) {
-                DipoleBasisFunctionContribution_sum += contr_coeff1[it1] * contr_coeff2[it2] * O_Int({R1[0] - R2[0], R1[1] - R2[1], R1[2] - R2[2]}, lm1, lm2, alphas1[it1], alphas2[it2], direction);
-            }
-        }
-
-    return DipoleBasisFunctionContribution_sum;
-}
 
 // Function to compute the overlap of two basis functions
 double getoverlap(const std::array<double,3>& R1,
@@ -455,78 +373,119 @@ void free_ptr(double* array) {
     // Free the memory allocated for the array
     delete[] array;
 }
-
 //#########################################################################
 //## END Definition of the different function for Overlap computation
 //#########################################################################
-double* getBasisSetContribution(const char* atoms_set1[],
-                                const double positions_set1[],
-                                const double alphas_set1[],
-                                const int alphasLengths_set1[],
-                                const double contr_coef_set1[],
-                                const int contr_coefLengths_set1[],
-                                const char* lms_set1[],
-                                int size_set1,
-                                const int direction
-                                ) {
+
+//#########################################################################
+//## Definition of the different function for Real Space Representation
+//#########################################################################
+double ExponentialContribution(const std::array<double,3>&  Delta,
+                    const std::vector<double>& contr_coeff,
+                    const std::vector<double>& alphas){
+                    double value=0.0;
+                    for (size_t it = 0; it < alphas.size(); ++it) {
+                value += contr_coeff[it] * std::exp(-alphas[it]*(Delta[0]*Delta[0]+Delta[1]*Delta[1]+Delta[2]*Delta[2]));
+        }
+return value;
+                    }
+double PolynomialContribution(const std::array<double,3>&  Delta,
+                              const std::vector<Monomial>& lm){
+    double value=0.0;
+    for (const auto& Z : lm) {
+        value += Z.prefactor * pow(Delta[0],Z.indices[0])*pow(Delta[1],Z.indices[1])*pow(Delta[2],Z.indices[2]);
+        }
+return value;
+}                 
+// Function to compute the a real space grid representation of a Basisfct.
+double getBasisFunctionOnGrid(const std::array<double,3>&  r,
+                    const std::array<double,3>& R,
+                    const std::vector<double>& contr_coeff,
+                    const std::vector<double>& alphas,
+                    const std::vector<Monomial>& lm,
+                    const std::vector<double>& cell_vectors) {
+    double WFNvalue = 0.0;
+    // Loop over cell vectors
+    for (size_t cell_index = 0; cell_index < cell_vectors.size(); cell_index += 3) {
+        std::array<double, 3> cell_vector = {cell_vectors[cell_index],cell_vectors[cell_index + 1],cell_vectors[cell_index + 2]};
+        std::array<double, 3> Delta= {r[0]-R[0]-cell_vector[0],r[1]-R[1]-cell_vector[1],r[2]-R[2]-cell_vector[2]};
+        WFNvalue += PolynomialContribution(Delta,lm)*ExponentialContribution(Delta,contr_coeff,alphas);
+        }
+    return WFNvalue;
+}
+double* get_WFN_On_Grid(const double xyzgrid[],
+                        int size_xyzgrid,
+                        const double WFNcoefficients[],
+                        const char* atoms_set[],
+                        const double positions_set[],
+                        const double alphas_set[],
+                        const int alphasLengths_set[],
+                        const double contr_coef_set[],
+                        const int contr_coefLengths_set[],
+                        const char* lms_set[],
+                        int size_set,
+                        const double cell_vectors[],
+                        int size_cell_vectors) {
 
     // Initialize the map of monomials
     std::unordered_map<std::string, std::vector<Monomial>> solidHarmonics = getSolidHarmonics();
     //Process the cell_vectors
+    std::vector<double> cell_vectors_vec(cell_vectors, cell_vectors + size_cell_vectors);
+    // Process the xyzgrid
+    std::vector<double> xyzgrid_vec(xyzgrid, xyzgrid + size_xyzgrid);
+    // Process the WFNcoefficients
+    std::vector<double> WFNcoefficients_vec(WFNcoefficients, WFNcoefficients + size_set);
+    // Process the input arrays - construct Basisfunction instances
+    std::vector<Basisfunction> basisfunctions_set;
+    int arrayIndex_set = 0;
+    int alphasIndex_set = 0;
+    int contrCoefIndex_set = 0;
 
-
-    // Process the input arrays - construct Basisfunction instances for set 1
-    std::vector<Basisfunction> basisfunctions_set1;
-    int arrayIndex_set1 = 0;
-    int alphasIndex_set1 = 0;
-    int contrCoefIndex_set1 = 0;
-
-    for (int i = 0; i < size_set1; ++i) {
-        std::string atom(atoms_set1[i]);
-        std::array<double, 3> position = {positions_set1[arrayIndex_set1],
-                                          positions_set1[arrayIndex_set1 + 1],
-                                          positions_set1[arrayIndex_set1 + 2]};
+    for (int i = 0; i < size_set; ++i) {
+        std::string atom(atoms_set[i]);
+        std::array<double, 3> position = {positions_set[arrayIndex_set],
+                                          positions_set[arrayIndex_set + 1],
+                                          positions_set[arrayIndex_set + 2]};
 
         // Extract alphas for the current basis function in set 1
-        int alphasLength_set1 = alphasLengths_set1[i];
-        std::vector<double> alphas_list_set1(alphas_set1 + alphasIndex_set1, alphas_set1 + alphasIndex_set1 + alphasLength_set1);
-        alphasIndex_set1 += alphasLength_set1;
+        int alphasLength_set = alphasLengths_set[i];
+        std::vector<double> alphas_list_set(alphas_set + alphasIndex_set, alphas_set + alphasIndex_set + alphasLength_set);
+        alphasIndex_set += alphasLength_set;
 
         // Extract contr_coef for the current basis function in set 1
-        int contrCoefLength_set1 = contr_coefLengths_set1[i];
-        std::vector<double> contr_coef_list_set1(contr_coef_set1 + contrCoefIndex_set1, contr_coef_set1 + contrCoefIndex_set1 + contrCoefLength_set1);
-        contrCoefIndex_set1 += contrCoefLength_set1;
+        int contrCoefLength_set = contr_coefLengths_set[i];
+        std::vector<double> contr_coef_list_set(contr_coef_set + contrCoefIndex_set, contr_coef_set + contrCoefIndex_set + contrCoefLength_set);
+        contrCoefIndex_set += contrCoefLength_set;
 
-        std::string lm(lms_set1[i]);
+        std::string lm(lms_set[i]);
 
-        Basisfunction basisfunction(atom, position, alphas_list_set1, contr_coef_list_set1, lm);
-        basisfunctions_set1.push_back(basisfunction);
+        Basisfunction basisfunction(atom, position, alphas_list_set, contr_coef_list_set, lm);
+        basisfunctions_set.push_back(basisfunction);
 
-        arrayIndex_set1 += 3;  // Increment by 3 for positions (3 elements per position)
+        arrayIndex_set += 3;  // Increment by 3 for positions (3 elements per position)
     }
 
-    double* DipoleContasArray_ptr = new double[size_set1*size_set1];
-    // Now, loop over both sets and compute overlaps
-    #pragma omp parallel for collapse(2)
-    for (int i = 0; i < size_set1; ++i) {
-        for (int j = 0; j < size_set1; ++j) {
-            double DipoleCont = DipoleBasisFunctionContribution(basisfunctions_set1[i].position,
-                                        basisfunctions_set1[i].contr_coef,
-                                        basisfunctions_set1[i].alphas,
-                                        solidHarmonics[basisfunctions_set1[i].lm],
-                                        basisfunctions_set1[j].position,
-                                        basisfunctions_set1[j].contr_coef,
-                                        basisfunctions_set1[j].alphas,
-                                        solidHarmonics[basisfunctions_set1[j].lm],
-                                        direction);
+    double* WFNonGridArray_ptr = new double[size_xyzgrid/3];
+    std::cout<<" size_xyzgrid= "<<size_xyzgrid/3<<"\n";
+    // Now, loop 
+    #pragma omp parallel for
+    for (int i = 0; i < size_xyzgrid; i+=3) {
+        double WFNvalue=0.0;
+        const std::array<double,3>&  r= {xyzgrid[i],xyzgrid[i+1],xyzgrid[i+2]};
+        for (int j = 0; j < size_set; ++j) {
+            WFNvalue += WFNcoefficients_vec[j]*getBasisFunctionOnGrid(r,
+                                        basisfunctions_set[j].position,
+                                        basisfunctions_set[j].contr_coef,
+                                        basisfunctions_set[j].alphas,
+                                        solidHarmonics[basisfunctions_set[j].lm],
+                                        cell_vectors_vec);
 
             // Assign result to the appropriate index in the output array
-            DipoleContasArray_ptr[i * size_set1 + j] = DipoleCont;
         }
+        WFNonGridArray_ptr[i/3] = WFNvalue;
     }
-    return DipoleContasArray_ptr;
+    return WFNonGridArray_ptr;
 }
-
 }
 
 

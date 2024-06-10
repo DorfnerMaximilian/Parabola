@@ -612,4 +612,111 @@ def getTransformationmatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0],
 
     return OLP
 
+def WFNonxyzGrid(grid1,grid2,grid3,Coefficients,Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib=pathtocpp_lib):
+    ##Compute the overlap & transformation matrix of the Basis functions with respect to the conventional basis ordering
+    ##input: Atoms              atoms of the first index
+    ##                           list of sublists. 
+    ##                           Each of the sublists has five elements. 
+    ##                           Sublist[0] contains the atomorder as a int.
+    ##                           Sublist[1] contains the symbol of the atom.
+    ##                           Sublist[2:] containst the x y z coordinates.
+    ##                                       unit: Angstroem
+    ##
+    ##
+    ##       Basis               dic. of lists of sublists. The keys of the dic. are
+    ##                           the atomic symbols.
+    ##                           list contains sublist, where each Basisfunction of the 
+    ##                           considered atom corresponds the one sublist.
+    ##                           sublist[0] contains the set index as a string. 
+    ##                           sublist[1] contains the shell index as a string
+    ##                           sublist[2] contains the angular momentum label 
+    ##                           as a string (e.g. shellindex py ect.)
+    ##                           sublist[3:] are lists with two elements.
+    ##                           The first corresponds the the exponent of the Gaussian
+    ##                           The second one corresponds to the contraction coefficient
+    ##
+    ##
+    ##     cellvectors (opt.)    different cell vectors to take into account in the calculation the default implements open boundary conditions
+    ##output:   Overlapmatrix    The Transformation matrix as a numpy array
+    
+    # Load the shared library
+    lib = cdll.LoadLibrary(pathtolib)
+    
+    # Conversion factors and other initialization
+    ConFactors = PhysConst.ConversionFactors()
+    #Make the grid 
+    xyz_grid=np.array(np.meshgrid(grid1,grid2,grid3,indexing="ij")).flatten("F").tolist()
+    # Initialize the python lists for Basis Set 1
+    atoms_set = []
+    positions_set = []
+    alphas_lengths_set = []
+    alphas_set = []
+    contr_coef_set = []
+    lms_set = []
 
+    # Create Python lists for input (Set 1)
+    for itAtom in range(len(Atoms)):
+        Atom_type = Atoms[itAtom][1]
+        B = Basis[Atom_type]
+        for itBasis in range(len(Basis[Atom_type])):
+            atoms_set.append(Atom_type)
+            R = np.array(Atoms[itAtom][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            for it1 in range(len(R)):
+                positions_set.append(R[it1])
+            state = B[itBasis]
+            dalpha = state[3:]
+            alphas_lengths_set.append(len(dalpha))
+            for it2 in range(len(dalpha)):
+                alphas_set.append(dalpha[it2][0])
+                contr_coef_set.append(dalpha[it2][1])
+            lm = state[2][1:]
+            lms_set.append(lm)
+
+    contr_coef_lengths_set= alphas_lengths_set  # Lengths of contr_coef for each basis function in Set 1
+
+    # Define the function signature
+    get_WFN_On_Grid = lib.get_WFN_On_Grid
+    get_WFN_On_Grid.restype = POINTER(c_double)
+    get_WFN_On_Grid.argtypes = [POINTER(c_double), 
+                                c_int,    
+                                POINTER(c_double),    
+                                POINTER(c_char_p),    
+                                POINTER(c_double),
+                                POINTER(c_double),
+                                POINTER(c_int),
+                                POINTER(c_double),
+                                POINTER(c_int),
+                                POINTER(c_char_p),
+                                c_int,
+                                POINTER(c_double),
+                                c_int]
+
+    freeArray = lib.free_ptr
+    freeArray.argtypes = [POINTER(c_double)]
+
+    # Convert Python lists to pointers
+    atoms_set_ptr = (c_char_p * len(atoms_set))(*[s.encode("utf-8") for s in atoms_set])
+    positions_set_ptr = (c_double * len(positions_set))(*positions_set)
+    alphas_set_ptr = (c_double * len(alphas_set))(*alphas_set)
+    alphas_lengths_set_ptr = (c_int * len(alphas_lengths_set))(*alphas_lengths_set)
+    contr_coef_set_ptr = (c_double * len(contr_coef_set))(*contr_coef_set)
+    contr_coef_lengths_set_ptr = (c_int * len(contr_coef_lengths_set))(*contr_coef_lengths_set)
+    lms_set_ptr = (c_char_p * len(lms_set))(*[s.encode("utf-8") for s in lms_set])
+
+
+    cell_vectors_ptr = (c_double * len(cell_vectors))(*cell_vectors)
+    xyzgrid_ptr = (c_double * len(xyz_grid))(*xyz_grid)
+
+    Coefficients_ptr=(c_double * len(Coefficients))(*Coefficients)
+    # Call the C++ function
+    WFN_On_Grid_array_ptr = get_WFN_On_Grid(xyzgrid_ptr,len(xyz_grid),
+                                    Coefficients_ptr,atoms_set_ptr, positions_set_ptr, alphas_set_ptr, alphas_lengths_set_ptr,
+                                    contr_coef_set_ptr, contr_coef_lengths_set_ptr, lms_set_ptr, len(atoms_set),
+                                    cell_vectors_ptr, len(cell_vectors))
+    array_data = np.ctypeslib.as_array(WFN_On_Grid_array_ptr, shape=(int(len(xyz_grid)/3),))
+    array_list = deepcopy(array_data)
+    freeArray(WFN_On_Grid_array_ptr)
+
+    WFN_on_Grid = np.reshape(np.array(array_list),(len(grid1),len(grid2),len(grid3)),"F")
+
+    return WFN_on_Grid
