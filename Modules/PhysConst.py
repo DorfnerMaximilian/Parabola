@@ -175,6 +175,7 @@ def AtomSymbolToAtomnumber(Symbol):
         "Pd": 46,
         "Ag": 47,
         "Cd": 48,
+        "Ce": 58,
     }
 
     if Symbol in atom_mapping:
