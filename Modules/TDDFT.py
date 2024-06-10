@@ -42,7 +42,7 @@ def getMOsPhases(filename="./"):
     return MOphases
 
 
-def getUniqueExcitedStates(minweight=0.05,pathToExcitedStates="./",pathtoMO="./"):
+def getUniqueExcitedStates(minweight=0.01,pathToExcitedStates="./",pathtoMO="./"):
     ## Parses the excited states from a TDDFPT calculation done in CP2K  
     ## determines the eta coefficients, with respect to the MO basis, which has 
     ## all positive phases! (see getMOsPhases for the definition of the phase)
@@ -344,7 +344,62 @@ def WFNonGrid(id=0,N1=200,N2=200,N3=200,parentfolder='./'):
     filename=str(id)
     np.save(parentfolder+"/"+filename,f)
     return f
-
+def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,saveflag=True,parentfolder='./'):
+    '''Function to represent the DFT eigenstate HOMO+id on a real space grid within the unit cell with Nx,Ny,Nz grid points
+       input:   id:               (int)                   specifies the Orbital, id=0 is HOMO id=1 is LUMO id=-1 is HOMO-1 ect. 
+       (opt.)   parentfolder:     (str)                   path to the .inp file of the cp2k calculation to read in the cell dimensions    
+                Nx,Ny,Nz:         (int)                   Number of grid points in each direction                        
+       output:  f                 (Nx x Ny x Nz np.array) Wavefunction coefficients, where first index is x, second y and third z
+    '''
+    Homoid=Util.getHOMOId(parentfolder)
+    KSHamiltonian,_,OLM=Read.readinMatrices(parentfolder)
+    Sm12=Util.LoewdinTransformation(OLM)
+    KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
+    _,A=np.linalg.eigh(KSHorth)
+    data=[]
+    for id in ids:
+        A[:,id+Homoid]*=getPhaseOfMO(A[:,id+Homoid])
+        a=Sm12@A[:,id+Homoid]
+        Atoms=Read.readinAtomicCoordinates(parentfolder)
+        Basis=AtomicBasis.getBasis(parentfolder)
+        Cellvectors=Read.readinCellSize(parentfolder)
+        #Convert to atomic units
+        cellvector1=Cellvectors[0]*1.88972613288564
+        cellvector2=Cellvectors[1]*1.88972613288564
+        cellvector3=Cellvectors[2]*1.88972613288564
+        #get voxel volume in a.u.**3
+        voxelvolume=np.dot(cellvector1,np.cross(cellvector2,cellvector3))/(N1*N2*N3)
+        #discretization
+        v1=cellvector1/np.linalg.norm(cellvector1)
+        v2=cellvector2/np.linalg.norm(cellvector2)
+        v3=cellvector3/np.linalg.norm(cellvector3)
+        length1=np.linalg.norm(cellvector1)/N1
+        length2=np.linalg.norm(cellvector2)/N2
+        length3=np.linalg.norm(cellvector3)/N3
+        grid1=length1*np.arange(N1)
+        grid2=length2*np.arange(N2)
+        grid3=length3*np.arange(N3)
+        f=AtomicBasis.WFNonxyzGrid(grid1,grid2,grid3,a,Atoms, Basis)
+        print(voxelvolume*np.sum(np.sum(np.sum(f**2))))
+        f/=np.sqrt(voxelvolume*np.sum(np.sum(np.sum(f**2))))
+        data.append(f)
+        filename=str(id)
+        if saveflag:
+            np.save(parentfolder+"/"+filename,f)
+    return np.array(data)
+def getOverlapOnGrids(WFN1,WFN2,parentfolder="./"):
+    N1=np.shape(WFN1)[0]
+    N2=np.shape(WFN1)[1]
+    N3=np.shape(WFN1)[2]
+    Cellvectors=Read.readinCellSize(parentfolder)
+    #Convert to atomic units
+    cellvector1=Cellvectors[0]*1.88972613288564
+    cellvector2=Cellvectors[1]*1.88972613288564
+    cellvector3=Cellvectors[2]*1.88972613288564
+    #get voxel volume in a.u.**3
+    voxelvolume=np.dot(cellvector1,np.cross(cellvector2,cellvector3))/(N1*N2*N3)
+    overlap=voxelvolume*np.sum(WFN1*WFN2)
+    return overlap
 def getTransitionDipoleMomentsNumerical(minweigth=0.05,Nx=100,Ny=100,Nz=100,pathtoExcitedstates="./",pathtoMO="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
        input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 

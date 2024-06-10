@@ -141,8 +141,12 @@ def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1):
     Atoms_Eq=Read.readinAtomicCoordinates(parentfolder+"/Equilibrium_Geometry/")
     #Construct Basis of the Equilibrium configuration
     Basis_Eq=AtomicBasis.getBasis(parentfolder+"/Equilibrium_Geometry/")
-    #Read in the KS Hamiltonian
-    KSHamiltonian_Eq,S_Eq=Read.readinMatrices(parentfolder+"/Equilibrium_Geometry/")
+    spinmultiplicity=Read.checkforSpinMultiplicity(parentfolder+"/Equilibrium_Geometry/")
+    if spinmultiplicity==1:
+        #Read in the KS Hamiltonian
+        KSHamiltonian_Eq,_,S_Eq=Read.readinMatrices(parentfolder+"/Equilibrium_Geometry/")
+    else:
+        ValueError("Higher Spin Multiplicity not yet implemented!")
     #perform a Loewdin Orthogonalization
     Sm12_Eq=Util.LoewdinTransformation(S_Eq)
     KSHorth_Eq=np.transpose(Sm12_Eq)@KSHamiltonian_Eq@Sm12_Eq
@@ -199,7 +203,7 @@ def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1):
         #----------------------------------------------------------------------
         folderplus='vector='+str(mu+1)+'sign=+'
         #Read in the KS Hamiltonian and the overlap matrix
-        KSHamiltonian_Plus,OLM_Plus=Read.readinMatrices(parentfolder+"/"+folderplus+'/')
+        KSHamiltonian_Plus,_,OLM_Plus=Read.readinMatrices(parentfolder+"/"+folderplus+'/')
         #Get the stompositions for the positively displaced atoms
         Atoms_Plus=Read.readinAtomicCoordinates(parentfolder+"/"+folderplus)
         Sm12_Plus=Util.LoewdinTransformation(OLM_Plus)
@@ -212,7 +216,7 @@ def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1):
         #----------------------------------------------------------------------
         folderminus='vector='+str(mu+1)+'sign=-'
         #Read in the KS Hamiltonian and the overlap matrix
-        KSHamiltonian_Minus,OLM_Minus=Read.readinMatrices(parentfolder+"/"+folderminus+'/')
+        KSHamiltonian_Minus,_,OLM_Minus=Read.readinMatrices(parentfolder+"/"+folderminus+'/')
         #Get the atom positions for the negatively displaced atoms
         Atoms_Minus=Read.readinAtomicCoordinates(parentfolder+"/"+folderminus)
         #perform a Loewdin Orthogonalization
