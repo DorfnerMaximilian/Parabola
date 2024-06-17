@@ -472,6 +472,7 @@ double* get_WFN_On_Grid(const double xyzgrid[],
     for (int i = 0; i < size_xyzgrid; i+=3) {
         double WFNvalue=0.0;
         const std::array<double,3>&  r= {xyzgrid[i],xyzgrid[i+1],xyzgrid[i+2]};
+        #pragma omp parallel for
         for (int j = 0; j < size_set; ++j) {
             WFNvalue += WFNcoefficients_vec[j]*getBasisFunctionOnGrid(r,
                                         basisfunctions_set[j].position,

@@ -96,23 +96,34 @@ def LoewdinTransformation(S,algorithm='Schur-Pade'):
     else:
         ValueError("Algorithm not recognized! Currently available 'Schur-Pade' and 'Diagonalization'")
     return Sm12
-def getElectronicCouplings(parentfolder="./"):
+def getNumberofBasisFunctions(parentfolder="./"):
+    _,_,OLM=Read.readinMatrices(parentfolder)
+    dim=np.shape(OLM)[0]
+    return dim
+def Diagonalize_KS_Hamiltonian(parentfolder="./"):
     ##  Function to compute the electronic energies from the equilibrium file
     ##   input:   parentfolder:         (string)            absolute/relative path, where the geometry optimized .xyz file lies 
     ##                                                      in the subfolders there we find the electronic structure at displaced geometries                         
-    try:
-        E_alpha=np.load(parentfolder+"/KS_Eigenvalues_alpha.npy")
-        E_beta=np.load(parentfolder+"/KS_Eigenvalues_beta.npy")
-    except:
-        KSHamiltonian_alpha,KSHamiltonian_beta,OLM=Read.readinMatrices(parentfolder)
-        Sm12=LoewdinTransformation(OLM)
-        KSHorth_alpha=np.dot(Sm12,np.dot(KSHamiltonian_alpha,Sm12))
-        E_alpha,_=np.linalg.eigh(KSHorth_alpha)
-        KSHorth_beta=np.dot(Sm12,np.dot(KSHamiltonian_beta,Sm12))
-        E_beta,_=np.linalg.eigh(KSHorth_beta)
-        np.save(parentfolder+"/KS_Eigenvalues_alpha",E_alpha)
-        np.save(parentfolder+"/KS_Eigenvalues_beta",E_beta)
-    return E_alpha,E_beta
+    spinmultiplicity=Read.checkforSpinMultiplicity(parentfolder)
+    if spinmultiplicity==1:
+        try:
+            E=np.load(parentfolder+"/KS_Eigenvalues.npy")
+            a_orth=np.load(parentfolder+"/KS_orth_Eigenstates.npy")
+            Sm12=np.load(parentfolder+"/OLMm12.npy")
+        except:
+            #Read in the KS Hamiltonian
+            KSHamiltonian_alpha,_,OLM=Read.readinMatrices(parentfolder)
+            Sm12=LoewdinTransformation(OLM)
+            KSHorth_alpha=np.dot(Sm12,np.dot(KSHamiltonian_alpha,Sm12))
+            E,a_orth=np.linalg.eigh(KSHorth_alpha)
+            np.save(parentfolder+"/OLMm12.npy",Sm12)
+            np.save(parentfolder+"/KS_Eigenvalues.npy",E)
+            np.save(parentfolder+"/KS_orth_Eigenstates.npy",a_orth)
+            os.remove(parentfolder+"/KSHamiltonian.npy")
+            os.remove(parentfolder+"/OLM.npy")
+    else:
+        ValueError("Higher Spin Multiplicity not yet implemented!")
+    return E,a_orth,Sm12
 def compressKSfile(parentfolder="./"):
     _,_,_=Read.readinMatrices(parentfolder)
 def compressCubefile(parentfolder="./"):
@@ -130,7 +141,7 @@ def compressCubefile(parentfolder="./"):
                         elif line.split()[3]=="2":
                             spin="beta"
                         else:
-                            ValueError("Spin Values other then 1 or 2 are not implemented")
+                            ValueError("Multiplicities other then 1 or 2 are not yet implemented")
                         if line.split()[5]=="HOMO":
                             summand=0
                         elif line.split()[5]=="LUMO":

@@ -10,35 +10,62 @@ import Modules.AtomicBasis as AtomicBasis
 
 pathtocpp_lib=os.environ["parabolapath"]+"/CPP_Extension/bin/AtomicBasis.so"
 #-------------------------------------------------------------------------
-def getPhaseOfMO(MO):
-    ## Definition of the phase convention
+def getPhaseOfMO_AO(MO):
+    ## Definition of the phase convention 
     ## input:   MO                 np.array(NumBasisfunctions)       Expansion coefficients of the MO in terms of AO's 
     ## output:  MOphases            list of integers            (list)       
     ## Example: MOphases[mo_index] is the phase (in +/- 1) defined by the function below (convention)
-    
     #The first non-vanishing element
-    numberofpositivephases=0
-    numberofnegativephases=0
-    for it in range(len(MO)):
-        if np.abs(MO[it])>10**(-10) and MO[it]>0:
-            numberofpositivephases+=1
-        if np.abs(MO[it])>10**(-10) and MO[it]<0:
-            numberofnegativephases+=1
-    if numberofpositivephases-numberofnegativephases>10**(-14):
+    sumofvalues=np.sum(MO)
+    #print(sumofvalues)
+    if sumofvalues>0:
         phase=1.0
     else:
         phase=-1.0
     return phase
-def getMOsPhases(filename="./"):
+def getPhaseOfMOs_AO(MOs,MOindices,parentfolder):
+    #getNumberOfBasisFkts
+    dim=np.shape(MOs)[0]
+    MOphases=np.zeros(dim)
+    HOMOid=Util.getHOMOId(parentfolder)
+    for it in range(np.shape(MOs)[1]):
+        MOphases[it]=getPhaseOfMO_AO(MOs[:,it])
+    return MOphases
+
+def getPhaseOfMOs_RealSpace(MOs,MOindices,parentfolder="./"):
+    #getNumberOfBasisFkts
+    dim=Util.getNumberofBasisFunctions(parentfolder)
+    print(dim)
+    MOphases=np.zeros(dim)
+    HOMOid=Util.getHOMOId(parentfolder)
+    Nx=np.shape(MOs[0,:,:,:])[0]
+    Ny=np.shape(MOs[0,:,:,:])[1]
+    Nz=np.shape(MOs[0,:,:,:])[2]
+    MOs_Parabola=WFNsOnGrid(MOindices,Nx,Ny,Nz,False,parentfolder)
+    for it,moindex in enumerate(MOindices):
+        it0=moindex+HOMOid
+        overlap=getOverlapOnGrids(MOs_Parabola[it,:,:,:],MOs[it,:,:,:],parentfolder)
+        print(overlap)
+        if np.abs(overlap)>0.8:
+            MOphases[it0]=np.sign(overlap)
+        else:
+            ValueError("Overlap for Phase Determination too small!")
+    return MOphases
+
+    
+def getMOsPhases(parentfolder="./"):
     ## Reads the Molecular Orbitals from a provided file
     ## input:   MOs                 np.array(NumBasisfunctions,Numbasisfunction)       Expansion coefficients of the MOs in terms of AO's (index 1 AO index, index2 MO index)
     ## (opt.)   filename            path to the MOs file        (string)
     ## output:  MOphases            list of integers            (list)       
     ## Example: MOphases[mo_index] is the phase (in +/- 1) defined by the function below (convention)
-    MOs=Read.readinMos(filename)
-    MOphases=[]
-    for moindex in range(np.shape(MOs)[1]):
-        MOphases.append(getPhaseOfMO(MOs[:,moindex]))
+    MOs,MOindices=Read.readinMos(parentfolder)
+    if len(np.shape(MOs))==2:
+        MOphases=getPhaseOfMOs_AO(MOs,MOindices,parentfolder)
+    elif len(np.shape(MOs))==4:
+        MOphases=getPhaseOfMOs_RealSpace(MOs,MOindices,parentfolder)
+    else:
+        ValueError("Wrong shape of MOs!")
     return MOphases
 
 
@@ -48,7 +75,6 @@ def getUniqueExcitedStates(minweight=0.01,pathToExcitedStates="./",pathtoMO="./"
     ## all positive phases! (see getMOsPhases for the definition of the phase)
     ## input:
     ## (opt.)   minweight               minimum amplitude to consider
-    ##          Delta                   Energy scale around the first excited state to consider [eV]
     ##          pathToExcitedStates     path to the output file of the Cp2k 
     ## output:  eta                     excited states represented as a NBasis x NBasis x NStates numpy array
     ##                                  NBasis is the number of used Basis functions 
@@ -60,8 +86,8 @@ def getUniqueExcitedStates(minweight=0.01,pathToExcitedStates="./",pathtoMO="./"
         Energies=np.load("ExcitedStateEnergies.npy")
     except:
         states=Read.readinExcitedStatesCP2K(pathToExcitedStates,minweight)
-        MOs=Read.readinMos(pathtoMO)
-        eta=np.zeros((np.shape(MOs)[0],np.shape(MOs)[1],len(states)))
+        dim=Util.getNumberofBasisFunctions(pathToExcitedStates)
+        eta=np.zeros((dim,dim,len(states)))
         MOsphases=getMOsPhases(pathtoMO)
         homoid=Util.getHOMOId(pathToExcitedStates)
         Energies=[]
@@ -76,12 +102,12 @@ def getUniqueExcitedStates(minweight=0.01,pathToExcitedStates="./",pathtoMO="./"
         #Choose the global phase of the excited state to be positive 
         for it in range(len(states)):
                 index=np.argmax(np.abs(eta[:,:,it]))
-                tupel=np.unravel_index(index,(np.shape(MOs)[0],np.shape(MOs)[1]))
+                tupel=np.unravel_index(index,(dim,dim))
                 eta[:,:,it]*=np.sign(eta[tupel[0],tupel[1],it])
         #Normalize the State 
         for it in range(len(states)):
             normalization=np.trace(np.transpose(eta[:,:,it])@eta[:,:,it])
-            print(normalization)
+            print("Normalization of state "+str(it)+":",normalization)
             eta[:,:,it]/=np.sqrt(normalization)
         np.save(pathToExcitedStates+"/"+"eta",eta)
         np.save(pathToExcitedStates+"/"+"ExcitedStateEnergies",Energies)
@@ -98,21 +124,15 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcite
     energies,eta=getUniqueExcitedStates(minweigth,pathtoExcitedstates,pathtoMO)
     id_homo=Util.getHOMOId(pathtoExcitedstates)
     ### Generate the Overlap Contribution 
-    KSHamiltonian,OLM=Read.readinMatrices(pathtoMO)
+    KSHamiltonian,_,OLM=Read.readinMatrices(pathtoMO)
     Sm12=Util.LoewdinTransformation(OLM)
     S12=sci.linalg.fractional_matrix_power(OLM, 0.5)
-    try:
-        a=np.load("MOs.npy")
-        #Fix the Phase
-        for it in range(np.shape(A)[1]):
-            a[:,it]*=getPhaseOfMO(S12@a[:,it])
-        A=S12@a
-    except:
-        KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
-        _,A=np.linalg.eigh(KSHorth)
-        #Fix the Phase
-        for it in range(np.shape(A)[1]):
-            A[:,it]*=getPhaseOfMO(A[:,it])
+    KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
+    _,A=np.linalg.eigh(KSHorth)
+    a=Sm12@A
+    #Fix the Phase
+    for it in range(np.shape(A)[1]):
+        A[:,it]*=getPhaseOfMO_AO(a[:,it])
     Atoms=Read.readinAtomicCoordinates(pathtoExcitedstates)
     Basis=AtomicBasis.getBasis(pathtoExcitedstates)
     Rx=np.zeros(np.shape(Sm12))
@@ -307,16 +327,11 @@ def WFNonGrid(id=0,N1=200,N2=200,N3=200,parentfolder='./'):
     Homoid=Util.getHOMOId(parentfolder)
     KSHamiltonian,OLM=Read.readinMatrices(parentfolder)
     Sm12=Util.LoewdinTransformation(OLM)
-    S12=sci.linalg.fractional_matrix_power(OLM, 0.5)
-    try:
-        MOs=np.load("MOs.npy")
-        a=MOs[:,id+Homoid]
-        a*=getPhaseOfMO(S12@a)
-    except:
-        KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
-        _,A=np.linalg.eigh(KSHorth)
-        A[:,id+Homoid]*=getPhaseOfMO(A[:,id+Homoid])
-        a=Sm12@A[:,id+Homoid]
+    KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
+    _,A=np.linalg.eigh(KSHorth)
+    a=Sm12@A[:,id+Homoid]
+    a*=getPhaseOfMO_AO(a)
+    
     Atoms=Read.readinAtomicCoordinates(parentfolder)
     Basis=AtomicBasis.getBasis(parentfolder)
     Cellvectors=Read.readinCellSize(parentfolder)
@@ -358,8 +373,8 @@ def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,saveflag=True,parentfolder='./'):
     _,A=np.linalg.eigh(KSHorth)
     data=[]
     for id in ids:
-        A[:,id+Homoid]*=getPhaseOfMO(A[:,id+Homoid])
         a=Sm12@A[:,id+Homoid]
+        a*=getPhaseOfMO_AO(a)
         Atoms=Read.readinAtomicCoordinates(parentfolder)
         Basis=AtomicBasis.getBasis(parentfolder)
         Cellvectors=Read.readinCellSize(parentfolder)

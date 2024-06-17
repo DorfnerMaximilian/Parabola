@@ -221,6 +221,73 @@ def readinMatrices(parentfolder="./",filename='KSHamiltonian'):
             OLM=np.load(parentfolder+"/OLM.npy")
             KSHamiltonian=KSHamiltonian_alpha
     return KSHamiltonian_alpha,KSHamiltonian_beta,OLM
+def readinMos_AO(parentfolder="./"):
+    ## Reads the Molecular Orbitals from a provided file in the AO basis valid for Multiplicity 1
+    ## input:
+    ## (opt.)   filename            path to the MOs file        (string)
+    ## output:  MOs                symmetric np.array(NumBasisfunctions,Numbasisfunction)       Expansion coefficients of the MOs in terms of AO's 
+    ## Example: MOs[:,0] are the expansion coefficients of the MO 0 in the canonically ordered atomic Basis
+    lastMOstart=0
+    with open(parentfolder+"/MOs") as f:
+        lineiter=0
+        for line in f:
+            if len(line.split())>6:
+                if line.split()[0]=="MO|" and line.split()[1]=="EIGENVALUES," and line.split()[2]=="OCCUPATION" and line.split()[3]=="NUMBERS," and line.split()[4]=="AND" and line.split()[5]=="SPHERICAL" and line.split()[6]=="EIGENVECTORS":
+                    lastMOstart=lineiter
+            lineiter+=1
+    MOstring=[]
+    BasisFKTIndex=-10**(-20)
+    with open(parentfolder+"/MOs") as f:
+        lineiter=0
+        for line in f:
+            if lineiter>=lastMOstart:
+                MOstring.append(line)
+            if len(line.split())>5:
+                if line.split()[1]=='E(Fermi):':
+                    BasisFKTIndex=lineiter-2
+            lineiter+=1
+    BasisFKTIndex-=lastMOstart
+    NUM_BASIS_FKT=int(MOstring[BasisFKTIndex].split()[1])
+    MOs=np.zeros((NUM_BASIS_FKT,NUM_BASIS_FKT))
+    HOMOid=util.getHOMOId(parentfolder)
+    Basenumber=0
+    MOindices=[]
+    for line in MOstring:
+        splited_line=line.split()[1:]
+        if len(splited_line)>=5:
+            if splited_line[0].isdigit() and splited_line[1].isdigit() and splited_line[2].isalpha():
+                aoBasisindex=int(splited_line[0])-1
+                iterator=0
+                for number_string in splited_line[4:]:
+                    number=float(number_string)
+                    moindex=Basenumber+iterator
+                    MOindices.append(moindex-HOMOid)
+                    MOs[aoBasisindex,moindex]=number
+                    iterator+=1
+                if aoBasisindex==NUM_BASIS_FKT-1:
+                    Basenumber+=4
+    np.save("MOs",MOs)
+    np.save("MOindices",MOindices)
+    os.remove(parentfolder+"/MOs")
+    return MOs,MOindices
+def readinMos_RealSpace(parentfolder="./"):
+    ## Reads the Molecular Orbitals from a provided file in a discretized real space basis (.cube)
+    ## input:
+    ## (opt.)   filename            path to the MOs file        (string)
+    ## output:  MOs                symmetric np.array(NumBasisfunctions,Numbasisfunction)       Expansion coefficients of the MOs in terms of AO's 
+    ## Example: MOs[:,0] are the expansion coefficients of the MO 0 in the canonically ordered atomic Basis
+    spinmultiplicity=checkforSpinMultiplicity(parentfolder)
+    npyfiles = [f for f in os.listdir(parentfolder) if f.endswith('.npy')]
+    MOs=[]
+    MOindices=[]
+    if spinmultiplicity==1:
+        for file in npyfiles:
+            if util.represents_int(file.split(".npy")[0]):
+                Monumber=int(file.split(".npy")[0])
+                data=np.load(parentfolder+"/"+file)
+                MOs.append(data)
+                MOindices.append(Monumber)
+    return np.array(MOs),MOindices
 def readinMos(parentfolder="./"):
     ## Reads the Molecular Orbitals from a provided file
     ## input:
@@ -228,49 +295,20 @@ def readinMos(parentfolder="./"):
     ## output:  MOs                symmetric np.array(NumBasisfunctions,Numbasisfunction)       Expansion coefficients of the MOs in terms of AO's 
     ## Example: MOs[:,0] are the expansion coefficients of the MO 0 in the canonically ordered atomic Basis
     try:
-        lastMOstart=0
-        with open(parentfolder+"/MOs") as f:
-            lineiter=0
-            for line in f:
-                if len(line.split())>6:
-                    if line.split()[0]=="MO|" and line.split()[1]=="EIGENVALUES," and line.split()[2]=="OCCUPATION" and line.split()[3]=="NUMBERS," and line.split()[4]=="AND" and line.split()[5]=="SPHERICAL" and line.split()[6]=="EIGENVECTORS":
-                        lastMOstart=lineiter
-                lineiter+=1
-        MOstring=[]
-        BasisFKTIndex=-10**(-20)
-        with open(parentfolder+"/MOs") as f:
-            lineiter=0
-            for line in f:
-                if lineiter>=lastMOstart:
-                    MOstring.append(line)
-                if len(line.split())>5:
-                    if line.split()[1]=='E(Fermi):':
-                        BasisFKTIndex=lineiter-2
-                lineiter+=1
-        BasisFKTIndex-=lastMOstart
-        NUM_BASIS_FKT=int(MOstring[BasisFKTIndex].split()[1])
-        MOs=np.zeros((NUM_BASIS_FKT,NUM_BASIS_FKT))
-        Basenumber=0
-        for line in MOstring:
-            splited_line=line.split()[1:]
-            if len(splited_line)>=5:
-                if splited_line[0].isdigit() and splited_line[1].isdigit() and splited_line[2].isalpha():
-                    aoBasisindex=int(splited_line[0])-1
-                    iterator=0
-                    for number_string in splited_line[4:]:
-                        number=float(number_string)
-                        moindex=Basenumber+iterator
-                        MOs[aoBasisindex,moindex]=number
-                        iterator+=1
-                    if aoBasisindex==NUM_BASIS_FKT-1:
-                        Basenumber+=4
-        np.save("MOs",MOs)
-        os.remove(parentfolder+"/"+"MOs")
-    except:
         MOs=np.load("MOs.npy")
-    return MOs
+        MOindices=np.load("MOindices.npy")
+    except:
+        #check if MO file exists
+        MOfiles= [f for f in os.listdir(parentfolder) if f.endswith('MOs')]
+        npyfiles = [f for f in os.listdir(parentfolder) if f.endswith('.npy')]
+        WFNFiles=[f for f in npyfiles if util.represents_int(f.split(".npy")[0])]
+        if len(MOfiles)==1:
+            MOs,MOindices=readinMos_AO(parentfolder)
+        elif len(WFNFiles)>0:
+            MOs,MOindices=readinMos_RealSpace(parentfolder)
+    return MOs,MOindices
     
-def readCubeFile(filename,parentfolder="./"):
+def readinCubeFile(filename,parentfolder="./"):
     '''Function to write a .cube file , the origin is assumed to be [0.0,0.0,0.0]
        input:   filename:         (str)                   name of the file 
        (opt.)   parentfolder:     (str)                   path to the .inp file of the cp2k calculation to read in the cell dimensions                               
@@ -478,7 +516,36 @@ def readinExcitedStatesCP2K(path,minweight=0.01):
 									stateiterator=[]
 								stateiteratorflag=True
 	return states
-
+def readinDipoleMoments(path="./"):
+    ## Parses the excited states & DipoleMoments from a TDDFPT calculation done in CP2K  
+    ## input:
+    ## (opt.)   minweight           minimum amplitude to consider
+    ## output: 
+	#get the output file 
+	out_files = [f for f in os.listdir(path) if f.endswith('.out')]
+	if len(out_files) != 0:
+        #Check if the calculation has run through
+		if len(out_files)>1:
+			raise ValueError('InputError: There should be at most .out file in the '+path+' directory')
+		readflag=False
+		energies=[]
+		TransitionDipolevectors=[]
+		with open(path+"/"+out_files[0],'r') as f:
+			for line in f:
+				if len(line.split())>4:
+					if line.split()[0]=="TDDFPT" and line.split()[1]==":" and line.split()[2]=="CheckSum" and line.split()[3]=="=":
+						readflag=False
+					if readflag:
+						energy=line.split()[2]
+						energies.append(float(energy))
+						dx=line.split()[3]
+						dy=line.split()[4]
+						dz=line.split()[5]
+						TransitionDipolevectors.append(np.array([float(dx),float(dy),float(dz)]))
+					if line.split()[0]=="number" and line.split()[1]=="energy" and line.split()[2]=="(eV)" and line.split()[3]=="x" and line.split()[4]=="y":
+						readflag=True
+	np.save("Transitiondipolevectors",TransitionDipolevectors)
+	np.save(path+"/"+"ExcitedStateEnergies",energies)
 def readinBasisVectors(parentfolder="./"):
     ## Reads in the normalized Basis vectors in which the Hessian is 
     ## represented. These are the directions, in which the atoms have
@@ -536,3 +603,47 @@ def readinBasisVectors(parentfolder="./"):
                     it+=3
         BasisVectors.append(basevector) #append the last base vector
         return BasisVectors,delta
+
+def getOutFileName(path="./"):
+    #Get the name of the .out file from the path
+    out_files = [f for f in os.listdir(path) if f.endswith('.out')]
+    if len(out_files) != 1:
+        raise ValueError('InputError: There should be only one .out file in the current directory')
+    #Get the number of atoms from the xyz file
+    outfilename=out_files[0]
+    return outfilename
+
+def readinG0W0Energies(path="./"):
+    ## Reads in the G0W0 energies and the respective Orbitals
+    ## input: 
+    ## (opt.)   parentfolder    path to the folder of the BasisHessian file         (string)
+    ## output:  
+    ##          BasisVectors    normalized displaced vectors                        (list of np.arrays)     
+    ##          delta           displacementfactor                                  (float)
+    ##          unit            unit of the displacementfactor                      (string, either 'Bohr' or 'sqrt(u)*Bohr') 
+    out_file=getOutFileName(path="./")
+    readflag=False
+    G0W0flag=False
+    orbitals=[]
+    E_SCF=[]
+    Sig_C=[]
+    Sigxmvxc=[]
+    with open(path+"/"+out_file) as f:
+        lines=f.readlines()
+        for line in lines:
+            if len(line.split())>1:
+                if line.split()[0]=="GW" and line.split()[1]=="HOMO-LUMO":
+                    G0W0flag=False
+                if readflag and G0W0flag:
+                    orbitals.append(int(line.split()[0])-1)
+                    E_SCF.append(float(line.split()[4]))
+                    Sig_C.append(float(line.split()[5]))
+                    Sigxmvxc.append(float(line.split()[6]))
+                if line.split()[0]=="G0W0" and line.split()[1]=="results":
+                    G0W0flag=True
+                if line.split()[0]=="Molecular" and line.split()[1]=="orbital" and line.split()[2]=="E_SCF":
+                    readflag=True
+    return  orbitals,np.array(E_SCF),np.array(Sig_C),np.array(Sigxmvxc)
+                
+
+    

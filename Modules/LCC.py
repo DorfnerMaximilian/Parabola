@@ -141,21 +141,12 @@ def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1):
     Atoms_Eq=Read.readinAtomicCoordinates(parentfolder+"/Equilibrium_Geometry/")
     #Construct Basis of the Equilibrium configuration
     Basis_Eq=AtomicBasis.getBasis(parentfolder+"/Equilibrium_Geometry/")
-    spinmultiplicity=Read.checkforSpinMultiplicity(parentfolder+"/Equilibrium_Geometry/")
-    if spinmultiplicity==1:
-        #Read in the KS Hamiltonian
-        KSHamiltonian_Eq,_,S_Eq=Read.readinMatrices(parentfolder+"/Equilibrium_Geometry/")
-    else:
-        ValueError("Higher Spin Multiplicity not yet implemented!")
-    #perform a Loewdin Orthogonalization
-    Sm12_Eq=Util.LoewdinTransformation(S_Eq)
-    KSHorth_Eq=np.transpose(Sm12_Eq)@KSHamiltonian_Eq@Sm12_Eq
     #Diagonalize to the KS Hamiltonian in the ortonormal Basis
-    E_Eq,a_orth_Eq=np.linalg.eigh(KSHorth_Eq)
+    E_Eq,a_orth_Eq,Sm12_Eq=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/Equilibrium_Geometry/")
     #get the normalized Eigenstates in the non-orthorgonal Basis & fix Phase
     orthorgonalEigenstates_Eq = []
     # Precompute phases
-    phases = np.array([TDDFT.getPhaseOfMO(a_orth_Eq[:, it]) for it in range(len(E_Eq))])
+    phases = np.array([TDDFT.getPhaseOfMO_AO(Sm12_Eq@a_orth_Eq[:, it]) for it in range(len(E_Eq))])
     #parsing the input
     Homoid=Util.getHOMOId(parentfolder+"/Equilibrium_Geometry/")
     #parsing for occupied orbitals
@@ -202,28 +193,18 @@ def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1):
         # Positively displaced 
         #----------------------------------------------------------------------
         folderplus='vector='+str(mu+1)+'sign=+'
-        #Read in the KS Hamiltonian and the overlap matrix
-        KSHamiltonian_Plus,_,OLM_Plus=Read.readinMatrices(parentfolder+"/"+folderplus+'/')
         #Get the stompositions for the positively displaced atoms
         Atoms_Plus=Read.readinAtomicCoordinates(parentfolder+"/"+folderplus)
-        Sm12_Plus=Util.LoewdinTransformation(OLM_Plus)
-        KSHorth_P=np.dot(Sm12_Plus,np.dot(KSHamiltonian_Plus,Sm12_Plus))
-        EPlus,a_orth_Plus=np.linalg.eigh(KSHorth_P)
+        EPlus,a_orth_Plus,Sm12_Plus=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/"+folderplus+"/")
         T_Eq_Plus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq)
         T_matrix_Plus=Sm12_Eq@T_Eq_Plus@Sm12_Plus
         #----------------------------------------------------------------------
         # Negatively displaced 
         #----------------------------------------------------------------------
         folderminus='vector='+str(mu+1)+'sign=-'
-        #Read in the KS Hamiltonian and the overlap matrix
-        KSHamiltonian_Minus,_,OLM_Minus=Read.readinMatrices(parentfolder+"/"+folderminus+'/')
         #Get the atom positions for the negatively displaced atoms
         Atoms_Minus=Read.readinAtomicCoordinates(parentfolder+"/"+folderminus)
-        #perform a Loewdin Orthogonalization
-        Sm12_Minus=Util.LoewdinTransformation(OLM_Minus)
-        KSHorth_Minus=np.dot(Sm12_Minus,np.dot(KSHamiltonian_Minus,Sm12_Minus))
-        #Diagonalize the KS Hamiltonian in the orthorgonal Basis
-        EMinus,a_orth_Minus=np.linalg.eigh(KSHorth_Minus)
+        EMinus,a_orth_Minus,Sm12_Minus=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/"+folderminus+"/")
         #obtain the Basis Transformation Matrix 
         T_Eq_Minus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq)
         T_Matrix_Minus=Sm12_Eq@T_Eq_Minus@Sm12_Minus
@@ -232,14 +213,14 @@ def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1):
         orthorgonalEigenstates_Plus=[]
         for it in range(len(EPlus)):
             orth_eigenstate=a_orth_Plus[:,it]
-            orth_eigenstate*=TDDFT.getPhaseOfMO(orth_eigenstate)
+            orth_eigenstate*=TDDFT.getPhaseOfMO_AO(Sm12_Plus@orth_eigenstate)
             if it in included_orbitals:
                 orthorgonalEigenstates_Plus.append(orth_eigenstate)
         #fix the phase of the Eigenstates
         orthorgonalEigenstates_Minus=[]
         for it in range(len(EMinus)):
             orth_eigenstate=a_orth_Minus[:,it]
-            orth_eigenstate*=TDDFT.getPhaseOfMO(orth_eigenstate)
+            orth_eigenstate*=TDDFT.getPhaseOfMO_AO(Sm12_Minus@orth_eigenstate)
             if it in included_orbitals:
                 orthorgonalEigenstates_Minus.append(orth_eigenstate)
         #Get the adiabtically connected eigenvalues/states for the positive displacement
