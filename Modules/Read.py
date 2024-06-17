@@ -529,7 +529,7 @@ def readinDipoleMoments(path="./"):
 			raise ValueError('InputError: There should be at most .out file in the '+path+' directory')
 		readflag=False
 		energies=[]
-		TransitionDipolevectors=[]
+		TransitionDipolevectors=[];Oscillatorstrenghts=[]
 		with open(path+"/"+out_files[0],'r') as f:
 			for line in f:
 				if len(line.split())>4:
@@ -541,10 +541,10 @@ def readinDipoleMoments(path="./"):
 						dx=line.split()[3]
 						dy=line.split()[4]
 						dz=line.split()[5]
-						TransitionDipolevectors.append(np.array([float(dx),float(dy),float(dz)]))
+						TransitionDipolevectors.append(np.array([float(dx),float(dy),float(dz)]));Oscillatorstrenghts.append(float(line.split()[6]))
 					if line.split()[0]=="number" and line.split()[1]=="energy" and line.split()[2]=="(eV)" and line.split()[3]=="x" and line.split()[4]=="y":
 						readflag=True
-	np.save("Transitiondipolevectors",TransitionDipolevectors)
+	np.save("Transitiondipolevectors",TransitionDipolevectors);np.save("Oscillatorstrenghts",Oscillatorstrenghts)
 	np.save(path+"/"+"ExcitedStateEnergies",energies)
 def readinBasisVectors(parentfolder="./"):
     ## Reads in the normalized Basis vectors in which the Hessian is 
