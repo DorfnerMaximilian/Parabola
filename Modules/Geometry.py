@@ -281,7 +281,59 @@ def changeConfiguration(folderlabel,vector,delta,sign,path_xyz='./',path_to="./"
         f.write("\n")
     f.close()
     return
+def changeConfiguration2(folderlabel,vector1,delta1,sign1,vector2,delta2,sign2,path_xyz='./',path_to="./"):
+    ## Reads in the equilibrium configuration xyz file and changes 
+    ## position of the atoms in the xyz file in direction of the unit vector delta 1 * vector1 +delta2*vector2
+    ## either:
+    ## by delta [units of corresponding xyzfile or ]
+    ##
+    ## input:   folderlabel name of the folder to create                     (string)
+    ##          vector      normalized vector of the size of 3 x atoms       (np.array)
+    ##          delta       change of the atomic configuration               (float)
+    ##          sign                                                         (0,1)
+    ## (opt.)   rescaleflag flag to control the rescaling of delta           (bool)
+    ## (opt.)   path   path to the folder of the VibAna calculation          (string)
+    ## output:  -               (void)
 
+    #Get the .xyz file
+    xyz_files = [f for f in os.listdir(path_xyz) if f.endswith('.xyz')]
+    if len(xyz_files) != 1:
+        raise ValueError('InputError: There should be only one xyz file in the current directory')
+    xyzfilename = xyz_files[0]
+    xyzcoordinates=[]
+    atomtypes=[]
+    with open(path_xyz+"/"+xyzfilename) as g:
+        lines = g.readlines()
+        for l in lines[2:]:
+            if len(l.split())>=4:
+                xyzcoordinates.append(float(l.split()[1]))
+                xyzcoordinates.append(float(l.split()[2]))
+                xyzcoordinates.append(float(l.split()[3]))
+                atomtypes.append(l.split()[0])
+    xyzcoordinates=np.array(xyzcoordinates)
+    xyzcoordinates=xyzcoordinates+(-1)**(sign1)*delta1*vector1+(-1)**(sign2)*delta2*vector2
+    if sign1==0:
+        symbolsign1='+'
+    if sign1==1:
+        symbolsign1='-'
+    if sign2==0:
+        symbolsign2='+'
+    if sign2==1:
+        symbolsign2='-'
+    foldername=path_to+folderlabel+"sign1="+symbolsign1+"sign2="+symbolsign2
+    os.mkdir(foldername)
+    f=open(foldername+"/"+xyzfilename,"w")
+    f.write(lines[0])
+    f.write(lines[1])
+    for iter in range(int(len(xyzcoordinates)/3)):
+        atom=atomtypes[iter]
+        xcoord=xyzcoordinates[3*iter]
+        ycoord=xyzcoordinates[3*iter+1]
+        zcoord=xyzcoordinates[3*iter+2]
+        f.write(atom+' '+str(xcoord)+' '+str(ycoord)+' '+str(zcoord))
+        f.write("\n")
+    f.close()
+    return
 def getNewXYZ(path='.'):
     ## Script to readout the last iteration of the GeoOpt file and 
     ## generate new oldxyzfile_opt.xyz file for Vibrational Analysis
