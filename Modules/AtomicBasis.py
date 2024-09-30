@@ -428,7 +428,7 @@ def getBasis(filename):
                     for it2 in range(NumofangularmomentumBasisfunctions[it1]):
                         shell+=1
                         for m in range(-l,l+1):
-                            Basisfunctions.append([str(setcounter),str(shell),str(minprincipalQuantumnumber+shell-1)+getAngularMomentumString(l,m)])
+                            Basisfunctions.append([str(setcounter),str(shell),getAngularMomentumString(l,m)])
                 linecounter=1
             if  newAtomSetflag:
                 numberofBasissets=int(firstcaracter)
@@ -445,10 +445,11 @@ def getBasis(filename):
                 Atombasis=[]
                 atom=firstcaracter
                 newAtomSetflag=True
+    print(BasisSet["C"])
     #Normalize the Basis
     for key in BasisSet.keys():
         for it in range(len(BasisSet[key])):
-            lm1=BasisSet[key][it][2][1:]
+            lm1=BasisSet[key][it][2][:]
             lm2=lm1
             dalpha1=BasisSet[key][it][3:]
             dalpha2=dalpha1
@@ -520,7 +521,7 @@ def getTransformationmatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0],
             for it2 in range(len(dalpha1)):
                 alphas_set1.append(dalpha1[it2][0])
                 contr_coef_set1.append(dalpha1[it2][1])
-            lm1 = state1[2][1:]
+            lm1 = state1[2][:]
             lms_set1.append(lm1)
 
     contr_coef_lengths_set1 = alphas_lengths_set1  # Lengths of contr_coef for each basis function in Set 1
@@ -548,7 +549,7 @@ def getTransformationmatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0],
             for it2 in range(len(dalpha2)):
                 alphas_set2.append(dalpha2[it2][0])
                 contr_coef_set2.append(dalpha2[it2][1])
-            lm2 = state2[2][1:]
+            lm2 = state2[2][:]
             lms_set2.append(lm2)
 
     contr_coef_lengths_set2 = alphas_lengths_set2  # Lengths of contr_coef for each basis function in Set 1
@@ -669,7 +670,7 @@ def WFNonxyzGrid(grid1,grid2,grid3,Coefficients,Atoms, Basis, cell_vectors=[0.0,
             for it2 in range(len(dalpha)):
                 alphas_set.append(dalpha[it2][0])
                 contr_coef_set.append(dalpha[it2][1])
-            lm = state[2][1:]
+            lm = state[2][:]
             lms_set.append(lm)
 
     contr_coef_lengths_set= alphas_lengths_set  # Lengths of contr_coef for each basis function in Set 1
