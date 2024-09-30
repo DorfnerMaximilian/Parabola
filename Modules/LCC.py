@@ -94,7 +94,6 @@ def getadiabaticallyConnectedEigenstates(orthogonalEigenstates_Eq,orthorgonalEig
 
     '''
     adibaticallyConnectediters_Plus = []
-
     # Precompute some values
     orthogonal_states_Plus = (np.array(orthorgonalEigenstates_deflected).T).copy()
     Tmatrix_Plus_dot_states_Plus = Tmatrix_deflected @ orthogonal_states_Plus
@@ -106,8 +105,8 @@ def getadiabaticallyConnectedEigenstates(orthogonalEigenstates_Eq,orthorgonalEig
         adibaticallyConnectediters_Plus.append(iter1)
         if overlaps[iter1]<0:
             orthorgonalEigenstates_deflected[iter1]*=-1
-        if maximumAbsOverlap < 0.3:
-            print("Maximum Overlap: ", maximumAbsOverlap)
+        if maximumAbsOverlap < 0.50:
+            print("Maximum Overlap: ", maximumAbsOverlap," for Orbital ", it0)
             raise ValueError("Maximum Overlap too small! Check your inputs!")
     return adibaticallyConnectediters_Plus
 
@@ -115,7 +114,7 @@ def getadiabaticallyConnectedEigenstates(orthogonalEigenstates_Eq,orthorgonalEig
 #######################################################################################################
 #Function to Compute the local Coupling constants g 
 #######################################################################################################
-def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1):
+def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
     '''Compute linear coupling constants from finitly displaced geometries.
     
     Parameters:
@@ -146,7 +145,7 @@ def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1):
     #get the normalized Eigenstates in the non-orthorgonal Basis & fix Phase
     orthorgonalEigenstates_Eq = []
     # Precompute phases
-    phases = np.array([TDDFT.getPhaseOfMO_AO(Sm12_Eq@a_orth_Eq[:, it]) for it in range(len(E_Eq))])
+    phases = np.array([TDDFT.getPhaseOfMO(a_orth_Eq[:, it]) for it in range(len(E_Eq))])
     #parsing the input
     Homoid=Util.getHOMOId(parentfolder+"/Equilibrium_Geometry/")
     #parsing for occupied orbitals
@@ -196,7 +195,7 @@ def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1):
         #Get the stompositions for the positively displaced atoms
         Atoms_Plus=Read.readinAtomicCoordinates(parentfolder+"/"+folderplus)
         EPlus,a_orth_Plus,Sm12_Plus=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/"+folderplus+"/")
-        T_Eq_Plus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq)
+        T_Eq_Plus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq,cell_vectors)
         T_matrix_Plus=Sm12_Eq@T_Eq_Plus@Sm12_Plus
         #----------------------------------------------------------------------
         # Negatively displaced 
@@ -206,21 +205,21 @@ def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1):
         Atoms_Minus=Read.readinAtomicCoordinates(parentfolder+"/"+folderminus)
         EMinus,a_orth_Minus,Sm12_Minus=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/"+folderminus+"/")
         #obtain the Basis Transformation Matrix 
-        T_Eq_Minus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq)
+        T_Eq_Minus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq,cell_vectors)
         T_Matrix_Minus=Sm12_Eq@T_Eq_Minus@Sm12_Minus
 
         #fix the phase of the Eigenstates
         orthorgonalEigenstates_Plus=[]
         for it in range(len(EPlus)):
             orth_eigenstate=a_orth_Plus[:,it]
-            orth_eigenstate*=TDDFT.getPhaseOfMO_AO(Sm12_Plus@orth_eigenstate)
+            orth_eigenstate*=TDDFT.getPhaseOfMO(orth_eigenstate)
             if it in included_orbitals:
                 orthorgonalEigenstates_Plus.append(orth_eigenstate)
         #fix the phase of the Eigenstates
         orthorgonalEigenstates_Minus=[]
         for it in range(len(EMinus)):
             orth_eigenstate=a_orth_Minus[:,it]
-            orth_eigenstate*=TDDFT.getPhaseOfMO_AO(Sm12_Minus@orth_eigenstate)
+            orth_eigenstate*=TDDFT.getPhaseOfMO(orth_eigenstate)
             if it in included_orbitals:
                 orthorgonalEigenstates_Minus.append(orth_eigenstate)
         #Get the adiabtically connected eigenvalues/states for the positive displacement
