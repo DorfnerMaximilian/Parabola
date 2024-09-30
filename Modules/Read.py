@@ -621,13 +621,14 @@ def readinG0W0Energies(path="./"):
     ##          BasisVectors    normalized displaced vectors                        (list of np.arrays)     
     ##          delta           displacementfactor                                  (float)
     ##          unit            unit of the displacementfactor                      (string, either 'Bohr' or 'sqrt(u)*Bohr') 
-    out_file=getOutFileName(path="./")
+    out_file=getOutFileName(path)
     readflag=False
     G0W0flag=False
     orbitals=[]
     E_SCF=[]
     Sig_C=[]
     Sigxmvxc=[]
+    E_QP=[]
     with open(path+"/"+out_file) as f:
         lines=f.readlines()
         for line in lines:
@@ -639,11 +640,22 @@ def readinG0W0Energies(path="./"):
                     E_SCF.append(float(line.split()[4]))
                     Sig_C.append(float(line.split()[5]))
                     Sigxmvxc.append(float(line.split()[6]))
+                    E_QP.append(float(line.split()[7]))
                 if line.split()[0]=="G0W0" and line.split()[1]=="results":
                     G0W0flag=True
                 if line.split()[0]=="Molecular" and line.split()[1]=="orbital" and line.split()[2]=="E_SCF":
                     readflag=True
-    return  orbitals,np.array(E_SCF),np.array(Sig_C),np.array(Sigxmvxc)
-                
+    return  orbitals,np.array(E_SCF),np.array(Sig_C),np.array(Sigxmvxc),np.array(E_QP)
+
+def readinGSEnergy(path="./"):
+    outfilename=getOutFileName(path)
+    GSEnergy=0.0
+    with open(path+"/"+outfilename,'r') as f:
+        for line in f:
+            if len(line.split())>8:
+                if line.split()[0]=="ENERGY|" and line.split()[1]=="Total" and line.split()[2]=="FORCE_EVAL":
+                    GSEnergy=float(line.split()[8])
+    
+    return GSEnergy      
 
     
