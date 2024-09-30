@@ -10,9 +10,9 @@ import Modules.AtomicBasis as AtomicBasis
 
 pathtocpp_lib=os.environ["parabolapath"]+"/CPP_Extension/bin/AtomicBasis.so"
 #-------------------------------------------------------------------------
-def getPhaseOfMO_AO(MO):
+def getPhaseOfMO(MO):
     ## Definition of the phase convention 
-    ## input:   MO                 np.array(NumBasisfunctions)       Expansion coefficients of the MO in terms of AO's 
+    ## input:   MO                 np.array(NumBasisfunctions)      Expansion coefficients of the MO in terms of Löwdin orthogonalized AOs 
     ## output:  MOphases            list of integers            (list)       
     ## Example: MOphases[mo_index] is the phase (in +/- 1) defined by the function below (convention)
     #The first non-vanishing element
@@ -23,13 +23,12 @@ def getPhaseOfMO_AO(MO):
     else:
         phase=-1.0
     return phase
-def getPhaseOfMOs_AO(MOs,MOindices,parentfolder):
+def getPhaseOfMOs(MOs):
     #getNumberOfBasisFkts
     dim=np.shape(MOs)[0]
     MOphases=np.zeros(dim)
-    HOMOid=Util.getHOMOId(parentfolder)
     for it in range(np.shape(MOs)[1]):
-        MOphases[it]=getPhaseOfMO_AO(MOs[:,it])
+        MOphases[it]=getPhaseOfMO(MOs[:,it])
     return MOphases
 
 def getPhaseOfMOs_RealSpace(MOs,MOindices,parentfolder="./"):
@@ -60,13 +59,14 @@ def getMOsPhases(parentfolder="./"):
     ## output:  MOphases            list of integers            (list)       
     ## Example: MOphases[mo_index] is the phase (in +/- 1) defined by the function below (convention)
     MOs,MOindices=Read.readinMos(parentfolder)
+    _,_,S=Read.readinMatrices(parentfolder)
+    S12=sci.linalg.fractional_matrix_power(S, 0.5)
+    a_orth=S12@MOs
     if len(np.shape(MOs))==2:
-        MOphases=getPhaseOfMOs_AO(MOs,MOindices,parentfolder)
-    elif len(np.shape(MOs))==4:
-        MOphases=getPhaseOfMOs_RealSpace(MOs,MOindices,parentfolder)
+        MOphases=getPhaseOfMOs(a_orth)
     else:
         ValueError("Wrong shape of MOs!")
-    return MOphases
+    return MOphases,MOindices
 
 
 def getUniqueExcitedStates(minweight=0.01,pathToExcitedStates="./",pathtoMO="./"):
@@ -88,7 +88,7 @@ def getUniqueExcitedStates(minweight=0.01,pathToExcitedStates="./",pathtoMO="./"
         states=Read.readinExcitedStatesCP2K(pathToExcitedStates,minweight)
         dim=Util.getNumberofBasisFunctions(pathToExcitedStates)
         eta=np.zeros((dim,dim,len(states)))
-        MOsphases=getMOsPhases(pathtoMO)
+        MOsphases,_=getMOsPhases(pathtoMO)
         homoid=Util.getHOMOId(pathToExcitedStates)
         Energies=[]
         for it in range(len(states)):
@@ -129,10 +129,9 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcite
     S12=sci.linalg.fractional_matrix_power(OLM, 0.5)
     KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
     _,A=np.linalg.eigh(KSHorth)
-    a=Sm12@A
     #Fix the Phase
     for it in range(np.shape(A)[1]):
-        A[:,it]*=getPhaseOfMO_AO(a[:,it])
+        A[:,it]*=getPhaseOfMO(A[:,it])
     Atoms=Read.readinAtomicCoordinates(pathtoExcitedstates)
     Basis=AtomicBasis.getBasis(pathtoExcitedstates)
     Rx=np.zeros(np.shape(Sm12))
@@ -330,7 +329,7 @@ def WFNonGrid(id=0,N1=200,N2=200,N3=200,parentfolder='./'):
     KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
     _,A=np.linalg.eigh(KSHorth)
     a=Sm12@A[:,id+Homoid]
-    a*=getPhaseOfMO_AO(a)
+    a*=getPhaseOfMO(A[:,id+Homoid])
     
     Atoms=Read.readinAtomicCoordinates(parentfolder)
     Basis=AtomicBasis.getBasis(parentfolder)
@@ -367,14 +366,11 @@ def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,saveflag=True,parentfolder='./'):
        output:  f                 (Nx x Ny x Nz np.array) Wavefunction coefficients, where first index is x, second y and third z
     '''
     Homoid=Util.getHOMOId(parentfolder)
-    KSHamiltonian,_,OLM=Read.readinMatrices(parentfolder)
-    Sm12=Util.LoewdinTransformation(OLM)
-    KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
-    _,A=np.linalg.eigh(KSHorth)
+    _,A,Sm12=Util.Diagonalize_KS_Hamiltonian(parentfolder)
     data=[]
     for id in ids:
         a=Sm12@A[:,id+Homoid]
-        a*=getPhaseOfMO_AO(a)
+        a*=getPhaseOfMO(A[:,id+Homoid])
         Atoms=Read.readinAtomicCoordinates(parentfolder)
         Basis=AtomicBasis.getBasis(parentfolder)
         Cellvectors=Read.readinCellSize(parentfolder)
@@ -394,7 +390,7 @@ def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,saveflag=True,parentfolder='./'):
         grid1=length1*np.arange(N1)
         grid2=length2*np.arange(N2)
         grid3=length3*np.arange(N3)
-        f=AtomicBasis.WFNonxyzGrid(grid1,grid2,grid3,a,Atoms, Basis)
+        f=AtomicBasis.WFNonxyzGrid(grid1,grid2,grid3,a,Atoms,Basis)
         print(voxelvolume*np.sum(np.sum(np.sum(f**2))))
         f/=np.sqrt(voxelvolume*np.sum(np.sum(np.sum(f**2))))
         data.append(f)
