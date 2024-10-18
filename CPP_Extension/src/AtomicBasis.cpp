@@ -468,7 +468,6 @@ double* get_WFN_On_Grid(const double xyzgrid[],
     double* WFNonGridArray_ptr = new double[size_xyzgrid/3];
     std::cout<<" size_xyzgrid= "<<size_xyzgrid/3<<"\n";
     // Now, loop 
-    #pragma omp parallel for
     for (int i = 0; i < size_xyzgrid; i+=3) {
         double WFNvalue=0.0;
         const std::array<double,3>&  r= {xyzgrid[i],xyzgrid[i+1],xyzgrid[i+2]};
@@ -487,6 +486,74 @@ double* get_WFN_On_Grid(const double xyzgrid[],
     }
     return WFNonGridArray_ptr;
 }
-}
+double* get_Local_Potential_On_Grid(const double xyzgrid[],
+                        int size_xyzgrid,
+                        const double MatrixElements[],
+                        const char* atoms_set[],
+                        const double positions_set[],
+                        const double alphas_set[],
+                        const int alphasLengths_set[],
+                        const double contr_coef_set[],
+                        const int contr_coefLengths_set[],
+                        const char* lms_set[],
+                        int size_set,
+                        const double cell_vectors[],
+                        int size_cell_vectors) {
 
+    // Initialize the map of monomials
+    std::unordered_map<std::string, std::vector<Monomial>> solidHarmonics = getSolidHarmonics();
+    //Process the cell_vectors
+    std::vector<double> cell_vectors_vec(cell_vectors, cell_vectors + size_cell_vectors);
+    // Process the xyzgrid
+    std::vector<double> xyzgrid_vec(xyzgrid, xyzgrid + size_xyzgrid);
+    // Process the WFNcoefficients
+    std::vector<double> MatrixElements_vec(MatrixElements, MatrixElements + size_set*size_set);
+    // Process the input arrays - construct Basisfunction instances
+    std::vector<Basisfunction> basisfunctions_set;
+    int arrayIndex_set = 0;
+    int alphasIndex_set = 0;
+    int contrCoefIndex_set = 0;
+
+    for (int i = 0; i < size_set; ++i) {
+        std::string atom(atoms_set[i]);
+        std::array<double, 3> position = {positions_set[arrayIndex_set],
+                                          positions_set[arrayIndex_set + 1],
+                                          positions_set[arrayIndex_set + 2]};
+
+        // Extract alphas for the current basis function in set 1
+        int alphasLength_set = alphasLengths_set[i];
+        std::vector<double> alphas_list_set(alphas_set + alphasIndex_set, alphas_set + alphasIndex_set + alphasLength_set);
+        alphasIndex_set += alphasLength_set;
+
+        // Extract contr_coef for the current basis function in set 1
+        int contrCoefLength_set = contr_coefLengths_set[i];
+        std::vector<double> contr_coef_list_set(contr_coef_set + contrCoefIndex_set, contr_coef_set + contrCoefIndex_set + contrCoefLength_set);
+        contrCoefIndex_set += contrCoefLength_set;
+
+        std::string lm(lms_set[i]);
+
+        Basisfunction basisfunction(atom, position, alphas_list_set, contr_coef_list_set, lm);
+        basisfunctions_set.push_back(basisfunction);
+
+        arrayIndex_set += 3;  // Increment by 3 for positions (3 elements per position)
+    }
+
+    double* LocalPotentialOnGridArray_ptr = new double[size_xyzgrid/3];
+    std::cout<<" size_xyzgrid= "<<size_xyzgrid/3<<"\n";
+    // Now, loop 
+    for (int i = 0; i < size_xyzgrid; i+=3) {
+        double Local_Potential_Value=0.0;
+        const std::array<double,3>&  r= {xyzgrid[i],xyzgrid[i+1],xyzgrid[i+2]};
+        #pragma omp parallel for collapse(2)
+        for (int j = 0; j < size_set; ++j) {
+            for (int k =0;k<size_set;++k){
+                Local_Potential_Value += MatrixElements[i * size_set + j]*getBasisFunctionOnGrid(r,basisfunctions_set[j].position,basisfunctions_set[j].contr_coef,basisfunctions_set[j].alphas,solidHarmonics[basisfunctions_set[j].lm],cell_vectors_vec)*getBasisFunctionOnGrid(r,basisfunctions_set[k].position,basisfunctions_set[k].contr_coef,basisfunctions_set[k].alphas,solidHarmonics[basisfunctions_set[k].lm],cell_vectors_vec);
+            }
+            // Assign result to the appropriate index in the output array
+        }
+        LocalPotentialOnGridArray_ptr[i/3] = Local_Potential_Value;
+    }
+    return LocalPotentialOnGridArray_ptr;
+}
+}
 
