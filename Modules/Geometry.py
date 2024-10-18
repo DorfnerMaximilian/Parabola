@@ -319,9 +319,9 @@ def centerMolecule(path="./",Principle_Axis=False):
     #Compute center of Cell (assuming orthogonal basis vectors)
     cellcenter=0.5*cellcoordinates[0]+0.5*cellcoordinates[1]+0.5*cellcoordinates[2]
     centerofcellCoordinates=[]
+    geometric_mean=np.array([0.0,0.0,0.0])
     if not Principle_Axis:
         xyzcoordinates,_,atomicsym=getCoordinatesAndMasses(path)
-        geometric_mean=np.array([0.0,0.0,0.0])
         for coordinate in xyzcoordinates:
             geometric_mean+=coordinate
         geometric_mean/=len(xyzcoordinates)
