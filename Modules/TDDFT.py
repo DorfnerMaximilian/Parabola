@@ -381,9 +381,6 @@ def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,cell_vectors=[0.0, 0.0, 0.0],savefla
         #get voxel volume in a.u.**3
         voxelvolume=np.dot(cellvector1,np.cross(cellvector2,cellvector3))/(N1*N2*N3)
         #discretization
-        v1=cellvector1/np.linalg.norm(cellvector1)
-        v2=cellvector2/np.linalg.norm(cellvector2)
-        v3=cellvector3/np.linalg.norm(cellvector3)
         length1=np.linalg.norm(cellvector1)/N1
         length2=np.linalg.norm(cellvector2)/N2
         length3=np.linalg.norm(cellvector3)/N3
