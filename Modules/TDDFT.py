@@ -358,7 +358,7 @@ def WFNonGrid(id=0,N1=200,N2=200,N3=200,parentfolder='./'):
     filename=str(id)
     np.save(parentfolder+"/"+filename,f)
     return f
-def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,saveflag=True,parentfolder='./'):
+def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,cell_vectors=[0.0, 0.0, 0.0],saveflag=True,parentfolder='./'):
     '''Function to represent the DFT eigenstate HOMO+id on a real space grid within the unit cell with Nx,Ny,Nz grid points
        input:   id:               (int)                   specifies the Orbital, id=0 is HOMO id=1 is LUMO id=-1 is HOMO-1 ect. 
        (opt.)   parentfolder:     (str)                   path to the .inp file of the cp2k calculation to read in the cell dimensions    
@@ -390,13 +390,24 @@ def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,saveflag=True,parentfolder='./'):
         grid1=length1*np.arange(N1)
         grid2=length2*np.arange(N2)
         grid3=length3*np.arange(N3)
-        f=AtomicBasis.WFNonxyzGrid(grid1,grid2,grid3,a,Atoms,Basis)
+        f=AtomicBasis.WFNonxyzGrid(grid1,grid2,grid3,a,Atoms,Basis,cell_vectors)
         print(voxelvolume*np.sum(np.sum(np.sum(f**2))))
         f/=np.sqrt(voxelvolume*np.sum(np.sum(np.sum(f**2))))
         data.append(f)
         filename=str(id)
         if saveflag:
             np.save(parentfolder+"/"+filename,f)
+    return np.array(data)
+def LocalPotentialOnGrid(gridpoints,MatrixElements,cell_vectors=[0.0, 0.0, 0.0],parentfolder='./'):
+    '''Function to represent the DFT eigenstate HOMO+id on a real space grid within the unit cell with Nx,Ny,Nz grid points
+       input:   id:               (int)                   specifies the Orbital, id=0 is HOMO id=1 is LUMO id=-1 is HOMO-1 ect. 
+       (opt.)   parentfolder:     (str)                   path to the .inp file of the cp2k calculation to read in the cell dimensions    
+                Nx,Ny,Nz:         (int)                   Number of grid points in each direction                        
+       output:  f                 (Nx x Ny x Nz np.array) Wavefunction coefficients, where first index is x, second y and third z
+    '''
+    Atoms=Read.readinAtomicCoordinates(parentfolder)
+    Basis=AtomicBasis.getBasis(parentfolder)
+    data=AtomicBasis.LocalPotentialonxyzGrid(gridpoints,MatrixElements,Atoms, Basis,cell_vectors)
     return np.array(data)
 def getOverlapOnGrids(WFN1,WFN2,parentfolder="./"):
     N1=np.shape(WFN1)[0]
