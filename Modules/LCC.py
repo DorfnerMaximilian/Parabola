@@ -114,7 +114,7 @@ def getadiabaticallyConnectedEigenstates(orthogonalEigenstates_Eq,orthorgonalEig
 #######################################################################################################
 #Function to Compute the local Coupling constants g 
 #######################################################################################################
-def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
+def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
     '''Compute linear coupling constants from finitly displaced geometries.
     
     Parameters:
@@ -247,4 +247,65 @@ def getLinearCouplingConstants(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[
                     overlap2=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus_dot_states_Minus[:,adibaticallyConnectediters_Minus[it1]])
                     deltaE=(E_Eq[included_orbitals[it1]]-E_Eq[included_orbitals[it0]])*(overlap1-overlap2)/(2*delta)*normfactors[mu]
                     couplingConstants[mu,included_orbitals[it0],included_orbitals[it1]]=ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*deltaE
+    np.save(parentfolder+"/Linear_Coupling_Constants",couplingConstants)
+def getLCC_STATES(States,cell_vectors=[0.0, 0.0, 0.0],parentfolder="./"):
+    '''Compute linear coupling constants from finitly displaced geometries.
+    
+    Parameters:
+        parentfolder (str): Absolute or relative path where the geometry optimized .xyz file lies, 
+                            with electronic structure data at displaced geometries in subfolders.
+                            Default is the current directory.
+                                                 
+       Output:
+        Saves coupling constants in a numpy .npy file named "Linear_Coupling_Constants.npy" in the parentfolder.
+    '''
+    
+    ConFactors=PhysConst.ConversionFactors()
+    #Get the .xyz file
+    xyz_files = [f for f in os.listdir(parentfolder+"/"+'Equilibrium_Geometry') if f.endswith('.xyz')]
+    if len(xyz_files) != 1:
+        raise ValueError('InputError: There should be only one xyz file in the directory:'+parentfolder+"/"+'Equilibrium_Geometry/')
+
+    #----------------------------------------------------------------------
+    # Equilibrium configuration
+    #----------------------------------------------------------------------
+
+    #get the Equilibrium Configuration 
+    Atoms_Eq=Read.readinAtomicCoordinates(parentfolder+"/Equilibrium_Geometry/")
+    #Construct Basis of the Equilibrium configuration
+    Basis_Eq=AtomicBasis.getBasis(parentfolder+"/Equilibrium_Geometry/")
+    KSH_alpha,KSH_beta,OLM=Read.readinMatrices(parentfolder+"/Equilibrium_Geometry/")
+    _,delta=Read.readinBasisVectors(parentfolder)
+    #get the normal modes from the cartesian displacements
+    VibrationalFrequencies,_,normfactors=Read.readinVibrations(parentfolder)
+    #This has index convention lambda,mu
+    couplingConstants=np.zeros((len(normfactors),np.shape(States)[1],np.shape(States)[1]))
+    for mu in Util.progressbar(range(len(normfactors)),"Coupling Constants:",40):
+        #----------------------------------------------------------------------
+        # Positively displaced 
+        #----------------------------------------------------------------------
+        folderplus='vector='+str(mu+1)+'sign=+'
+        #Get the stompositions for the positively displaced atoms
+        Atoms_Plus=Read.readinAtomicCoordinates(parentfolder+"/"+folderplus)
+        KSH_alpha_Plus,KSH_beta_Plus,OLM_Plus=Read.readinMatrices(parentfolder+"/"+folderplus)
+        T_Eq_Plus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq,cell_vectors)
+        Sm1_Plus=Util.getSm1(OLM_Plus)
+        T_Plus=T_Eq_Plus@Sm1_Plus
+        #Do Basis Transform
+        KS_Plus=T_Plus@KSH_alpha_Plus@np.transpose(T_Plus)
+        #----------------------------------------------------------------------
+        # Negatively displaced 
+        #----------------------------------------------------------------------
+        folderminus='vector='+str(mu+1)+'sign=-'
+        #Get the atom positions for the negatively displaced atoms
+        Atoms_Minus=Read.readinAtomicCoordinates(parentfolder+"/"+folderminus)
+        KSH_alpha_Minus,KSH_beta_Minus,OLM_Minus=Read.readinMatrices(parentfolder+"/"+folderminus)
+        T_Eq_Minus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq,cell_vectors)
+        Sm1_Minus=Util.getSm1(OLM_Minus)
+        T_Minus=T_Eq_Minus@Sm1_Minus
+        #Do Basis Transform
+        KS_minus=T_Minus@KSH_alpha_Minus@np.transpose(T_Minus)
+        #Compute derivative
+        derivativeKS=(KS_Plus-KS_minus)/(2*delta)*normfactors[mu]
+        couplingConstants[mu,:,:]=ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*np.transpose(States)@derivativeKS@States
     np.save(parentfolder+"/Linear_Coupling_Constants",couplingConstants)
