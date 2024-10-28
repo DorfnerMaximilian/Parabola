@@ -470,7 +470,34 @@ def readinCellSize(path="./"):
     if np.abs(det)<10**(-3):
         ValueError("Cell Vectors do not span a unit cell!")
     return cellvectors
+def readinPeriodicity(path="./"):
+    ## Function read out the cell periodicity from the .inp file
+    ## input: (opt.)   path   path to the folder of the calculation         (string)
+    ## output:  -                                                           (void)
 
+    #Get the .inp file
+    inp_files = [f for f in os.listdir(path) if f.endswith('.inp')]
+    if len(inp_files) != 1:
+        raise ValueError('InputError: There should be only one inp file in the current directory')
+    inp_file= path+"/"+inp_files[0]
+    Periodic=True
+    with open(inp_file) as f:
+        lines = f.readlines()
+        Cellflag=False
+        for l in lines:
+            if len(l.split())>=1:
+                if l.split()[0]=='&CELL':
+                    Cellflag=True
+                if l.split()[0]=='END' and l.split()[1]=='CELL':
+                    Cellflag=False
+                if Cellflag:
+                    if l.split()[0]=='PERIODIC':
+                        if l.split()[1]=="NONE":
+                             Periodic=False
+                        else:
+                             Periodic=True
+
+    return Periodic
 def readinExcitedStatesCP2K(path,minweight=0.01):
     ## Parses the excited states from a TDDFPT calculation done in CP2K  
     ## input:
