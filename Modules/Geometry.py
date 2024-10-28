@@ -4,6 +4,8 @@ import Modules.Read as Read
 import Modules.Write as Write
 import numpy as np
 import os
+pathtocp2k=os.environ["cp2kpath"]
+pathtobinaries=pathtocp2k+"/exe/local/"
 def getCoordinatesAndMasses(pathtoxyz="./Equilibrium_Geometry/"):
     """
     Helper routine to parse coordinates and masses from an xyz file.
@@ -545,6 +547,8 @@ def changeConfiguration2(folderlabel,vector1,delta1,sign1,vector2,delta2,sign2,p
                 atomtypes.append(l.split()[0])
     xyzcoordinates=np.array(xyzcoordinates)
     xyzcoordinates=xyzcoordinates+(-1)**(sign1)*delta1*vector1+(-1)**(sign2)*delta2*vector2
+    symbolsign1="+"
+    symbolsign2="+"
     if sign1==0:
         symbolsign1='+'
     if sign1==1:
@@ -567,6 +571,59 @@ def changeConfiguration2(folderlabel,vector1,delta1,sign1,vector2,delta2,sign2,p
         f.write("\n")
     f.close()
     return
+def PES_inputs(deltas1,deltas2,vector1,vector2,linktobinary=True,binary="cp2k.popt",parentpath="./",binaryloc=pathtobinaries):
+    ConFactors=PhysConst.ConversionFactors()
+    #get the Projectname: 
+    inp_files = [f for f in os.listdir(parentpath) if f.endswith('.inp')]
+    if len(inp_files) != 1:
+        raise ValueError('InputError: There should be only one .inp file in the current directory')
+    inpfilename = inp_files[0]
+    Projectname='emptyString'
+    with open(inpfilename,'r') as f:
+        for lines in f:
+            if len(lines.split())>0:
+                if lines.split()[0]=="PROJECT":
+                    Projectname=lines.split()[1]
+    if Projectname=='emptyString':
+        raise ValueError('InputError: Projectname not found!')
+    #get xyzfile
+    xyz_files = [f for f in os.listdir(parentpath) if f.endswith('.xyz')]
+    if len(xyz_files) != 1:
+        raise ValueError('InputError: There should be only one .xyz file in the current directory')
+    xyzfilename = xyz_files[0]
+    Restart_files = [f for f in os.listdir(parentpath) if f.endswith('-RESTART.wfn')]
+    if len(Restart_files) != 1:
+        raise ValueError('InputError: There should be only one Restart file in the current directory')
+    Restart_filename = Restart_files[0]
+    if Restart_filename!=Projectname+'-RESTART.wfn':
+        raise ValueError('InputError: Project- and Restartfilename differ! Reconsider your input.')
+    os.mkdir(parentpath+"Equilibrium_Geometry")
+    os.system("cp "+parentpath+inpfilename+" "+parentpath+"Equilibrium_Geometry")
+    os.system("cp "+parentpath+xyzfilename+" "+parentpath+"Equilibrium_Geometry")
+    os.system("cp "+parentpath+Restart_filename+" "+parentpath+"Equilibrium_Geometry")
+    if linktobinary:
+        os.system("ln -s "+binaryloc+"/"+binary+" "+parentpath+"Equilibrium_Geometry"+"/")
+    for it1 in range(len(deltas1)):
+        for it2 in range(len(deltas2)):
+            folderlabel='delta1='+str(int(np.abs(deltas1[it1])*100))+'delta2='+str(int(np.abs(deltas2[it2])*100))
+            sign1=0.5*(1-np.sign(deltas1[it1]))
+            sign2=0.5*(1-np.sign(deltas2[it2]))
+            if sign1==0:
+                symbolsign1='+'
+            if sign1==1:
+                symbolsign1='-'
+            if sign2==0:
+                symbolsign2='+'
+            if sign2==1:
+                symbolsign2='-'
+            work_dir=folderlabel+"sign1="+symbolsign1+"sign2="+symbolsign2
+            changeConfiguration2(folderlabel,vector1,np.abs(deltas1[it1])*ConFactors['a.u.->A'],sign1,vector2,np.abs(deltas2[it2])*ConFactors['a.u.->A'],sign2)
+            os.system("cp "+parentpath+inpfilename+" "+parentpath+work_dir)
+            os.system("cp "+parentpath+Restart_filename+" "+parentpath+work_dir)
+            if linktobinary:
+                os.system("ln -s "+binaryloc+"/"+binary+" "+parentpath+work_dir+"/")
+    np.save("vector1",vector1)
+    np.save("vector2",vector2)
 def getNewXYZ(path='.'):
     """
     Extracts the atomic coordinates from the last iteration of a geometry 
