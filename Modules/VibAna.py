@@ -351,7 +351,7 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
         atomnum=int(np.floor((it/3)))
         sqrtM[it][it]=1./(np.sqrt(atomicmasses[atomorder[atomnum]]))
     #Get the carthesian displacement eigenvectors (not rescaled) of Translation & Rotation:
-    Transeigenvectors,Roteigenvectors=getTransAndRotEigenvectors(parentfolder+"/Equilibrium_Geometry/",False)
+    Transeigenvectors_unscaled,Roteigenvectors_unscaled=getTransAndRotEigenvectors(parentfolder+"/Equilibrium_Geometry/",False)
     #Check if Rotations should also be projected out, this applies to Molecules/Clusters
     if InteractiveFlag==True:
         Rotations_Projector_String=input("Project out Rotations? Molecule/Cluster [Y] Crystal [N]:")
@@ -365,10 +365,10 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
     
     Orthogonalprojector=np.identity(3*numofatoms)
     
-    for translation in Transeigenvectors:
+    for translation in Transeigenvectors_unscaled:
         Orthogonalprojector-=np.outer(translation,translation)
     if Rotations_Projector_Flag:
-        for rotation in Roteigenvectors:
+        for rotation in Roteigenvectors_unscaled:
             Orthogonalprojector-=np.outer(rotation,rotation)
     
     #Read in the basis vectors of the finite displacements:
@@ -514,6 +514,8 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
     np.save(parentfolder+"/Normal-Mode-Energies",normalmodeenergies)
     np.save(parentfolder+"/normalized-Carthesian-Displacements",carthesianDisplacements)
     np.save(parentfolder+"/Norm-Factors",normfactors)
+    np.save(parentfolder+"/Translation_Eigenvectors",Transeigenvectors_unscaled)
+    np.save(parentfolder+"/Rotational_Eigenvectors",Roteigenvectors_unscaled)
     if writeMolFile:
         Write.writemolFile(normalmodeenergies,carthesianDisplacements,normfactors,parentfolder)
 def CorrectNormalModeEnergies_Input(delta=0.1,parentfolder="./"):
