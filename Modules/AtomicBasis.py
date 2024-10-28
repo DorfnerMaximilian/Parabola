@@ -754,7 +754,7 @@ def LocalPotentialonxyzGrid(gridpoints,MatrixElements,Atoms, Basis, cell_vectors
     # Conversion factors and other initialization
     ConFactors = PhysConst.ConversionFactors()
     #Make the grid 
-    xyz_grid=gridpoints.flatten("F").tolist()
+    xyz_grid=gridpoints
     # Initialize the python lists for Basis Set 1
     atoms_set = []
     positions_set = []
@@ -784,9 +784,9 @@ def LocalPotentialonxyzGrid(gridpoints,MatrixElements,Atoms, Basis, cell_vectors
     contr_coef_lengths_set= alphas_lengths_set  # Lengths of contr_coef for each basis function in Set 1
 
     # Define the function signature
-    get_WFN_On_Grid = lib.get_WFN_On_Grid
-    get_WFN_On_Grid.restype = POINTER(c_double)
-    get_WFN_On_Grid.argtypes = [POINTER(c_double), 
+    get_Local_Potential_On_Grid = lib.get_Local_Potential_On_Grid
+    get_Local_Potential_On_Grid.restype = POINTER(c_double)
+    get_Local_Potential_On_Grid.argtypes = [POINTER(c_double), 
                                 c_int,    
                                 POINTER(c_double),    
                                 POINTER(c_char_p),    
@@ -821,7 +821,7 @@ def LocalPotentialonxyzGrid(gridpoints,MatrixElements,Atoms, Basis, cell_vectors
             MatrixElementsList.append(MatrixElements[it1][it2])
     MatrixElements_ptr=(c_double * len(MatrixElementsList))(*MatrixElementsList)
     # Call the C++ function
-    LocalPotentialonGrid_ptr = get_WFN_On_Grid(xyzgrid_ptr,len(xyz_grid),
+    LocalPotentialonGrid_ptr = get_Local_Potential_On_Grid(xyzgrid_ptr,len(xyz_grid),
                                     MatrixElements_ptr,atoms_set_ptr, positions_set_ptr, alphas_set_ptr, alphas_lengths_set_ptr,
                                     contr_coef_set_ptr, contr_coef_lengths_set_ptr, lms_set_ptr, len(atoms_set),
                                     cell_vectors_ptr, len(cell_vectors))

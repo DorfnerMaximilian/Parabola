@@ -468,10 +468,10 @@ double* get_WFN_On_Grid(const double xyzgrid[],
     double* WFNonGridArray_ptr = new double[size_xyzgrid/3];
     std::cout<<" size_xyzgrid= "<<size_xyzgrid/3<<"\n";
     // Now, loop 
+    #pragma omp parallel for
     for (int i = 0; i < size_xyzgrid; i+=3) {
         double WFNvalue=0.0;
-        const std::array<double,3>&  r= {xyzgrid[i],xyzgrid[i+1],xyzgrid[i+2]};
-        #pragma omp parallel for
+        const std::array<double,3>&  r= {xyzgrid_vec[i],xyzgrid_vec[i+1],xyzgrid_vec[i+2]};
         for (int j = 0; j < size_set; ++j) {
             WFNvalue += WFNcoefficients_vec[j]*getBasisFunctionOnGrid(r,
                                         basisfunctions_set[j].position,
@@ -540,14 +540,14 @@ double* get_Local_Potential_On_Grid(const double xyzgrid[],
 
     double* LocalPotentialOnGridArray_ptr = new double[size_xyzgrid/3];
     std::cout<<" size_xyzgrid= "<<size_xyzgrid/3<<"\n";
-    // Now, loop 
+    // Now, loop
+    #pragma omp parallel for 
     for (int i = 0; i < size_xyzgrid; i+=3) {
         double Local_Potential_Value=0.0;
-        const std::array<double,3>&  r= {xyzgrid[i],xyzgrid[i+1],xyzgrid[i+2]};
-        #pragma omp parallel for collapse(2)
+        const std::array<double,3>&  r= {xyzgrid_vec[i],xyzgrid_vec[i+1],xyzgrid_vec[i+2]};
         for (int j = 0; j < size_set; ++j) {
             for (int k =0;k<size_set;++k){
-                Local_Potential_Value += MatrixElements[i * size_set + j]*getBasisFunctionOnGrid(r,basisfunctions_set[j].position,basisfunctions_set[j].contr_coef,basisfunctions_set[j].alphas,solidHarmonics[basisfunctions_set[j].lm],cell_vectors_vec)*getBasisFunctionOnGrid(r,basisfunctions_set[k].position,basisfunctions_set[k].contr_coef,basisfunctions_set[k].alphas,solidHarmonics[basisfunctions_set[k].lm],cell_vectors_vec);
+                Local_Potential_Value += MatrixElements_vec[j * size_set + k]*getBasisFunctionOnGrid(r,basisfunctions_set[j].position,basisfunctions_set[j].contr_coef,basisfunctions_set[j].alphas,solidHarmonics[basisfunctions_set[j].lm],cell_vectors_vec)*getBasisFunctionOnGrid(r,basisfunctions_set[k].position,basisfunctions_set[k].contr_coef,basisfunctions_set[k].alphas,solidHarmonics[basisfunctions_set[k].lm],cell_vectors_vec);
             }
             // Assign result to the appropriate index in the output array
         }
