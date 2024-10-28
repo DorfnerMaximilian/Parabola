@@ -274,7 +274,6 @@ def getLCC_STATES(States,cell_vectors=[0.0, 0.0, 0.0],parentfolder="./"):
     Atoms_Eq=Read.readinAtomicCoordinates(parentfolder+"/Equilibrium_Geometry/")
     #Construct Basis of the Equilibrium configuration
     Basis_Eq=AtomicBasis.getBasis(parentfolder+"/Equilibrium_Geometry/")
-    KSH_alpha,KSH_beta,OLM=Read.readinMatrices(parentfolder+"/Equilibrium_Geometry/")
     _,delta=Read.readinBasisVectors(parentfolder)
     #get the normal modes from the cartesian displacements
     VibrationalFrequencies,_,normfactors=Read.readinVibrations(parentfolder)
@@ -308,4 +307,4 @@ def getLCC_STATES(States,cell_vectors=[0.0, 0.0, 0.0],parentfolder="./"):
         #Compute derivative
         derivativeKS=(KS_Plus-KS_minus)/(2*delta)*normfactors[mu]
         couplingConstants[mu,:,:]=ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*np.transpose(States)@derivativeKS@States
-    np.save(parentfolder+"/Linear_Coupling_Constants",couplingConstants)
+    np.save(parentfolder+"/LCC_STATES",couplingConstants)
