@@ -96,6 +96,20 @@ def LoewdinTransformation(S,algorithm='Schur-Pade'):
     else:
         ValueError("Algorithm not recognized! Currently available 'Schur-Pade' and 'Diagonalization'")
     return Sm12
+def getSm1(S,algorithm='Schur-Pade'):
+    ##  Function to compute S^(-0.5) for the Loewdin orthogonalization
+    ##   input:   S         (numpy array)            the overlapmatrix 
+    ##
+    ##   output:  Sm12      (numpy array)            the overlapmatrix to the power 1/2                            
+    if algorithm=="Diagonalization":
+        e,U=np.linalg.eigh(S)
+        Sm1=np.diag(e**(-1))
+        Sm1=np.dot(U,np.dot(Sm1,np.transpose(np.conjugate(U))))
+    elif algorithm=="Schur-Pade":
+        Sm1=sci.linalg.fractional_matrix_power(S, -1)
+    else:
+        ValueError("Algorithm not recognized! Currently available 'Schur-Pade' and 'Diagonalization'")
+    return Sm1
 def getNumberofBasisFunctions(parentfolder="./"):
     _,_,OLM=Read.readinMatrices(parentfolder)
     dim=np.shape(OLM)[0]
