@@ -72,6 +72,35 @@ def ComputeCenterOfMassCoordinates(coordinates,masses):
     for coords in coordinates:
         centerofmasscoordinates.append(coords-centerofmass)
     return centerofmasscoordinates,centerofmass
+def ComputeCenterOfGeometryCoordinates(coordinates):
+    """
+    Computes the center of geometry of a molecule with respect to the basis of the coordinate file.
+
+    Parameters:
+    - coordinates (Nx3 numpy.array): Coordinates of the atoms with respect to some basis (arbitrary origin).
+    - masses (N numpy.array): Masses of the atoms as a numpy array, requires the same ordering as the coordinates.
+
+    Returns:
+    - centerofmasscoordinates (Nx3 numpy.array): Coordinates of the atoms with respect to some basis, origin at the center of mass.
+    - centerofmass (3x1 numpy.array): Coordinates of the center of mass with respect to the old frame.
+
+    Notes:
+    - The coordinates provided have an arbitrary origin.
+    - The returned centerofmasscoordinates have their origin at the center of mass.
+    - The returned centerofmass is the coordinates of the center of mass with respect to the old frame.
+    - The center of mass is computed based on the provided masses and coordinates.
+    """
+    center=np.array([0.,0.,0.])
+    #Compute the center of mass: 
+    for it,coords in enumerate(coordinates):
+        center+=np.array([coords[0],coords[1],coords[2]])
+    center/=len(coordinates)
+    
+    centercoordinates=[]
+    #get the center of mass coordinates
+    for coords in coordinates:
+        centercoordinates.append(coords-center)
+    return centercoordinates,center
 
 def getInertiaTensor(coordinates,masses):
     """
