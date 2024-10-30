@@ -51,7 +51,10 @@ import Modules.ConvTests as ConvTests
 ##  module to compute the linear coupling constants
 #########################################################################
 import Modules.LCC as LCC
-
+#########################################################################
+##  module to compute the linear coupling constants
+#########################################################################
+import Modules.Symmetry as Symmetry
 
 
 

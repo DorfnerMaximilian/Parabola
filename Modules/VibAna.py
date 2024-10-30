@@ -4,11 +4,12 @@ import Modules.PhysConst as PhysConst
 import Modules.Read as Read
 import Modules.Write as Write
 import Modules.Util as Util
+import Modules.Symmetry as Symmetry
 import os
 #get the environmental variable 
 pathtocp2k=os.environ["cp2kpath"]
 pathtobinaries=pathtocp2k+"/exe/local/"
-def Vib_Ana_inputs(delta,vectors=[],linktobinary=True,binary="cp2k.popt",parentpath="./",binaryloc=pathtobinaries):
+def Vib_Ana_inputs(delta,vectors=[],parentpath="./",linktobinary=True,binary="cp2k.popt",binaryloc=pathtobinaries):
     ConFactors=PhysConst.ConversionFactors()
     #get the Projectname: 
     inp_files = [f for f in os.listdir(parentpath) if f.endswith('.inp')]
@@ -48,7 +49,7 @@ def Vib_Ana_inputs(delta,vectors=[],linktobinary=True,binary="cp2k.popt",parentp
             vector[it]=1.0
             vectors.append(vector)
     else: 
-        if vectors!=3*numberofatoms:
+        if len(vectors)!=3*numberofatoms:
             print('Warning: Not enough vectors given for the Normal Mode Analysis!')
         if np.linalg.matrix_rank(vectors)!=len(vectors):
             #do a second check based on SVD 
@@ -163,67 +164,18 @@ def CheckinpfileforVib_Ana(parentpath):
         ValueError("Reconsider the FORCES Section in the .inp file! Write 'NDIGITS 15' !")
     if not Forces_FilenameFlag:
         ValueError("Reconsider the AO_Section in the .inp file! Write 'FILENAME =Forces' !")
-def ImposeTranslationalSymmetry(Hessian,pathtoEquilibriumxyz="./Equilibrium_Geometry/"):
-    # Imposes exact relation on the Hessian, that has to be fullfilled for the Translational D.O.F. to decouple from the rest
-    #input: 
-    #Hessian:    (numpy.array)  Hessian in carthesian coordinates 
-    #Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
-    SaW=PhysConst.StandardAtomicWeights()
-    #Get the Atomic coordinates 
-    AtomicCoordinates=Read.readinAtomicCoordinates(pathtoEquilibriumxyz)
-    #get the center of mass 
-    MassofMolecule=0.0
-    masses=[]
-    for coords in AtomicCoordinates:
-        mass=SaW[coords[1]]
-        masses.append(mass)
-        MassofMolecule+=mass
-    J=getJ(masses)
-    Hessiantilde=np.transpose(np.linalg.inv(J))@Hessian@np.linalg.inv(J)
-    for it1 in range(3*len(masses)):
-        for it2 in range(3*len(masses)):
-            if it1>=3*len(masses)-3 or it2>=3*len(masses)-3:
-                Hessiantilde[it1][it2]=0.0
-    Hessian0=np.transpose(J)@Hessiantilde@J
-    return Hessian0
-def getJ(masses):
-    # Computes the J matrix, the linear, invertible transformation, that transforms into the Jacobi coordinates, in which the center of mass
-    # motion explicitly decouples, x_rel=J*x
-    #input: 
-    #Hessian:    (numpy.array)  Hessian in carthesian coordinates 
-    #Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
-    Rcm=np.zeros(len(masses))
-    Rcm[0]=1.0
-    Mj=masses[0]
-    Jupdown=np.zeros(((len(masses),len(masses))))
-    for j in range(1,len(masses)):
-        Rj=np.zeros(len(masses))
-        Rj[j]=1.0
-        Deltaj=Rj-Rcm
-        Jupdown[j-1][:]=Deltaj
-        Rcm=(Mj*Rcm+masses[j]*Rj)/(Mj+masses[j])
-        Mj+=masses[j]
-    Jupdown[-1][:]=Rcm
-    J=np.zeros((3*len(masses),3*len(masses)))
-    for it1 in range(len(masses)):
-        for it2 in range(len(masses)):
-            J[3*it1][3*it2]=Jupdown[it1][it2]
-            J[3*it1+1][3*it2+1]=Jupdown[it1][it2]
-            J[3*it1+2][3*it2+2]=Jupdown[it1][it2]
-    return J
-def getJMJTranspose(masses):
-    # Transforms the Mass Matrix into the Jacobi coordinates = metric of the kinetic energy in these coordinates 
-    #input: 
-    #masses:         (N numpy.array)        masses of the atoms as a numpy array, requires same ordering as the coordinates
-    #g:              (3Nx3N numpy.array)    metric of the kinetic energy in the Jacobi coordinates
-    #get the mass matrix
-    M=np.zeros((3*len(masses),3*len(masses)))
-    for it in range(3*len(masses)):
-        atomnum=int(np.floor((it/3)))
-        M[it][it]=1./masses[atomnum]
-    #get the mass matrix
-    J=getJ(masses)
-    return J@M@np.transpose(J)
+def deflectAlongM3GnetModes(delta,parentfolder="./"):
+    trans_vec=np.load(parentfolder+"/Translation_Eigenvectors.npy")
+    rot_vec=np.load(parentfolder+"/Rotational_Eigenvectors.npy")
+    nCD=np.load(parentfolder+"/normalized-Carthesian-Displacements.npy")
+    vectors=[]
+    vectors.append(trans_vec[0,:]);vectors.append(trans_vec[1,:]);vectors.append(trans_vec[2,:])
+    vectors.append(rot_vec[0,:]);vectors.append(rot_vec[1,:]);vectors.append(rot_vec[2,:])
+    for it in range(np.shape(nCD)[0]):
+        vectors.append(nCD[it,:])
+    Vib_Ana_inputs(delta,vectors,parentfolder)
+
+
 
 
 def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",rescale=True):
@@ -296,7 +248,7 @@ def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",re
 #######################################################################################################
 #Reads in Forces and compute the Hessian
 #######################################################################################################
-def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder="./",writeMolFile=True):
+def getHessian(parentfolder="./",writeMolFile=True):
     '''   
     input:   
         (opt.) parentfolder:  (string) absolute/relative path, where the geometry optimized .xyz file lies 
@@ -350,27 +302,6 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
     for it in range(3*numofatoms):
         atomnum=int(np.floor((it/3)))
         sqrtM[it][it]=1./(np.sqrt(atomicmasses[atomorder[atomnum]]))
-    #Get the carthesian displacement eigenvectors (not rescaled) of Translation & Rotation:
-    Transeigenvectors_unscaled,Roteigenvectors_unscaled=getTransAndRotEigenvectors(parentfolder+"/Equilibrium_Geometry/",False)
-    #Check if Rotations should also be projected out, this applies to Molecules/Clusters
-    if InteractiveFlag==True:
-        Rotations_Projector_String=input("Project out Rotations? Molecule/Cluster [Y] Crystal [N]:")
-    if Rotations_Projector_String=="Y" or Rotations_Projector_String=="y":
-        Rotations_Projector_Flag=True
-    elif Rotations_Projector_String=="N" or Rotations_Projector_String=="n":
-        Rotations_Projector_Flag=False
-    else:
-        print("Have not recognized Input! Exiting function")
-        exit()
-    
-    Orthogonalprojector=np.identity(3*numofatoms)
-    
-    for translation in Transeigenvectors_unscaled:
-        Orthogonalprojector-=np.outer(translation,translation)
-    if Rotations_Projector_Flag:
-        for rotation in Roteigenvectors_unscaled:
-            Orthogonalprojector-=np.outer(rotation,rotation)
-    
     #Read in the basis vectors of the finite displacements:
     BasisVectors,delta=Read.readinBasisVectors(parentfolder+"/")
     #Built the T matrix from b basis 
@@ -394,12 +325,12 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
         folderminus='vector='+str(lambd+1)+'sign=-'
         #Project out the Force components into direction of rotation and translation D.O.F.
         try:
-            Fplus=np.dot(Orthogonalprojector,np.array(Read.readinForces(parentfolder+"/"+folderplus)))
+            Fplus=np.array(Read.readinForces(parentfolder+"/"+folderplus))
         except:
             print("Error in folder: "+parentfolder+"/"+folderplus)
             exit()
         try:
-            Fminus=np.dot(Orthogonalprojector,np.array(Read.readinForces(parentfolder+"/"+folderminus)))
+            Fminus=np.array(Read.readinForces(parentfolder+"/"+folderminus))
         except:
             print("Error in folder: "+parentfolder+"/"+folderminus)
             exit()
@@ -407,9 +338,7 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
         for s1alpha1 in range(3*numofatoms):
             partialFpartialY[s1alpha1][lambd]=diffofforces[s1alpha1]
     Hessian=-partialFpartialY@Tinv
-    #Symmetrize the Hessian
-    Hessian=0.5*(Hessian+np.transpose(Hessian))
-    Hessian=ImposeTranslationalSymmetry(Hessian,parentfolder+"/Equilibrium_Geometry/")
+    Hessian=Symmetry.determineAndEnforceSymmetry(Hessian,parentfolder=parentfolder,tol=10**(-3))
     #built the rescaled Hessian
     rescaledHessian=sqrtM@Hessian@sqrtM 
     # transform to units 1/cm
@@ -418,33 +347,35 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
     Lambda,Normalmodes=np.linalg.eigh(rescaledHessian)
 
     #Standard Values for the Translation and Rotational overlaps with Vibrations
-    if InteractiveFlag:
-        threshhold_string=input("Maximally allowed Weight of Translations with Numerical Normal Modes [float between 0 and 1 or std for Standard Value]:")
-    else:
-        threshhold_string="std"
+    print("Projecting Out Translational Eigenvectors")
+    threshhold_string=input("Maximally allowed Weight of Translations with Numerical Normal Modes [float between 0 and 1 or std for Standard Value]:")
     if Util.is_number(threshhold_string):
         threshhold_trans=float(threshhold_string)
     elif threshhold_string=="std":
         threshhold_trans=0.999
-        threshhold_rot=0.999
     else:
-        print("Have not recognized Input! Continuing with Standard values. [0.999]")
+        print("Continuing with Standard values. [0.999]")
         threshhold_trans=0.999
-        threshhold_rot=0.999 
-    if Rotations_Projector_Flag:
-        if InteractiveFlag:
+    is_periodic=bool(Read.readinPeriodicity(parentfolder))
+    Rotations_Projector_Flag=not(is_periodic)
+    if not is_periodic:
+        print("Having detected non-periodic calculation") 
+        strin=input("Do you want to project out the Rotational Eigenvectors?")
+        if strin=="N":
+            Rotations_Projector_Flag=False
+        else:
+            print("Projecting Out Translational Eigenvectors")
             threshhold_string=input("Maximally allowed Weight of Rotations with Numerical Normal Modes [float between 0 and 1 or std for Standard Value]:")
-        else:
-            threshhold_string="std"
-        if Util.is_number(threshhold_string):
-            threshhold_rot=float(threshhold_string)
-        elif threshhold_string=="std":
-            threshhold_rot=0.999
-        else:
-            print("Have not recognized Input! Continuing with Standard values. [0.999]")
-            threshhold_rot=0.999
+            if Util.is_number(threshhold_string):
+                threshhold_rot=float(threshhold_string)
+            elif threshhold_string=="std":
+                threshhold_rot=0.999
+            else:
+                print("Continuing with Standard values. [0.999]")
+                threshhold_rot=0.999
     #Get the rescaled eigenvectors of Translation & Rotation:
-    Transeigenvectors,Roteigenvectors=getTransAndRotEigenvectors(parentfolder+"/Equilibrium_Geometry/",True)
+    Transeigenvectors=Symmetry.getTransEigenvectors(parentfolder+"/Equilibrium_Geometry/",True)
+    Roteigenvectors=Symmetry.getRotEigenvectors(parentfolder+"/Equilibrium_Geometry/",True)
     Orthogonalprojector_trans=np.identity(3*numofatoms)
     for translation in Transeigenvectors:
         Orthogonalprojector_trans-=np.outer(translation,translation)
@@ -468,20 +399,20 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
                     orthogonalized_Vibrations.append(projection_trans/normofprojection_trans)
                     Vibrational_eigenvalues.append(Lambda[it])
             elif weight_rot<=threshhold_rot and weight_trans>threshhold_trans:
-                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has rot weight "+str(1.0-weight_rot))
+                print("Mode "+str(it)+" with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has rot weight "+str(1.0-weight_rot))
                 rotational_subspace.append(it)
             elif weight_rot>threshhold_rot and weight_trans<=threshhold_trans:
-                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(1.0-weight_trans))
+                print("Mode "+str(it)+" with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(1.0-weight_trans))
                 translational_subspace.append(it)
             else:
-                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(1.0-weight_trans)+" and has rot weight "+str(1.0-weight_rot)+"!")
+                print("Mode "+str(it)+" with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(1.0-weight_trans)+" and has rot weight "+str(1.0-weight_rot)+"!")
                 exit()
         else:
             if weight_trans>threshhold_trans:
                 orthogonalized_Vibrations.append(projection_trans/normofprojection_trans)
                 Vibrational_eigenvalues.append(Lambda[it])
             else:
-                print("Mode with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(1.0-weight_trans))
+                print("Mode"+str(it)+" with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(1.0-weight_trans))
                 translational_subspace.append(it)
     normalmodeEnergies_preliminary=np.array(Vibrational_eigenvalues)*np.sqrt(np.abs(np.array(Vibrational_eigenvalues)))/np.abs(np.array(Vibrational_eigenvalues))
     normalmodes_prelimiary=orthogonalized_Vibrations
@@ -514,6 +445,8 @@ def getHessian(InteractiveFlag=True,Rotations_Projector_String="Y" ,parentfolder
     np.save(parentfolder+"/Normal-Mode-Energies",normalmodeenergies)
     np.save(parentfolder+"/normalized-Carthesian-Displacements",carthesianDisplacements)
     np.save(parentfolder+"/Norm-Factors",normfactors)
+    Transeigenvectors_unscaled=Symmetry.getTransEigenvectors(parentfolder+"/Equilibrium_Geometry/",False)
+    Roteigenvectors_unscaled=Symmetry.getRotEigenvectors(parentfolder+"/Equilibrium_Geometry/",False)
     np.save(parentfolder+"/Translation_Eigenvectors",Transeigenvectors_unscaled)
     np.save(parentfolder+"/Rotational_Eigenvectors",Roteigenvectors_unscaled)
     if writeMolFile:
