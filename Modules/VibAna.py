@@ -9,8 +9,11 @@ import os
 #get the environmental variable 
 pathtocp2k=os.environ["cp2kpath"]
 pathtobinaries=pathtocp2k+"/exe/local/"
-def Vib_Ana_inputs(delta,vectors=[],parentpath="./",linktobinary=True,binary="cp2k.popt",binaryloc=pathtobinaries):
+def Vib_Ana_inputs(deltas,vectors=[],parentpath="./",linktobinary=True,binary="cp2k.popt",binaryloc=pathtobinaries):
     ConFactors=PhysConst.ConversionFactors()
+    cartesianflag=False
+    if len(vectors)==0:
+        cartesianflag=True
     #get the Projectname: 
     inp_files = [f for f in os.listdir(parentpath) if f.endswith('.inp')]
     if len(inp_files) != 1:
@@ -54,9 +57,15 @@ def Vib_Ana_inputs(delta,vectors=[],parentpath="./",linktobinary=True,binary="cp
         if np.linalg.matrix_rank(vectors)!=len(vectors):
             #do a second check based on SVD 
             print('Warning: The set of vectors given do not form a basis!')
-
     with open(parentpath+"BasisHessian","w+") as g:
-        g.write("delta="+str(delta)+"\n")
+        if cartesianflag:
+            g.write("delta="+str(deltas[0])+"\n")
+        else:
+            g.write("delta="+str(deltas[0]))
+            for it in range(1,len(deltas)-1):
+                g.write(","+str(deltas[it]))
+            g.write(","+str(deltas[-1])+"\n")
+
         g.write("unit=Bohr"+"\n")
         g.write("Basis Vectors in which the Hessian is represented expressed in the Standard Basis:\n")
         g.write("Format:     Atom:       x:             y:           z:\n")
@@ -83,6 +92,10 @@ def Vib_Ana_inputs(delta,vectors=[],parentpath="./",linktobinary=True,binary="cp
                 symbolsign='-'
             work_dir=folderlabel+"sign="+symbolsign
             vec=vectors[it]
+            if cartesianflag:
+                delta=deltas[0]
+            else:
+                delta=deltas[it]
             Geometry.changeConfiguration(folderlabel,vec,delta*ConFactors['a.u.->A'],sign,parentpath)
             os.system("cp "+parentpath+inpfilename+" "+parentpath+work_dir)
             os.system("cp "+parentpath+Restart_filename+" "+parentpath+work_dir)
@@ -164,16 +177,29 @@ def CheckinpfileforVib_Ana(parentpath):
         ValueError("Reconsider the FORCES Section in the .inp file! Write 'NDIGITS 15' !")
     if not Forces_FilenameFlag:
         ValueError("Reconsider the AO_Section in the .inp file! Write 'FILENAME =Forces' !")
-def deflectAlongM3GnetModes(delta,parentfolder="./"):
+def deflectAlongM3GnetModes(parentfolder="./"):
+    def unit_prefactor(omega):
+        return 0.5/np.sqrt(omega)
     trans_vec=np.load(parentfolder+"/Translation_Eigenvectors.npy")
     rot_vec=np.load(parentfolder+"/Rotational_Eigenvectors.npy")
     nCD=np.load(parentfolder+"/normalized-Carthesian-Displacements.npy")
+    normfactors=np.load(parentfolder+"/Norm-Factors.npy")
+    omegas=np.load(parentfolder+"/Normal-Mode-Energies.npy")
     vectors=[]
+    deltas=[]
     vectors.append(trans_vec[0,:]);vectors.append(trans_vec[1,:]);vectors.append(trans_vec[2,:])
-    vectors.append(rot_vec[0,:]);vectors.append(rot_vec[1,:]);vectors.append(rot_vec[2,:])
+    deltas.append(0.1);deltas.append(0.1);deltas.append(0.1)
+    if not Read.readinPeriodicity(parentfolder):
+        vectors.append(rot_vec[0,:]);vectors.append(rot_vec[1,:]);vectors.append(rot_vec[2,:])
+        deltas.append(0.1);deltas.append(0.1);deltas.append(0.1)
     for it in range(np.shape(nCD)[0]):
+        if omegas[it]>15:
+            delta=np.max([unit_prefactor(omegas[it])/normfactors[it],0.03])
+        else:
+            delta=np.max([unit_prefactor(15)/normfactors[it],0.03])
+        deltas.append(np.round(delta,2))
         vectors.append(nCD[it,:])
-    Vib_Ana_inputs(delta,vectors,parentfolder)
+    Vib_Ana_inputs(deltas,vectors,parentfolder)
 
 
 
@@ -303,7 +329,8 @@ def getHessian(parentfolder="./",writeMolFile=True):
         atomnum=int(np.floor((it/3)))
         sqrtM[it][it]=1./(np.sqrt(atomicmasses[atomorder[atomnum]]))
     #Read in the basis vectors of the finite displacements:
-    BasisVectors,delta=Read.readinBasisVectors(parentfolder+"/")
+    BasisVectors,deltas=Read.readinBasisVectors(parentfolder+"/")
+    print(deltas)
     #Built the T matrix from b basis 
     T=np.zeros((3*numofatoms,3*numofatoms))
     for salpha in range(3*numofatoms):
@@ -334,11 +361,11 @@ def getHessian(parentfolder="./",writeMolFile=True):
         except:
             print("Error in folder: "+parentfolder+"/"+folderminus)
             exit()
-        diffofforces=(Fplus-Fminus)/(2*delta)
+        diffofforces=(Fplus-Fminus)/(2*deltas[lambd])
         for s1alpha1 in range(3*numofatoms):
             partialFpartialY[s1alpha1][lambd]=diffofforces[s1alpha1]
     Hessian=-partialFpartialY@Tinv
-    Hessian=Symmetry.determineAndEnforceSymmetry(Hessian,parentfolder=parentfolder,tol=10**(-3))
+    Hessian=Symmetry.determineAndEnforceSymmetry(Hessian,parentfolder=parentfolder,tol=10**(-2))
     #built the rescaled Hessian
     rescaledHessian=sqrtM@Hessian@sqrtM 
     # transform to units 1/cm
@@ -352,10 +379,10 @@ def getHessian(parentfolder="./",writeMolFile=True):
     if Util.is_number(threshhold_string):
         threshhold_trans=float(threshhold_string)
     elif threshhold_string=="std":
-        threshhold_trans=0.999
+        threshhold_trans=0.99
     else:
-        print("Continuing with Standard values. [0.999]")
-        threshhold_trans=0.999
+        print("Continuing with Standard values. [0.99]")
+        threshhold_trans=0.99
     is_periodic=bool(Read.readinPeriodicity(parentfolder))
     Rotations_Projector_Flag=not(is_periodic)
     if not is_periodic:
@@ -369,10 +396,10 @@ def getHessian(parentfolder="./",writeMolFile=True):
             if Util.is_number(threshhold_string):
                 threshhold_rot=float(threshhold_string)
             elif threshhold_string=="std":
-                threshhold_rot=0.999
+                threshhold_rot=0.9
             else:
-                print("Continuing with Standard values. [0.999]")
-                threshhold_rot=0.999
+                print("Continuing with Standard values. [0.9]")
+                threshhold_rot=0.9
     #Get the rescaled eigenvectors of Translation & Rotation:
     Transeigenvectors=Symmetry.getTransEigenvectors(parentfolder+"/Equilibrium_Geometry/",True)
     Roteigenvectors=Symmetry.getRotEigenvectors(parentfolder+"/Equilibrium_Geometry/",True)

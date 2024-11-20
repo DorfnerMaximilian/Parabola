@@ -445,7 +445,6 @@ def getBasis(filename):
                 Atombasis=[]
                 atom=firstcaracter
                 newAtomSetflag=True
-    print(BasisSet["C"])
     #Normalize the Basis
     for key in BasisSet.keys():
         for it in range(len(BasisSet[key])):
