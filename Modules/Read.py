@@ -574,62 +574,87 @@ def readinDipoleMoments(path="./"):
 	np.save("Transitiondipolevectors",TransitionDipolevectors);np.save("Oscillatorstrenghts",Oscillatorstrenghts)
 	np.save(path+"/"+"ExcitedStateEnergies",energies)
 def readinBasisVectors(parentfolder="./"):
-    ## Reads in the normalized Basis vectors in which the Hessian is 
-    ## represented. These are the directions, in which the atoms have
-    ## been displaced. Also returns the displacementfactor and the unit
-    ## of the displacementfactor
-    ## input: 
-    ## (opt.)   parentfolder    path to the folder of the BasisHessian file         (string)
-    ## output:  
-    ##          BasisVectors    normalized displaced vectors                        (list of np.arrays)     
-    ##          delta           displacementfactor                                  (float)
-    ##          unit            unit of the displacementfactor                      (string, either 'Bohr' or 'sqrt(u)*Bohr') 
+    """
+    Reads in the normalized Basis vectors in which the Hessian is represented.
+    These are the directions in which the atoms have been displaced.
+    Also returns the displacement factors (deltas) and the unit of the displacement factor.
+    
+    Parameters:
+    parentfolder (str): Path to the folder containing the BasisHessian file.
+    
+    Returns:
+    BasisVectors (list of np.arrays): List of normalized displaced vectors.
+    deltas (np.array): Array of displacement factors.
+    unit (str): Unit of the displacement factor, either 'Bohr' or 'sqrt(u)*Bohr'.
+    """
 
-    #Get the .xyz file
+    # Identify the .xyz file in the directory
     xyz_files = [f for f in os.listdir(parentfolder) if f.endswith('.xyz')]
     if len(xyz_files) != 1:
         raise ValueError('InputError: There should be only one xyz file in the current directory')
-    #Get the number of atoms from the xyz file
-    xyzfilename=xyz_files[0]
-    ##########################################
-    #Get the number of atoms from the xyz file
-    ##########################################
-    xyzfilename=xyz_files[0]
-    numofatoms=0
-    with open(parentfolder+"/"+xyzfilename) as g:
-        lines=g.readlines()
-        numofatoms=int(lines[0])
-    delta=0
-    #Read in the Basis Vectors:
-    BasisVectors=[]
-    with open(parentfolder+"BasisHessian") as g:
-        lines=g.readlines()
-        if lines[0].split("=")[0]=="delta":
-            delta=float(lines[0].split("=")[1])
+    
+    # Get the number of atoms from the xyz file
+    xyzfilename = xyz_files[0]
+    numofatoms = 0
+    with open(os.path.join(parentfolder, xyzfilename)) as g:
+        lines = g.readlines()
+        numofatoms = int(lines[0])
+
+    # Read in the Basis Vectors and deltas
+    BasisVectors = []
+    deltas = []
+    with open(os.path.join(parentfolder, "BasisHessian")) as g:
+        lines = g.readlines()
+
+        # Parse the delta line
+        if lines[0].startswith("delta="):
+            delta_values = [float(val) for val in lines[0].split("=")[1].split(",")]
         else:
-            raise ValueError('InputError: delta not given!')
-        if lines[1].split("=")[0]=="unit":
-            unit=lines[1].split("=")[1][:-1]
-            if unit !="Bohr" and unit !="sqrt(u)*Bohr":
-                raise ValueError("InputError: No proper unit given! Either 'Bohr' or 'sqrt(u)*Bohr' ")
+            raise ValueError('InputError: delta not provided in the expected format.')
+
+        # If only one delta is provided, use it for all basis vectors
+        if len(delta_values) == 1:
+            single_delta = delta_values[0]
         else:
-            raise ValueError('InputError: Give unit of displacement!')
+            single_delta = None
+
+        # Parse the unit line
+        if lines[1].startswith("unit="):
+            unit = lines[1].split("=")[1].strip()
+            if unit not in ["Bohr", "sqrt(u)*Bohr"]:
+                raise ValueError("InputError: Unit must be either 'Bohr' or 'sqrt(u)*Bohr'")
+        else:
+            raise ValueError('InputError: Unit not provided in the expected format.')
+
+        # Parse the basis vectors from line 4 onward
         for line in lines[4:]:
-            if len(line)>0:
-                if line.split()[0]=="Basisvector" and int(line.split()[1])==1:
-                    basevector=np.zeros(3*numofatoms)
-                    it=0
-                elif line.split()[0]=="Basisvector" and int(line.split()[1])!=1:
-                    BasisVectors.append(basevector)
-                    basevector=np.zeros(3*numofatoms)
-                    it=0
+            if line.strip():
+                if line.startswith("Basisvector"):
+                    if "basevector" in locals():
+                        BasisVectors.append(basevector)
+                    basevector = np.zeros(3 * numofatoms)
+                    vector_index = int(line.split()[1]) - 1  # zero-indexed for Python
+                    
+                    # Assign delta to each basis vector as specified, or use default if single delta
+                    if single_delta is not None:
+                        deltas.append(single_delta)
+                    elif vector_index < len(delta_values):
+                        deltas.append(delta_values[vector_index])
+                    else:
+                        raise ValueError("InputError: Insufficient delta values provided for basis vectors.")
+                    
+                    it = 0
                 else:
-                    basevector[it]=float(line.split()[1])
-                    basevector[it+1]=float(line.split()[2])
-                    basevector[it+2]=float(line.split()[3])
-                    it+=3
-        BasisVectors.append(basevector) #append the last base vector
-        return BasisVectors,delta
+                    basevector[it] = float(line.split()[1])
+                    basevector[it + 1] = float(line.split()[2])
+                    basevector[it + 2] = float(line.split()[3])
+                    it += 3
+        BasisVectors.append(basevector)  # Append the last basis vector
+
+        # Ensure deltas is a numpy array for easier handling
+        deltas = np.array(deltas)
+
+    return BasisVectors, deltas
 
 def getOutFileName(path="./"):
     #Get the name of the .out file from the path
