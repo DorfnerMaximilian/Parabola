@@ -10,7 +10,7 @@ pathtobinaries=pathtocp2k+"/exe/local/"
 
 
 class Structure():
-    def __init__(self,path="./", tol=1e-4):
+    def __init__(self,path="./"):
         self.path=path
         coordinates, _, atomic_symbols = Geometry.getCoordinatesAndMasses(path)
         self.coordinates=coordinates
@@ -19,76 +19,84 @@ class Structure():
         self.cellvectors=Read.readinCellSize(path)
         self.supercell=(1,1,1)
         self.primitiveIndices=np.arange(len(self.coordinates))
-        self.GlobalTranslationSymmetry=True
-        self.GlobalRotationSymmetry=True
-        self.TranslationSymmetry=[]
-        self.tol_translation = tol
-        self.InversionSymmetry=[]
+        self.GlobalTranslationSymmetry=False
+        self.GlobalRotationSymmetry=False
+        self.TranslationSymmetry=False
+        self.TranslationSymmetry_Generators=[]
+        self.tol_translation = 10**(-4)
+        self.InversionSymmetry=False
+        self.InversionSymmetry_Generator=[]
         self.tol_Inversion = 10**(-2)
         self.MirrorSymmetry=[]
 
     def detect_GlobalTranslationalSymmetry(self):
-        return  
+        str=input("Do You Want to use the Global Translation Symmetry?[Y/N]")
+        if str=="Y" or len(str)==0:
+            print("Using Global Translation Symmetry.")
+            self.GlobalTranslationSymmetry=True
+        elif str=="N":
+            self.GlobalTranslationSymmetry=False
+        else:
+            print("Have not recognized Input.")
+            print("Continuing With Default (Y).")
+            self.GlobalTranslationSymmetry=True
+        return 
     def detect_GlobalRotationalSymmetry(self):
-        has_rotational_symmetry=not(bool(Read.readinPeriodicity(self.path)))
-        self.GlobalRotationSymmetry=has_rotational_symmetry
+        IsPeriodic=not(bool(Read.readinPeriodicity(self.path)))
+        if not IsPeriodic:
+            str=input("Do You Want to use the Global Translation Symmetry?[Y/N]")
+            if str=="Y" or len(str)==0:
+                print("Using Global Translation Symmetry.")
+                self.GlobalRotationSymmetry=True
+            elif str=="N":
+                self.GlobalRotationSymmetry=False
+            else:
+                print("Have not recognized Input.")
+                print("Continuing With Default (Y).")
+                self.GlobalRotationSymmetry=True
         return 
     def detect_TranslationSymmetry(self):
         if self.periodicity:
+            print("Periodic Calculation Detected!")
             supercell,primitive_indices, scaled_lattice=getPrimitiveUnitCell(self.cellvectors, self.coordinates, self.atoms,tolerance=self.tol_translation,Nx=10,Ny=10,Nz=10)
             self.supercell=supercell
-            if not(supercell==(1,1,1)):
-               self.primitiveIndices=primitive_indices
-               relative_cell_coordinates, _=getCellCoordinates(scaled_lattice,self.coordinates,primitive_indices)
-               Tx,Ty,Tz=getTranslationOps(relative_cell_coordinates,supercell)
-               self.TranslationSymmetry.append(Tx)
-               self.TranslationSymmetry.append(Ty)
-               self.TranslationSymmetry.append(Tz)
-            else:
+            self.primitiveIndices=primitive_indices
+            relative_cell_coordinates, _=getCellCoordinates(scaled_lattice,self.coordinates,primitive_indices)
+            Tx,Ty,Tz=getTranslationOps(relative_cell_coordinates,supercell)
+            if not(supercell[0]==1):
+                self.TranslationSymmetry.append(Tx)
+            if not(supercell[1]==1):
+                self.TranslationSymmetry.append(Ty)
+            if not(supercell[2]==1):
+                self.TranslationSymmetry.append(Tz)
+            if supercell[0]==1 and supercell[1]==1 and supercell[2]==1:
                 print("Primitive Cell is given Cell!")
-            return True
+            else:
+                self.TranslationSymmetry=True
         else:
             print("No Periodicity Detected!")
-            return False
 
     def detect_InversionSymmetry(self):
-        print(self.supercell)
         geometry_centered_coordinates, _ = Geometry.ComputeCenterOfGeometryCoordinates(np.array(self.coordinates)[self.primitiveIndices])
         has_symmetry, inversion_pairs = detect_inversion_symmetry(geometry_centered_coordinates, np.array(self.atoms)[self.primitiveIndices], self.tol_Inversion)
-        #Generate the Original Pairs
-        pairs={}
-        for idx, inv_idx in inversion_pairs.items():
-            pairs[self.primitiveIndices[idx]]=self.primitiveIndices[inv_idx]
-        #Add the remaining pairs on the diagonal
-        Ultimate_Pairs={}
-        nAtoms=len(self.atoms)
-        for it in range(nAtoms):
-            if it in pairs:
-                Ultimate_Pairs[it]=pairs[it]
-            else:
-                Ultimate_Pairs[it]=it
-        PrimitiveInversion=get_I_sym_permutation_matrix(Ultimate_Pairs,nAtoms)
-        Tx=self.TranslationSymmetry[0]
-        Ty=self.TranslationSymmetry[1]
-        Tz=self.TranslationSymmetry[2]
-        for n in range(self.supercell[0]):
-            for m in range(self.supercell[1]):
-                for p in range(self.supercell[2]):
-                    print(n,m,p)
-                    if n==0:
-                        Tnx=np.eye(np.shape(Tx)[0])
-                    else:
-                        Tnx=np.linalg.matrix_power(Tx,n)
-                    if m==0:
-                        Tmy=np.eye(np.shape(Ty)[0])
-                    else:
-                        Tmy=np.linalg.matrix_power(Ty,m)
-                    if p==0:
-                        Tpz=np.eye(np.shape(Tz)[0])
-                    else:
-                        Tpz=np.linalg.matrix_power(Tz,p)
-        self.InversionSymmetry.append(Tpz@Tmy@Tnx@PrimitiveInversion@np.transpose(Tnx)@np.transpose(Tmy)@np.transpose(Tpz))
-        return has_symmetry
+        if has_symmetry:
+            #Generate the Original Pairs
+            pairs={}
+            for idx, inv_idx in inversion_pairs.items():
+                pairs[self.primitiveIndices[idx]]=self.primitiveIndices[inv_idx]
+            #Add the remaining pairs on the diagonal
+            Ultimate_Pairs={}
+            nAtoms=len(self.atoms)
+            for it in range(nAtoms):
+                if it in pairs:
+                    Ultimate_Pairs[it]=pairs[it]
+                else:
+                    Ultimate_Pairs[it]=it
+            PrimitiveInversion=get_Inversion_Symmetry_Generator(Ultimate_Pairs,nAtoms)
+            print(np.shape(PrimitiveInversion))
+            self.InversionSymmetry_Generator.append(PrimitiveInversion)
+        self.InversionSymmetry=has_symmetry
+
 '''
         return has_symmetry
 class xyMirrorSymmetry(Structure):
@@ -367,7 +375,7 @@ def detect_inversion_symmetry(centered_coords, atomic_symbols, tolerance=1e-5):
             return False, {}  # No symmetry if any atom lacks a valid inversion pair
 
     return True, inversion_pairs
-def get_I_sym_permutation_matrix(pairs_pairs, n_atoms):
+def get_Inversion_Symmetry_Generator(pairs_pairs, n_atoms):
     """
     Generates a permutation matrix based on detected inversion pairs.
     
@@ -382,19 +390,46 @@ def get_I_sym_permutation_matrix(pairs_pairs, n_atoms):
 
     for idx, inv_idx in pairs_pairs.items():
         perm_matrix[idx, inv_idx] = 1.0
-
     return perm_matrix
+def Generate_Cn_Symmetry_Group(generator,group_order):
+    group=[]
+    group.append(np.eye(np.shape(generator)[0]))
+    group.append(generator)
+    generator_n=generator
+    for it in range(2,group_order):
+        generator_n=generator_n@generator
+        group.append(generator_n)
+    return group
+def Generate_Z2_Symmetry_Group(generator):
+    group=[]
+    group.append(np.eye(np.shape(generator)[0]))
+    group.append(generator)
+    return group
+def Combine_Symmetry_Group(group1,group2):
+    #Check if group generators commute
+    combined_group = []
+    seen = set()
+    # Initialize T and a set to track hashable representations of matrices in T
+    for g1 in group1:
+        for g2 in group2:
+            # Compute the product
+            product1 = g1 @ g2
+            product2 = g2 @ g1
+            # Convert the product to a hashable representation (e.g., tuple of tuples)
+            product1_hashable = tuple(map(tuple, product1))
+            product2_hashable = tuple(map(tuple, product2))
+            
+            # Add to T only if the product is not already seen
+            if product1_hashable not in seen:
+                combined_group.append(product1)
+                seen.add(product1_hashable)
+            # Add to T only if the product is not already seen
+            if product2_hashable not in seen:
+                combined_group.append(product2)
+                seen.add(product2_hashable)
+    return combined_group
 
-def Impose_Inversion_Symmetry(Hessian,pairs):
-    # Imposes exact relation on the Hessian
-    #input: 
-    #Hessian:    (numpy.array)  Hessian in carthesian coordinates 
-    #Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
-    n_atoms=int(np.shape(Hessian)[0]/3)
-    permutation_Matrix=get_I_sym_permutation_matrix(pairs, n_atoms)
-    transformed_Hessian=permutation_Matrix@Hessian@permutation_Matrix
-    Hessian=0.5*(Hessian+transformed_Hessian)
-    return Hessian
+    
 def get_reflection_permutation_matrix(equivalent_pairs, n_atoms):
     """
     Generates a permutation matrix based on detected equivalent pairs for reflection symmetry.
@@ -727,7 +762,7 @@ def getTranslationOps(relative_cell_coordinates,supercell):
                 Tzflag=True
     return Tx,Ty,Tz
 
-def determineSymmetry(Hessian,parentfolder="./", tol=1e-5):
+def determineSymmetry(parentfolder="./"):
     """
     Detects various symmetries in a molecular geometry and prints results.
     
@@ -735,45 +770,74 @@ def determineSymmetry(Hessian,parentfolder="./", tol=1e-5):
         parentfolder (str): Path to the folder containing molecular data.
         tol (float): Tolerance for symmetry detection.
     """    
-    # List of symmetry operations to check
-    symmetry_operations = [
-        GlobalTranslationalSymmetry(path=parentfolder, tol=tol),
-        GlobalRotationalSymmetry(path=parentfolder, tol=tol),
-        TranslationSymmetry(path=parentfolder,tol=tol)
-        #InversionSymmetry(path=parentfolder, tol=tol),
-        #xyMirrorSymmetry(path=parentfolder,tol=tol),
-        #xzMirrorSymmetry(path=parentfolder,tol=tol),
-        #yzMirrorSymmetry(path=parentfolder,tol=tol)
-        # RotationalSymmetry(tol),  # Uncomment as implemented
-        # MirrorSymmetry(tol)       # Uncomment as implemented
-    ]
-    
-    # Detect symmetries
-    for it,symmetry in enumerate(symmetry_operations):
-        has_symmetry = symmetry.detect_symmetry()
-        if has_symmetry:
-            print(f"Found {symmetry.__class__.__name__}")
-            if it==0:
-                strin=input("Impose GlobalTranslationalSymmetry [Y/N]?")
-                if strin=="N":
-                    print(f"Not imposing {symmetry.__class__.__name__}!")
+    struct=Structure(parentfolder)
+    struct.detect_GlobalTranslationalSymmetry()
+    struct.detect_GlobalRotationalSymmetry()
+    struct.detect_GlobalTranslationalSymmetry()
+    struct.detect_InversionSymmetry()
+    return struct
+
+def Enforce_Symmetry_On_Hessian(Hessian,parentfolder="./"):
+    struct=determineSymmetry(parentfolder)
+    #Translational Symmetry
+    if struct.GlobalTranslationSymmetry:
+        Hessian=ImposeTranslationalSymmetry(Hessian,pathtoEquilibriumxyz=parentfolder)
+    #Rotational Symmetry
+    if struct.GlobalRotationSymmetry:
+        Hessian=ImposeGlobalRotationalSymmetry(Hessian,pathtoEquilibriumxyz=parentfolder)
+    group=[]
+    #Inversion Symmetry
+    if struct.TranslationSymmetry:
+        supercell=struct.supercell
+        generators=struct.TranslationSymmetry_Generators
+        if supercell[0]!=1:
+            group1=Generate_Cn_Symmetry_Group(generators[0,:,:],supercell[0])
+            if supercell[1]!=1 and supercell[2]!=1:
+                group2=Generate_Cn_Symmetry_Group(generators[1,:,:],supercell[1])
+                group3=Generate_Cn_Symmetry_Group(generators[2,:,:],supercell[2])
+                group12=Combine_Symmetry_Group(group1,group2)
+                group=Combine_Symmetry_Group(group12,group3)
+            elif supercell[1]==1 and supercell[2]!=1:
+                group2=Generate_Cn_Symmetry_Group(generators[2,:,:],supercell[2])
+                group=Combine_Symmetry_Group(group1,group2)
+            else:
+                group=group1 
+            
+        else:
+            if supercell[1]!=1:
+                group1=Generate_Cn_Symmetry_Group(generators[1,:,:],supercell[1])
+                if supercell[2]!=1:
+                    group2=Generate_Cn_Symmetry_Group(generators[2,:,:],supercell[2])
+                    group=Combine_Symmetry_Group(group1,group2)
                 else:
-                    print(f"Imposing {symmetry.__class__.__name__}!")
-                    Hessian=ImposeTranslationalSymmetry(Hessian,pathtoEquilibriumxyz=parentfolder+"/Equilibrium_Geometry/")
-            if it==1:
-                strin=input("Impose GlobalRotationalSymmetry [Y/N]?")
-                if strin=="N":
-                    print(f"Not imposing {symmetry.__class__.__name__}!")
-                else:
-                    print(f"Have not recognized input!")
-                    print(f"Imposing {symmetry.__class__.__name__}!")
-                    Hessian=ImposeGlobalRotationalSymmetry(Hessian,pathtoEquilibriumxyz=parentfolder+"/Equilibrium_Geometry/")
-            if it==2:
-                strin=input("Impose InversionSymmetry [Y/N]?")
-                if strin=="N":
-                    print(f"Not imposing {symmetry.__class__.__name__}!")
-                else:
-                    print(f"Have not recognized input!")
-                    print(f"Imposing {symmetry.__class__.__name__}!")
-                    Hessian=Impose_Inversion_Symmetry(Hessian,symmetry_pairs)
-    return 
+                    group=group1
+            else:
+                group=Generate_Cn_Symmetry_Group(generators[2,:,:],supercell[2])
+    #Inversion Symmetry
+    if struct.InversionSymmetry:
+        generator_inversion=struct.InversionSymmetry_Generator[0]
+        group_Inversion=Generate_Z2_Symmetry_Group(generator_inversion)
+        if len(group)>0:
+            group=Combine_Symmetry_Group(group,group_Inversion)
+        else:
+            group=group_Inversion
+
+    if len(group)>0:
+        symmetrized_Hessian=np.zeros(np.shape(Hessian))
+        for element in group:
+            representation=np.kron(element,np.eye(3))
+            symmetrized_Hessian+=representation@Hessian@np.transpose(representation)
+        symmetrized_Hessian/=len(group)
+        return symmetrized_Hessian
+    else:
+        return Hessian
+def getSymmetryAdaptedEigenvectors(modevectors,energies,parentfolder="./"):
+    struct=determineSymmetry(parentfolder)
+
+    if struct.InversionSymmetry:
+        generator_inversion=struct.InversionSymmetry_Generator[0]
+        generator_inversion_in_eigenbasis=np.transpose(modevectors)@np.kron(generator_inversion,np.eye(3))@modevectors
+        print(np.diag(np.round(generator_inversion_in_eigenbasis,2)))
+
+
+
