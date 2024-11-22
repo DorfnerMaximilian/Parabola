@@ -194,9 +194,9 @@ def deflectAlongM3GnetModes(parentfolder="./"):
         deltas.append(0.1);deltas.append(0.1);deltas.append(0.1)
     for it in range(np.shape(nCD)[0]):
         if omegas[it]>15:
-            delta=np.max([unit_prefactor(omegas[it])/normfactors[it],0.03])
+            delta=np.max([unit_prefactor(omegas[it])/normfactors[it],0.05])
         else:
-            delta=np.max([unit_prefactor(15)/normfactors[it],0.03])
+            delta=np.max([unit_prefactor(15)/normfactors[it],0.05])
         deltas.append(np.round(delta,2))
         vectors.append(nCD[it,:])
     Vib_Ana_inputs(deltas,vectors,parentfolder)
@@ -365,14 +365,14 @@ def getHessian(parentfolder="./",writeMolFile=True):
         for s1alpha1 in range(3*numofatoms):
             partialFpartialY[s1alpha1][lambd]=diffofforces[s1alpha1]
     Hessian=-partialFpartialY@Tinv
-    Hessian=Symmetry.determineAndEnforceSymmetry(Hessian,parentfolder=parentfolder,tol=10**(-2))
+    Hessian=Symmetry.Enforce_Symmetry_On_Hessian(Hessian,parentfolder)
     #built the rescaled Hessian
     rescaledHessian=sqrtM@Hessian@sqrtM 
     # transform to units 1/cm
     rescaledHessian*=(10**(3)/1.8228884842645)*(2.19474631370540E+02)**2 
     # Diagonalize the rescaled Hessian
     Lambda,Normalmodes=np.linalg.eigh(rescaledHessian)
-
+    Symmetry.getSymmetryAdaptedEigenvectors(Normalmodes,Lambda,parentfolder="./")
     #Standard Values for the Translation and Rotational overlaps with Vibrations
     print("Projecting Out Translational Eigenvectors")
     threshhold_string=input("Maximally allowed Weight of Translations with Numerical Normal Modes [float between 0 and 1 or std for Standard Value]:")
