@@ -42,11 +42,11 @@ class Structure():
             self.GlobalTranslationSymmetry=True
         return 
     def detect_GlobalRotationalSymmetry(self):
-        IsPeriodic=not(bool(Read.readinPeriodicity(self.path)))
+        IsPeriodic=Read.readinPeriodicity(self.path)
         if not IsPeriodic:
-            str=input("Do You Want to use the Global Translation Symmetry?[Y/N]")
+            str=input("Do You Want to use the Global Rotation Symmetry?[Y/N]")
             if str=="Y" or len(str)==0:
-                print("Using Global Translation Symmetry.")
+                print("Using Global Rotational Symmetry.")
                 self.GlobalRotationSymmetry=True
             elif str=="N":
                 self.GlobalRotationSymmetry=False
@@ -64,11 +64,11 @@ class Structure():
             relative_cell_coordinates, _=getCellCoordinates(scaled_lattice,self.coordinates,primitive_indices)
             Tx,Ty,Tz=getTranslationOps(relative_cell_coordinates,supercell)
             if not(supercell[0]==1):
-                self.TranslationSymmetry.append(Tx)
+                self.TranslationSymmetry_Generators.append(Tx)
             if not(supercell[1]==1):
-                self.TranslationSymmetry.append(Ty)
+                self.TranslationSymmetry_Generators.append(Ty)
             if not(supercell[2]==1):
-                self.TranslationSymmetry.append(Tz)
+                self.TranslationSymmetry_Generators.append(Tz)
             if supercell[0]==1 and supercell[1]==1 and supercell[2]==1:
                 print("Primitive Cell is given Cell!")
             else:
@@ -773,7 +773,7 @@ def determineSymmetry(parentfolder="./"):
     struct=Structure(parentfolder)
     struct.detect_GlobalTranslationalSymmetry()
     struct.detect_GlobalRotationalSymmetry()
-    struct.detect_GlobalTranslationalSymmetry()
+    struct.detect_TranslationSymmetry()
     struct.detect_InversionSymmetry()
     return struct
 
@@ -786,41 +786,63 @@ def Enforce_Symmetry_On_Hessian(Hessian,parentfolder="./"):
     if struct.GlobalRotationSymmetry:
         Hessian=ImposeGlobalRotationalSymmetry(Hessian,pathtoEquilibriumxyz=parentfolder)
     group=[]
-    #Inversion Symmetry
     if struct.TranslationSymmetry:
-        supercell=struct.supercell
-        generators=struct.TranslationSymmetry_Generators
-        if supercell[0]!=1:
-            group1=Generate_Cn_Symmetry_Group(generators[0,:,:],supercell[0])
-            if supercell[1]!=1 and supercell[2]!=1:
-                group2=Generate_Cn_Symmetry_Group(generators[1,:,:],supercell[1])
-                group3=Generate_Cn_Symmetry_Group(generators[2,:,:],supercell[2])
-                group12=Combine_Symmetry_Group(group1,group2)
-                group=Combine_Symmetry_Group(group12,group3)
-            elif supercell[1]==1 and supercell[2]!=1:
-                group2=Generate_Cn_Symmetry_Group(generators[2,:,:],supercell[2])
-                group=Combine_Symmetry_Group(group1,group2)
-            else:
-                group=group1 
-            
+        Use_TranslationSymmetry=False
+        str=input("Do You Want to use the Translation Symmetry?[Y/N]")
+        if str=="Y" or len(str)==0:
+            print("Using Translation Symmetry.")
+            Use_TranslationSymmetry=True
+        elif str=="N":
+            Use_TranslationSymmetry=False
         else:
-            if supercell[1]!=1:
-                group1=Generate_Cn_Symmetry_Group(generators[1,:,:],supercell[1])
-                if supercell[2]!=1:
+            print("Have not recognized Input.")
+            print("Continuing With Default (Y).")
+        #Translation Symmetry
+        if Use_TranslationSymmetry:
+            supercell=struct.supercell
+            generators=np.array(struct.TranslationSymmetry_Generators)
+            if supercell[0]!=1:
+                group1=Generate_Cn_Symmetry_Group(generators[0,:,:],supercell[0])
+                if supercell[1]!=1 and supercell[2]!=1:
+                    group2=Generate_Cn_Symmetry_Group(generators[1,:,:],supercell[1])
+                    group3=Generate_Cn_Symmetry_Group(generators[2,:,:],supercell[2])
+                    group12=Combine_Symmetry_Group(group1,group2)
+                    group=Combine_Symmetry_Group(group12,group3)
+                elif supercell[1]==1 and supercell[2]!=1:
                     group2=Generate_Cn_Symmetry_Group(generators[2,:,:],supercell[2])
                     group=Combine_Symmetry_Group(group1,group2)
                 else:
-                    group=group1
+                    group=group1 
+                
             else:
-                group=Generate_Cn_Symmetry_Group(generators[2,:,:],supercell[2])
-    #Inversion Symmetry
+                if supercell[1]!=1:
+                    group1=Generate_Cn_Symmetry_Group(generators[1,:,:],supercell[1])
+                    if supercell[2]!=1:
+                        group2=Generate_Cn_Symmetry_Group(generators[2,:,:],supercell[2])
+                        group=Combine_Symmetry_Group(group1,group2)
+                    else:
+                        group=group1
+                else:
+                    group=Generate_Cn_Symmetry_Group(generators[2,:,:],supercell[2])
     if struct.InversionSymmetry:
-        generator_inversion=struct.InversionSymmetry_Generator[0]
-        group_Inversion=Generate_Z2_Symmetry_Group(generator_inversion)
-        if len(group)>0:
-            group=Combine_Symmetry_Group(group,group_Inversion)
+        Use_InversionSymmetry=False
+        str=input("Do You Want to use Inversion Symmetry?[Y/N]")
+        if str=="Y" or len(str)==0:
+            print("Using Translation Symmetry.")
+            Use_InversionSymmetry=True
+        elif str=="N":
+            Use_InversionSymmetry=False
         else:
-            group=group_Inversion
+            print("Have not recognized Input.")
+            print("Continuing With Default (Y).")
+        #Inversion Symmetry
+        if Use_InversionSymmetry:
+            generator_inversion=struct.InversionSymmetry_Generator[0]
+            group_Inversion=Generate_Z2_Symmetry_Group(generator_inversion)
+            if len(group)>0:
+                group=Combine_Symmetry_Group(group,group_Inversion)
+            else:
+                group=group_Inversion
 
     if len(group)>0:
         symmetrized_Hessian=np.zeros(np.shape(Hessian))
@@ -831,13 +853,6 @@ def Enforce_Symmetry_On_Hessian(Hessian,parentfolder="./"):
         return symmetrized_Hessian
     else:
         return Hessian
-def getSymmetryAdaptedEigenvectors(modevectors,energies,parentfolder="./"):
-    struct=determineSymmetry(parentfolder)
-
-    if struct.InversionSymmetry:
-        generator_inversion=struct.InversionSymmetry_Generator[0]
-        generator_inversion_in_eigenbasis=np.transpose(modevectors)@np.kron(generator_inversion,np.eye(3))@modevectors
-        print(np.diag(np.round(generator_inversion_in_eigenbasis,2)))
 
 
 

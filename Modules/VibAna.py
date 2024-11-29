@@ -372,7 +372,6 @@ def getHessian(parentfolder="./",writeMolFile=True):
     rescaledHessian*=(10**(3)/1.8228884842645)*(2.19474631370540E+02)**2 
     # Diagonalize the rescaled Hessian
     Lambda,Normalmodes=np.linalg.eigh(rescaledHessian)
-    Symmetry.getSymmetryAdaptedEigenvectors(Normalmodes,Lambda,parentfolder="./")
     #Standard Values for the Translation and Rotational overlaps with Vibrations
     print("Projecting Out Translational Eigenvectors")
     threshhold_string=input("Maximally allowed Weight of Translations with Numerical Normal Modes [float between 0 and 1 or std for Standard Value]:")
