@@ -9,12 +9,12 @@ import Modules.TDDFT as TDDFT
 import Modules.VibAna as VibAna
 pathtocp2k=os.environ["cp2kpath"]
 pathtobinaries=pathtocp2k+"/exe/local/"
-def LCC_inputs(delta,parentfolder="./",linktobinary=True,binary="cp2k.popt",parentpath="./",binaryloc=pathtobinaries):
+def LCC_inputs(deltas,parentfolder="./",linktobinary=True,binaryloc=pathtobinaries):
     _,normCD,_=Read.readinVibrations(parentfolder)
     nCD=[]
     for it in range(np.shape(normCD)[0]):
         nCD.append(normCD[it,:])
-    VibAna.Vib_Ana_inputs(delta,nCD,linktobinary,binary,parentpath,binaryloc)
+    VibAna.Vib_Ana_inputs(deltas,nCD,parentpath=parentfolder)
 
 def getManyBodyCouplings(eta,LCC,id_homo):
     ''' Function to obtain the Many-Body Coupling Constants from the CP2K TDDFT excited states and the DFT Coupling constants
@@ -105,9 +105,8 @@ def getadiabaticallyConnectedEigenstates(orthogonalEigenstates_Eq,orthorgonalEig
         adibaticallyConnectediters_Plus.append(iter1)
         if overlaps[iter1]<0:
             orthorgonalEigenstates_deflected[iter1]*=-1
-        if maximumAbsOverlap < 0.50:
+        if maximumAbsOverlap < 0.90:
             print("Maximum Overlap: ", maximumAbsOverlap," for Orbital ", it0)
-            raise ValueError("Maximum Overlap too small! Check your inputs!")
     return adibaticallyConnectediters_Plus
 
 
@@ -182,7 +181,7 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
             included_orbitals.append(it)
             orthorgonalEigenstates_Eq.append(orth_eigenstate)
         
-    _,delta=Read.readinBasisVectors(parentfolder)
+    _,deltas=Read.readinBasisVectors(parentfolder)
     #get the normal modes from the cartesian displacements
     VibrationalFrequencies,_,normfactors=Read.readinVibrations(parentfolder)
     #This has index convention lambda,mu
@@ -197,6 +196,7 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
         EPlus,a_orth_Plus,Sm12_Plus=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/"+folderplus+"/")
         T_Eq_Plus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq,cell_vectors)
         T_matrix_Plus=Sm12_Eq@T_Eq_Plus@Sm12_Plus
+        #T_matrix_Plus=np.eye(np.shape(Sm12_Plus)[0])
         #----------------------------------------------------------------------
         # Negatively displaced 
         #----------------------------------------------------------------------
@@ -207,7 +207,7 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
         #obtain the Basis Transformation Matrix 
         T_Eq_Minus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq,cell_vectors)
         T_Matrix_Minus=Sm12_Eq@T_Eq_Minus@Sm12_Minus
-
+        #T_Matrix_Minus=np.eye(np.shape(Sm12_Plus)[0])
         #fix the phase of the Eigenstates
         orthorgonalEigenstates_Plus=[]
         for it in range(len(EPlus)):
@@ -240,15 +240,15 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
         for it0 in range(len(included_orbitals)):
             for it1 in range(len(included_orbitals)):
                 if it0==it1:
-                    deltaE=(EPlus[included_orbitals[adibaticallyConnectediters_Plus[it0]]]-EMinus[included_orbitals[adibaticallyConnectediters_Minus[it1]]])/(2*delta)*normfactors[mu]
+                    deltaE=(EPlus[included_orbitals[adibaticallyConnectediters_Plus[it0]]]-EMinus[included_orbitals[adibaticallyConnectediters_Minus[it1]]])/(2*deltas[mu])*normfactors[mu]
                     couplingConstants[mu,included_orbitals[it0],included_orbitals[it1]]=ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*deltaE
                 else:
                     overlap1=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus_dot_states_Plus[:,adibaticallyConnectediters_Plus[it1]])
                     overlap2=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus_dot_states_Minus[:,adibaticallyConnectediters_Minus[it1]])
-                    deltaE=(E_Eq[included_orbitals[it1]]-E_Eq[included_orbitals[it0]])*(overlap1-overlap2)/(2*delta)*normfactors[mu]
+                    deltaE=(E_Eq[included_orbitals[it1]]-E_Eq[included_orbitals[it0]])*(overlap1-overlap2)/(2*deltas[mu])*normfactors[mu]
                     couplingConstants[mu,included_orbitals[it0],included_orbitals[it1]]=ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*deltaE
     np.save(parentfolder+"/Linear_Coupling_Constants",couplingConstants)
-def getLCC_STATES(States,cell_vectors=[0.0, 0.0, 0.0],parentfolder="./"):
+def getLCC_STATES(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0],):
     '''Compute linear coupling constants from finitly displaced geometries.
     
     Parameters:
@@ -270,15 +270,58 @@ def getLCC_STATES(States,cell_vectors=[0.0, 0.0, 0.0],parentfolder="./"):
     # Equilibrium configuration
     #----------------------------------------------------------------------
 
-    #get the Equilibrium Configuration 
+     #get the Equilibrium Configuration 
     Atoms_Eq=Read.readinAtomicCoordinates(parentfolder+"/Equilibrium_Geometry/")
     #Construct Basis of the Equilibrium configuration
     Basis_Eq=AtomicBasis.getBasis(parentfolder+"/Equilibrium_Geometry/")
-    _,delta=Read.readinBasisVectors(parentfolder)
+    #Diagonalize to the KS Hamiltonian in the ortonormal Basis
+    E_Eq,a_orth_Eq,Sm12_Eq=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/Equilibrium_Geometry/")
+    #get the normalized Eigenstates in the non-orthorgonal Basis & fix Phase
+    orthorgonalEigenstates_Eq = []
+    # Precompute phases
+    phases = np.array([TDDFT.getPhaseOfMO(a_orth_Eq[:, it]) for it in range(len(E_Eq))])
+    #parsing the input
+    Homoid=Util.getHOMOId(parentfolder+"/Equilibrium_Geometry/")
+    #parsing for occupied orbitals
+    index_low=0
+    if idmin==0:
+        index_low=0
+        print("Computing coupling matrix elements for all occupied orbitals!")
+    elif idmin>=Homoid:
+        print("Cannot take into account more then "+str(Homoid+1)+" occupied orbitals.\n")
+        print("Continuing by taking into account all occupied orbitals!")
+        index_low=0
+    else:
+        print("Computing coupling matrix elements for the occupied orbitals HOMO, ... HOMO-"+str(idmin)+"\n")
+        index_low=Homoid-idmin
+    #parsing for empty orbitals
+    index_up=0
+    if idmax==-1:
+        index_up=len(E_Eq)
+        print("Computing coupling matrix elements for all empty orbitals!")
+    elif idmax+Homoid+1>=len(E_Eq):
+        print("Cannot take into account more then "+str(len(E_Eq)-Homoid-1)+" empty orbitals.\n")
+        print("Continuing by taking into account all empty orbitals!")
+        index_up=len(E_Eq)
+    else:
+        print("Computing coupling matrix elements for the empty orbitals LUMO, ... LUMO+"+str(idmax)+"\n")
+        index_up=Homoid+idmax
+    # Compute and append normalized eigenstates
+    included_orbitals=[]
+    for it in range(len(E_Eq)):
+        orth_eigenstate = a_orth_Eq[:, it]  # Make a copy to avoid modifying the original data
+        phase = phases[it]
+        orth_eigenstate *= phase
+        if it>=index_low and it<=index_up:
+            included_orbitals.append(it)
+            orthorgonalEigenstates_Eq.append(orth_eigenstate)
+    print(np.shape(orthorgonalEigenstates_Eq))
+    States=np.transpose(np.array(orthorgonalEigenstates_Eq))
+    _,deltas=Read.readinBasisVectors(parentfolder)
     #get the normal modes from the cartesian displacements
     VibrationalFrequencies,_,normfactors=Read.readinVibrations(parentfolder)
     #This has index convention lambda,mu
-    couplingConstants=np.zeros((len(normfactors),np.shape(States)[1],np.shape(States)[1]))
+    couplingConstants=np.zeros((len(normfactors),np.shape(States)[0],np.shape(States)[0]))
     for mu in Util.progressbar(range(len(normfactors)),"Coupling Constants:",40):
         #----------------------------------------------------------------------
         # Positively displaced 
@@ -289,7 +332,7 @@ def getLCC_STATES(States,cell_vectors=[0.0, 0.0, 0.0],parentfolder="./"):
         KSH_alpha_Plus,KSH_beta_Plus,OLM_Plus=Read.readinMatrices(parentfolder+"/"+folderplus)
         T_Eq_Plus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq,cell_vectors)
         Sm1_Plus=Util.getSm1(OLM_Plus)
-        T_Plus=T_Eq_Plus@Sm1_Plus
+        T_Plus=Sm12_Eq@T_Eq_Plus@Sm1_Plus
         #Do Basis Transform
         KS_Plus=T_Plus@KSH_alpha_Plus@np.transpose(T_Plus)
         #----------------------------------------------------------------------
@@ -301,10 +344,10 @@ def getLCC_STATES(States,cell_vectors=[0.0, 0.0, 0.0],parentfolder="./"):
         KSH_alpha_Minus,KSH_beta_Minus,OLM_Minus=Read.readinMatrices(parentfolder+"/"+folderminus)
         T_Eq_Minus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq,cell_vectors)
         Sm1_Minus=Util.getSm1(OLM_Minus)
-        T_Minus=T_Eq_Minus@Sm1_Minus
+        T_Minus=Sm12_Eq@T_Eq_Minus@Sm1_Minus
         #Do Basis Transform
         KS_minus=T_Minus@KSH_alpha_Minus@np.transpose(T_Minus)
         #Compute derivative
-        derivativeKS=(KS_Plus-KS_minus)/(2*delta)*normfactors[mu]
+        derivativeKS=(KS_Plus-KS_minus)/(2*deltas[mu])*normfactors[mu]
         couplingConstants[mu,:,:]=ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*np.transpose(States)@derivativeKS@States
     np.save(parentfolder+"/LCC_STATES",couplingConstants)
