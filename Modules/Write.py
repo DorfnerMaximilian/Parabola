@@ -142,30 +142,31 @@ def writemolFile(normalmodeEnergies,normalmodes,normfactors,parentfolder="./"):
                 f.write('   '+str(round(mode[3*s], 12))+'   '+str(round(mode[3*s+1], 12))+'   '+str(round(mode[3*s+2],12))+'\n')
             modeiter+=1
 
-def writexyzfile(atomicsym,coordinates,readpath="./",writepath="./",filename="dummyname",append=False):
+def writexyzfile(atomicsym,coordinates,readpath="./",cellcoordinates=[],filename="dummyname"):
     xyzfilename=util.getxyzfilename(readpath)
+    if len(cellcoordinates)==0:
+        cell=Read.readinCellSize(readpath)
+    else:
+        cell=np.array(cellcoordinates)
     xyzfilename=xyzfilename.split("/")[-1]
     # generate new xyz file
     xyzinput=[]
     with open(readpath+"/"+xyzfilename) as g:
         lines = g.readlines()
-        xyzinput.append(lines[0])
-        xyzinput.append(lines[1])
+        xyzinput.append(str(len(coordinates))+"\n")
+        xyzinput.append("cell:"+str(cell[0][0])+" "+str(cell[0][1])+" "+str(cell[0][2])+";"+str(cell[1][0])+" "+str(cell[1][1])+" "+str(cell[1][2])+";"+str(cell[2][0])+" "+str(cell[2][1])+" "+str(cell[2][2])+"\n")
     g.close()
     for it,xyz in enumerate(coordinates):
         xyzinput.append(atomicsym[it]+' '+str(xyz[0])+' '+str(xyz[1])+' '+str(xyz[2])+'\n')
     #open the old xyz file
     
     #Check if the file exist in the write directory
-    inp_files = [f for f in os.listdir(writepath) if f.endswith('.xyz')]
+    inp_files = [f for f in os.listdir("./") if f.endswith('.xyz')]
     if len(inp_files) == 0:
         os.system("touch "+xyzfilename)
     if filename=="dummyname":
-        filename=xyzfilename
-    g=open(writepath+"/"+filename,'a')
-    if not append:
-        # kill its content
-        g.truncate(0)
+        filename=xyzfilename[:-4]+"_new.xyz"
+    g=open("./"+filename,'a')
     #generate the new content
     for line in xyzinput:
         g.write(line)
