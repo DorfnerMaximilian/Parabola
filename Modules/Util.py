@@ -133,8 +133,6 @@ def Diagonalize_KS_Hamiltonian(parentfolder="./"):
             np.save(parentfolder+"/OLMm12.npy",Sm12)
             np.save(parentfolder+"/KS_Eigenvalues.npy",E)
             np.save(parentfolder+"/KS_orth_Eigenstates.npy",a_orth)
-            os.remove(parentfolder+"/KSHamiltonian.npy")
-            os.remove(parentfolder+"/OLM.npy")
     else:
         ValueError("Higher Spin Multiplicity not yet implemented!")
     return E,a_orth,Sm12

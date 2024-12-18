@@ -23,7 +23,7 @@ class Structure():
         self.GlobalRotationSymmetry=False
         self.TranslationSymmetry=False
         self.TranslationSymmetry_Generators=[]
-        self.tol_translation = 10**(-4)
+        self.tol_translation = 5*10**(-3)
         self.InversionSymmetry=False
         self.InversionSymmetry_Generator=[]
         self.tol_Inversion = 10**(-2)
@@ -61,7 +61,7 @@ class Structure():
             supercell,primitive_indices, scaled_lattice=getPrimitiveUnitCell(self.cellvectors, self.coordinates, self.atoms,tolerance=self.tol_translation,Nx=10,Ny=10,Nz=10)
             self.supercell=supercell
             self.primitiveIndices=primitive_indices
-            relative_cell_coordinates, _=getCellCoordinates(scaled_lattice,self.coordinates,primitive_indices)
+            relative_cell_coordinates, _=getCellCoordinates(scaled_lattice,self.coordinates,primitive_indices,self.supercell,self.tol_translation)
             Tx,Ty,Tz=getTranslationOps(relative_cell_coordinates,supercell)
             if not(supercell[0]==1):
                 self.TranslationSymmetry_Generators.append(Tx)
@@ -93,7 +93,6 @@ class Structure():
                 else:
                     Ultimate_Pairs[it]=it
             PrimitiveInversion=get_Inversion_Symmetry_Generator(Ultimate_Pairs,nAtoms)
-            print(np.shape(PrimitiveInversion))
             self.InversionSymmetry_Generator.append(PrimitiveInversion)
         self.InversionSymmetry=has_symmetry
 
@@ -544,13 +543,13 @@ def is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, N1,N2,N3,t
     # Convert atom positions to fractional coordinates in the original lattice
     fractional_positions = to_fractional(scaled_lattice, coordinates)
     # Scale and wrap fractional positions into [0,1) range for periodicity
-    primitive_indices=np.where((fractional_positions[:, 0] < 1) & (fractional_positions[:, 1] < 1) & (fractional_positions[:, 2] < 1))[0]
+    primitive_indices=np.where((fractional_positions[:, 0] < 1-tolerance) & (fractional_positions[:, 1] < 1-tolerance) & (fractional_positions[:, 2] < 1-tolerance))[0]
     # Extract the candidate unit cell positions and symbols
     primitive_positions = fractional_positions[primitive_indices]
     primitive_symbols = np.array(atomicsymbols)[primitive_indices]
     # Generate all possible translation vectors within the periodic limits
     translations = [
-        np.array([i / N1, j / N2, k / N3])
+        np.array([i , j , k ])
         for i in range(N1) for j in range(N2) for k in range(N3)
     ]
     # Check each translated position to confirm it maps into the unit cell
@@ -558,7 +557,7 @@ def is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, N1,N2,N3,t
         # Check if the translated positions of `pos` map into the unit cell
         found_match = False
         for translation in translations:
-            translated_pos = np.mod(pos + translation, 1.0)  # Wrap within [0,1)
+            translated_pos = pos - translation  # Wrap within [0,1)
             # Check if the translated position matches any point in the primitive cell
             if any(
                 np.allclose(translated_pos, primitive_pos, atol=tolerance) and primitive_symbol == symbol
@@ -631,28 +630,37 @@ def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols,tolerance=1e-5,
         if iscell:
             break
     #Check maximum divisor:
-    for multx in range(1,Nx):
-        iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, multx*itx,1,1,tolerance=tolerance)
-        if not iscell:
-            break
-    multx-=1
+    if itx!=1:
+        for multx in range(1,Nx):
+            iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, multx*itx,1,1,tolerance=tolerance)
+            if not iscell:
+                break
+        multx-=1
+    else:
+        multx=1
     #Check maximum divisor:
-    for multy in range(1,Ny):
-        iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,1,multy*ity,1,tolerance=tolerance)
-        if not iscell:
-            break
-    multy-=1
-    #Check maximum divisor:
-    for multz in range(1,Nz):
-        iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,1,1,multz*itz,tolerance=tolerance)
-        if not iscell:
-            break
-    multz-=1
+    if ity!=1:
+        for multy in range(1,Ny):
+            iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,1,multy*ity,1,tolerance=tolerance)
+            if not iscell:
+                break
+        multy-=1
+    else:
+        multy=1
+    if itz!=1:
+        #Check maximum divisor:
+        for multz in range(1,Nz):
+            iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,1,1,multz*itz,tolerance=tolerance)
+            if not iscell:
+                break
+        multz-=1
+    else:
+        multz=1
     iscell,primitive_indices, scaled_lattice=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,multx*itx,multy*ity,multz*itz,tolerance=tolerance)
     return (multx*itx,multy*ity,multz*itz),primitive_indices, scaled_lattice
 
 
-def getCellCoordinates(lattice,coordinates,primitive_indices):
+def getCellCoordinates(lattice,coordinates,primitive_indices,supercell,tolerance):
     """
     Computes the relative cell coordinates and fractional coordinates of atoms within a unit cell.
 
@@ -672,18 +680,24 @@ def getCellCoordinates(lattice,coordinates,primitive_indices):
     """
     # Convert atom positions to fractional coordinates in the original lattice
     fractional_positions = to_fractional(lattice, coordinates)
-    #determine cell
-    in_cell_coordinates=[]
-    for it in primitive_indices:
-        in_cell_coordinates.append(np.array([fractional_positions[it][0]-np.floor(fractional_positions[it][0]),fractional_positions[it][1]-np.floor(fractional_positions[it][1]),fractional_positions[it][2]-np.floor(fractional_positions[it][2])]))
+    primitive_positions = fractional_positions[primitive_indices]
     relative_cell_coordinates=[]
+    translations = [
+        np.array([i , j , k ])
+        for i in range(supercell[0]) for j in range(supercell[1]) for k in range(supercell[2])
+    ]
+
     for frac_coord in fractional_positions:
-        cell=(np.floor(frac_coord[0]),np.floor(frac_coord[1]),np.floor(frac_coord[2]))
-        arr=np.array([frac_coord[0]-np.floor(frac_coord[0]),frac_coord[1]-np.floor(frac_coord[1]),frac_coord[2]-np.floor(frac_coord[2])])
-        for it,coor in enumerate(in_cell_coordinates):
-            if np.allclose(coor,arr , rtol=1e-3, atol=1e-5, equal_nan=False):
-                relative_cell_coordinates.append(np.array([cell[0],cell[1],cell[2],it]))
-    return np.array(relative_cell_coordinates),np.array(in_cell_coordinates)
+        for translation in translations:
+            translated_pos = frac_coord - translation  # Wrap within [0,1)
+            # Check if the translated position matches any point in the primitive cell
+            isclosearray=[np.allclose(translated_pos, primitive_position, atol=tolerance) for primitive_position in primitive_positions]
+            isclose=any(isclosearray)
+            whereisclose=np.where(isclosearray)
+            if isclose:
+                relative_cell_coordinates.append(np.array([translation[0],translation[1],translation[2],whereisclose[0][0]]))
+                break  # Found a match, no need to check other translations
+    return np.array(relative_cell_coordinates),np.array(primitive_positions)
 def getTranslationOps(relative_cell_coordinates,supercell):
     """
     Computes the translation operators \( T_x \), \( T_y \), and \( T_z \) for a given set 
