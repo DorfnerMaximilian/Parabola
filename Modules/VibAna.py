@@ -34,11 +34,16 @@ def Vib_Ana_inputs(deltas,vectors=[],parentpath="./",linktobinary=True,binary="c
         raise ValueError('InputError: There should be only one .xyz file in the current directory')
     xyzfilename = xyz_files[0]
     Restart_files = [f for f in os.listdir(parentpath) if f.endswith('-RESTART.wfn')]
-    if len(Restart_files) != 1:
-        raise ValueError('InputError: There should be only one Restart file in the current directory')
-    Restart_filename = Restart_files[0]
-    if Restart_filename!=Projectname+'-RESTART.wfn':
-        raise ValueError('InputError: Project- and Restartfilename differ! Reconsider your input.')
+    RestartfileFlag=True
+    if len(Restart_files) ==0:
+        print("Warning: No Restart Files detected!")
+        RestartfileFlag=False
+    elif len(Restart_files) >1:
+        raise ValueError('InputError: More than one Restartfile detected!')
+    else:
+        Restart_filename = Restart_files[0]
+        if Restart_filename!=Projectname+'-RESTART.wfn':
+            raise ValueError('InputError: Project- and Restartfilename differ! Reconsider your input.')
     atomorder=[]
     with open(parentpath+xyzfilename) as f:
         lines=f.readlines()
@@ -80,7 +85,8 @@ def Vib_Ana_inputs(deltas,vectors=[],parentpath="./",linktobinary=True,binary="c
     os.mkdir(parentpath+"Equilibrium_Geometry")
     os.system("cp "+parentpath+inpfilename+" "+parentpath+"Equilibrium_Geometry")
     os.system("cp "+parentpath+xyzfilename+" "+parentpath+"Equilibrium_Geometry")
-    os.system("cp "+parentpath+Restart_filename+" "+parentpath+"Equilibrium_Geometry")
+    if RestartfileFlag:
+        os.system("cp "+parentpath+Restart_filename+" "+parentpath+"Equilibrium_Geometry")
     if linktobinary:
         os.system("ln -s "+binaryloc+"/"+binary+" "+parentpath+"Equilibrium_Geometry"+"/")
     for it in range(len(vectors)):
@@ -98,7 +104,8 @@ def Vib_Ana_inputs(deltas,vectors=[],parentpath="./",linktobinary=True,binary="c
                 delta=deltas[it]
             Geometry.changeConfiguration(folderlabel,vec,delta*ConFactors['a.u.->A'],sign,parentpath)
             os.system("cp "+parentpath+inpfilename+" "+parentpath+work_dir)
-            os.system("cp "+parentpath+Restart_filename+" "+parentpath+work_dir)
+            if RestartfileFlag:
+                os.system("cp "+parentpath+Restart_filename+" "+parentpath+work_dir)
             if linktobinary:
                 os.system("ln -s "+binaryloc+"/"+binary+" "+parentpath+work_dir+"/")
 def CheckinpfileforVib_Ana(parentpath):
@@ -177,7 +184,9 @@ def CheckinpfileforVib_Ana(parentpath):
         ValueError("Reconsider the FORCES Section in the .inp file! Write 'NDIGITS 15' !")
     if not Forces_FilenameFlag:
         ValueError("Reconsider the AO_Section in the .inp file! Write 'FILENAME =Forces' !")
-def deflectAlongM3GnetModes(parentfolder="./"):
+
+
+def deflectAlongModes(parentfolder="./"):
     def unit_prefactor(omega):
         return 0.5/np.sqrt(omega)
     trans_vec=np.load(parentfolder+"/Translation_Eigenvectors.npy")
