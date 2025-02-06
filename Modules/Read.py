@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import Modules.Util as util
+import Modules.PhysConst as PhysConst
 def getMatricesfromfile_mulOne(parentfolder="./",filename="KSHamiltonian"):
     ##Reads in the overlapmatrix and the KSHamiltonian in case of Spin multiplicity 1
     ## input:
@@ -543,7 +544,7 @@ def readinExcitedStatesCP2K(path,minweight=0.01):
 									stateiterator=[]
 								stateiteratorflag=True
 	return states
-def readinDipoleMoments(path="./"):
+def read_Transition_Dipole_Moments(path="./"):
     ## Parses the excited states & DipoleMoments from a TDDFPT calculation done in CP2K  
     ## input:
     ## (opt.)   minweight           minimum amplitude to consider
@@ -573,6 +574,35 @@ def readinDipoleMoments(path="./"):
 						readflag=True
 	np.save("Transitiondipolevectors",TransitionDipolevectors);np.save("Oscillatorstrenghts",Oscillatorstrenghts)
 	np.save(path+"/"+"ExcitedStateEnergies",energies)
+def read_GS_Dipole_Moment(file_path):
+    """
+    Reads the dipole moment coordinates (X, Y, Z) from a text file and returns them as a NumPy array.
+
+    Parameters:
+        file_path (str): The path to the input file.
+
+    Returns:
+        np.ndarray: A NumPy array containing the dipole moment coordinates [X, Y, Z].
+    """
+    ConFactors=PhysConst.ConversionFactors()
+    dipole_moment = None
+    readflag=False
+    with open(file_path, 'r') as file:
+        for line in file:
+            if len(line.split())>0:
+                if readflag:
+                    dx=line.split()[1]
+                    dy=line.split()[3]
+                    dz=line.split()[5]
+                    dipole_moment=np.array([float(dx),float(dy),float(dz)])*ConFactors['A->a.u.']
+                    break
+                if line.split()[0]=="Dipole" and line.split()[1]=="moment" and line.split()[2]=="[Debye]":
+                    readflag=True
+
+    if dipole_moment is None:
+        raise ValueError("Dipole moment data not found in the file.")
+
+    return dipole_moment
 def readinBasisVectors(parentfolder="./"):
     """
     Reads in the normalized Basis vectors in which the Hessian is represented.

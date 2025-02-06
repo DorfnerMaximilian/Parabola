@@ -333,10 +333,10 @@ def getHessian(parentfolder="./",writeMolFile=True):
                 atom=line.split()[0]
                 atomorder.append(atom)
     #The sqrtM matrix in terms of carthesian basis
-    sqrtM=np.zeros((3*numofatoms,3*numofatoms))
+    sqrtMm1=np.zeros((3*numofatoms,3*numofatoms))
     for it in range(3*numofatoms):
         atomnum=int(np.floor((it/3)))
-        sqrtM[it][it]=1./(np.sqrt(atomicmasses[atomorder[atomnum]]))
+        sqrtMm1[it][it]=1./(np.sqrt(atomicmasses[atomorder[atomnum]]))
     #Read in the basis vectors of the finite displacements:
     BasisVectors,deltas=Read.readinBasisVectors(parentfolder+"/")
     print(deltas)
@@ -376,7 +376,7 @@ def getHessian(parentfolder="./",writeMolFile=True):
     Hessian=-partialFpartialY@Tinv
     Hessian=Symmetry.Enforce_Symmetry_On_Hessian(Hessian,parentfolder)
     #built the rescaled Hessian
-    rescaledHessian=sqrtM@Hessian@sqrtM 
+    rescaledHessian=sqrtMm1@Hessian@sqrtMm1 
     # transform to units 1/cm
     rescaledHessian*=(10**(3)/1.8228884842645)*(2.19474631370540E+02)**2 
     # Diagonalize the rescaled Hessian
@@ -392,22 +392,25 @@ def getHessian(parentfolder="./",writeMolFile=True):
         print("Continuing with Standard values. [0.99]")
         threshhold_trans=0.99
     is_periodic=bool(Read.readinPeriodicity(parentfolder))
-    Rotations_Projector_Flag=not(is_periodic)
+    Rotations_Projector_Flag=False
     if not is_periodic:
         print("Having detected non-periodic calculation") 
-        strin=input("Do you want to project out the Rotational Eigenvectors?")
-        if strin=="N":
-            Rotations_Projector_Flag=False
+    else:
+        print("Having detected periodic calculation") 
+    strin=input("Do you want to project out the Rotational Eigenvectors?[Y/N]")
+    if strin=="N":
+        Rotations_Projector_Flag=False
+    else:
+        Rotations_Projector_Flag=True
+        print("Projecting Out Rotational Eigenvectors")
+        threshhold_string=input("Maximally allowed Weight of Rotations with Numerical Normal Modes [float between 0 and 1 or std for Standard Value]:")
+        if Util.is_number(threshhold_string):
+            threshhold_rot=float(threshhold_string)
+        elif threshhold_string=="std":
+            threshhold_rot=0.9
         else:
-            print("Projecting Out Translational Eigenvectors")
-            threshhold_string=input("Maximally allowed Weight of Rotations with Numerical Normal Modes [float between 0 and 1 or std for Standard Value]:")
-            if Util.is_number(threshhold_string):
-                threshhold_rot=float(threshhold_string)
-            elif threshhold_string=="std":
-                threshhold_rot=0.9
-            else:
-                print("Continuing with Standard values. [0.9]")
-                threshhold_rot=0.9
+            print("Continuing with Standard values. [0.9]")
+            threshhold_rot=0.9
     #Get the rescaled eigenvectors of Translation & Rotation:
     Transeigenvectors=Symmetry.getTransEigenvectors(parentfolder+"/Equilibrium_Geometry/",True)
     Roteigenvectors=Symmetry.getRotEigenvectors(parentfolder+"/Equilibrium_Geometry/",True)
@@ -425,13 +428,13 @@ def getHessian(parentfolder="./",writeMolFile=True):
     rotational_subspace=[]
     for it in range(3*numofatoms):
         projection_trans=np.dot(Orthogonalprojector_trans,Normalmodes[:,it])
-        weight_trans=np.sqrt(np.dot(projection_trans,projection_trans))
-        normofprojection_trans=np.sqrt(weight_trans)
+        weight_trans=np.abs(np.dot(Normalmodes[:,it],np.dot(Orthogonalprojector_trans,Normalmodes[:,it])))
         if Rotations_Projector_Flag:
-            projection_rot=np.dot(Orthogonalprojector_rot,Normalmodes[:,it])
-            weight_rot=np.sqrt(np.dot(projection_rot,projection_rot))
+            projection_rot=np.dot(Orthogonalprojector_rot,projection_trans)
+            projection_rot/=np.linalg.norm(projection_rot)
+            weight_rot=np.abs(np.dot(Normalmodes[:,it],np.dot(Orthogonalprojector_rot,Normalmodes[:,it])))
             if weight_rot>threshhold_rot and weight_trans>threshhold_trans:
-                    orthogonalized_Vibrations.append(projection_trans/normofprojection_trans)
+                    orthogonalized_Vibrations.append(projection_rot)
                     Vibrational_eigenvalues.append(Lambda[it])
             elif weight_rot<=threshhold_rot and weight_trans>threshhold_trans:
                 print("Mode "+str(it)+" with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has rot weight "+str(1.0-weight_rot))
@@ -443,6 +446,7 @@ def getHessian(parentfolder="./",writeMolFile=True):
                 print("Mode "+str(it)+" with Frequency="+str(np.sign(Lambda[it])*np.sqrt(np.abs(Lambda[it])))+" 1/cm "+"has trans weight "+str(1.0-weight_trans)+" and has rot weight "+str(1.0-weight_rot)+"!")
                 exit()
         else:
+            normofprojection_trans=np.linalg.norm(projection_trans)
             if weight_trans>threshhold_trans:
                 orthogonalized_Vibrations.append(projection_trans/normofprojection_trans)
                 Vibrational_eigenvalues.append(Lambda[it])
@@ -461,7 +465,6 @@ def getHessian(parentfolder="./",writeMolFile=True):
         if len(rotational_subspace)!=3:
             print("Rotational Subspace has Dimension "+str(len(rotational_subspace))+"!")
             exit()
-    print("Normal-Mode-Energies [1/cm]: \n",normalmodeEnergies_preliminary)
     normalmodes=[]
     normalmodeenergies=[]
     for it in range(len(normalmodeEnergies_preliminary)):
@@ -473,7 +476,8 @@ def getHessian(parentfolder="./",writeMolFile=True):
     normfactors=[]
     for vvector in normalmodes:
         #represent the normal modes, the Transeigenvector and the RotEigenvectors in terms in cartesian components & normalize it
-        vvector=sqrtM@vvector
+        print(vvector)
+        vvector=sqrtMm1@vvector
         normfactor=np.sqrt(np.dot(vvector,vvector))
         normfactors.append(normfactor)
         carthesianDisplacements.append(vvector/normfactor)
@@ -663,3 +667,36 @@ def CorrectNormalModeEnergies_Output(delta=0.1,path_to_original_data="./",path_t
     np.save("Norm-Factors",normfactors[sortedIndices])
     # Write a Mole file with corrected data
     Write.writemolFile(VibrationalFrequencies[sortedIndices],NormCarthesianDisplacements[sortedIndices],normfactors[sortedIndices],path_to_original_data)
+def get_ir_transition_dipole_moments(parentfolder="./"):
+    ConFactors=PhysConst.ConversionFactors()
+    #get the normal modes from the cartesian displacements
+    VibrationalFrequencies,_,normfactors=Read.readinVibrations(parentfolder)
+    _,deltas=Read.readinBasisVectors(parentfolder+"/")
+    subdirectories=[f for f in os.listdir(parentfolder) if f.startswith('vector=')]
+    if len(subdirectories)!=2*len(normfactors):
+        raise ValueError('InputError: Number of subdirectories does not match the number of needed Ones!')
+    IR_TDMs=[]
+    for lambd in range(len(normfactors)):
+        folderplus='vector='+str(lambd+1)+'sign=+'
+        folderminus='vector='+str(lambd+1)+'sign=-'
+        #Project out the Force components into direction of rotation and translation D.O.F.
+        try:
+            GS_DPM_Plus=Read.read_GS_Dipole_Moment(parentfolder+"/"+folderplus+"/GS_DIPOLE_MOMENTS")
+        except:
+            print("Error in folder: "+parentfolder+"/"+folderplus)
+            exit()
+        try:
+            GS_DPM_Minus=Read.read_GS_Dipole_Moment(parentfolder+"/"+folderminus+"/GS_DIPOLE_MOMENTS")
+        except:
+            print("Error in folder: "+parentfolder+"/"+folderminus)
+            exit()
+        ir_TDM=(GS_DPM_Plus-GS_DPM_Minus)/(2*deltas[lambd])/normfactors[lambd]/np.sqrt((2*ConFactors["u->a.u."]*ConFactors["1/cm->a.u."]*VibrationalFrequencies[lambd]))
+        IR_TDMs.append(ir_TDM)
+    np.save(parentfolder+"/"+"IR-Transition-Dipolemoments",np.array(IR_TDMs))
+    with open(parentfolder+"/"+"IR-Transition-Dipolemoments.dat","w") as file:
+        file.write("Infrared Transition Dipole Moments\n")
+        file.write("File generated with Parabola\n")
+        for it in range(len(normfactors)):
+            file.write(format(it+1,'5.0f')+format(VibrationalFrequencies[it],'12.6f')+format(IR_TDMs[it][0],'12.6f')+format(IR_TDMs[it][1],'12.6f')+format(IR_TDMs[it][2],'12.6f')+"\n") 
+
+

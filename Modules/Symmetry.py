@@ -26,7 +26,7 @@ class Structure():
         self.tol_translation = 5*10**(-3)
         self.InversionSymmetry=False
         self.InversionSymmetry_Generator=[]
-        self.tol_Inversion = 10**(-2)
+        self.tol_Inversion = 5*10**(-2)
         self.MirrorSymmetry=[]
 
     def detect_GlobalTranslationalSymmetry(self):
@@ -41,20 +41,19 @@ class Structure():
             print("Continuing With Default (Y).")
             self.GlobalTranslationSymmetry=True
         return 
-    def detect_GlobalRotationalSymmetry(self):
-        IsPeriodic=Read.readinPeriodicity(self.path)
-        if not IsPeriodic:
-            str=input("Do You Want to use the Global Rotation Symmetry?[Y/N]")
-            if str=="Y" or len(str)==0:
-                print("Using Global Rotational Symmetry.")
-                self.GlobalRotationSymmetry=True
-            elif str=="N":
-                self.GlobalRotationSymmetry=False
-            else:
-                print("Have not recognized Input.")
-                print("Continuing With Default (Y).")
-                self.GlobalRotationSymmetry=True
-        return 
+    #def detect_GlobalRotationalSymmetry(self):
+        #IsPeriodic=Read.readinPeriodicity(self.path)
+        #str=input("Do You Want to use the Global Rotation Symmetry?[Y/N]")
+        #if str=="Y" or len(str)==0:
+        #    print("Using Global Rotational Symmetry.")
+        #    self.GlobalRotationSymmetry=True
+        #elif str=="N":
+        #    self.GlobalRotationSymmetry=False
+        #else:
+        #    print("Have not recognized Input.")
+        #    print("Continuing With Default (Y).")
+        #    self.GlobalRotationSymmetry=True
+        #return 
     def detect_TranslationSymmetry(self):
         if self.periodicity:
             print("Periodic Calculation Detected!")
@@ -162,12 +161,6 @@ def ImposeTranslationalSymmetry(Hessian,pathtoEquilibriumxyz="./Equilibrium_Geom
     #input: 
     #Hessian:    (numpy.array)  Hessian in carthesian coordinates 
     #Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
-    Transeigenvectors_unscaled=getTransEigenvectors(pathtoEquilibriumxyz=pathtoEquilibriumxyz,rescale=False)
-    Orthogonalprojector=np.identity(len(Transeigenvectors_unscaled[0]))
-    for translation in Transeigenvectors_unscaled:
-        Orthogonalprojector-=np.outer(translation,translation)
-    Hessian=Orthogonalprojector@Hessian
-    Hessian=0.5*(Hessian+np.transpose(Hessian))
     SaW=PhysConst.StandardAtomicWeights()
     #Get the Atomic coordinates 
     AtomicCoordinates=Read.readinAtomicCoordinates(pathtoEquilibriumxyz)
@@ -293,10 +286,14 @@ def getRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",rescale=Tr
     #Compute the Intertia Tensor
     I=Geometry.getInertiaTensor(coordinates,masses)
     centerofmasscoordinates,_=Geometry.ComputeCenterOfMassCoordinates(coordinates,masses)
-
+    numofatoms=int(len(masses))
+    sqrtM=np.zeros((3*numofatoms,3*numofatoms))
+    for it in range(3*numofatoms):
+        atomnum=int(np.floor((it/3)))
+        sqrtM[it][it]=(np.sqrt(masses[atomnum]))
     #Get the principle Axis
     _,principleAxis=np.linalg.eigh(I)
-    numofatoms=int(len(masses))
+    
     Roteigenvectors=[]
     factor=1.0
     for it in [0,1,2]:
@@ -306,13 +303,13 @@ def getRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",rescale=Tr
         X=principleAxis[:,it]
         for s in range(numofatoms):
             rvector=np.cross(X,centerofmasscoordinates[s])
-            if rescale:
-                factor=np.sqrt(masses[s])
-            else:
-                factor=1.0
+            factor=np.sqrt(masses[s])
             RotEigenvector[3*s]=rvector[0]*factor
             RotEigenvector[3*s+1]=rvector[1]*factor
             RotEigenvector[3*s+2]=rvector[2]*factor
+        #Transform back 
+        if not rescale:
+            RotEigenvector=sqrtM@RotEigenvector
         #Normalize the generated Eigenvector
         RotEigenvector/=np.linalg.norm(RotEigenvector)
         Roteigenvectors.append(RotEigenvector)
@@ -321,13 +318,17 @@ def ImposeGlobalRotationalSymmetry(Hessian,pathtoEquilibriumxyz="./Equilibrium_G
     # Imposes exact relation on the Hessian, that has to be fullfilled for the Translational D.O.F. to decouple from the rest
     #input: 
     #Hessian:    (numpy.array)  Hessian in carthesian coordinates 
-    #Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
+    #Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Rotations
     Roteigenvectors_unscaled=getRotEigenvectors(pathtoEquilibriumxyz=pathtoEquilibriumxyz,rescale=False)
-    Orthogonalprojector=np.identity(len(Roteigenvectors_unscaled[0]))
+    Transeigenvectors_unscaled=getTransEigenvectors(pathtoEquilibriumxyz=pathtoEquilibriumxyz,rescale=False)
+    Orthogonalprojector_rot=np.identity(len(Roteigenvectors_unscaled[0]))
     for rotation in Roteigenvectors_unscaled:
-        Orthogonalprojector-=np.outer(rotation,rotation)
-    Hessian=Orthogonalprojector@Hessian
-    Hessian=0.5*(Hessian+np.transpose(Hessian))
+        Orthogonalprojector_rot-=np.outer(rotation,rotation)
+    Orthogonalprojector_trans=np.identity(len(Transeigenvectors_unscaled[0]))
+    for trans in Transeigenvectors_unscaled:
+        Orthogonalprojector_trans-=np.outer(trans,trans)
+    print(Orthogonalprojector_rot@Orthogonalprojector_trans-Orthogonalprojector_trans@Orthogonalprojector_rot)
+    Hessian=Orthogonalprojector_rot@Hessian@Orthogonalprojector_rot
     return Hessian
 def find_negated_vector(vectors, target_vector, tolerance=1e-5):
     """
@@ -786,7 +787,7 @@ def determineSymmetry(parentfolder="./"):
     """    
     struct=Structure(parentfolder)
     struct.detect_GlobalTranslationalSymmetry()
-    struct.detect_GlobalRotationalSymmetry()
+    #struct.detect_GlobalRotationalSymmetry()
     struct.detect_TranslationSymmetry()
     struct.detect_InversionSymmetry()
     return struct
@@ -797,8 +798,8 @@ def Enforce_Symmetry_On_Hessian(Hessian,parentfolder="./"):
     if struct.GlobalTranslationSymmetry:
         Hessian=ImposeTranslationalSymmetry(Hessian,pathtoEquilibriumxyz=parentfolder)
     #Rotational Symmetry
-    if struct.GlobalRotationSymmetry:
-        Hessian=ImposeGlobalRotationalSymmetry(Hessian,pathtoEquilibriumxyz=parentfolder)
+    #if struct.GlobalRotationSymmetry:
+    #    Hessian=ImposeGlobalRotationalSymmetry(Hessian,pathtoEquilibriumxyz=parentfolder)
     group=[]
     if struct.TranslationSymmetry:
         Use_TranslationSymmetry=False
@@ -842,7 +843,7 @@ def Enforce_Symmetry_On_Hessian(Hessian,parentfolder="./"):
         Use_InversionSymmetry=False
         str=input("Do You Want to use Inversion Symmetry?[Y/N]")
         if str=="Y" or len(str)==0:
-            print("Using Translation Symmetry.")
+            print("Using Inversion Symmetry.")
             Use_InversionSymmetry=True
         elif str=="N":
             Use_InversionSymmetry=False

@@ -105,9 +105,9 @@ def getadiabaticallyConnectedEigenstates(orthogonalEigenstates_Eq,orthorgonalEig
         adibaticallyConnectediters_Plus.append(iter1)
         if overlaps[iter1]<0:
             orthorgonalEigenstates_deflected[iter1]*=-1
-        if maximumAbsOverlap < 0.90:
+        if maximumAbsOverlap < 0.60:
             print("Maximum Overlap: ", maximumAbsOverlap," for Orbital ", it0)
-    return adibaticallyConnectediters_Plus
+    return adibaticallyConnectediters_Plus,orthorgonalEigenstates_deflected
 
 
 #######################################################################################################
@@ -212,24 +212,22 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
         orthorgonalEigenstates_Plus=[]
         for it in range(len(EPlus)):
             orth_eigenstate=a_orth_Plus[:,it]
-            orth_eigenstate*=TDDFT.getPhaseOfMO(orth_eigenstate)
             if it in included_orbitals:
                 orthorgonalEigenstates_Plus.append(orth_eigenstate)
         #fix the phase of the Eigenstates
         orthorgonalEigenstates_Minus=[]
         for it in range(len(EMinus)):
             orth_eigenstate=a_orth_Minus[:,it]
-            orth_eigenstate*=TDDFT.getPhaseOfMO(orth_eigenstate)
             if it in included_orbitals:
                 orthorgonalEigenstates_Minus.append(orth_eigenstate)
         #Get the adiabtically connected eigenvalues/states for the positive displacement
-        adibaticallyConnectediters_Plus=getadiabaticallyConnectedEigenstates(orthorgonalEigenstates_Eq,orthorgonalEigenstates_Plus,T_matrix_Plus)
+        adibaticallyConnectediters_Plus,orthorgonalEigenstates_Plus=getadiabaticallyConnectedEigenstates(orthorgonalEigenstates_Eq,orthorgonalEigenstates_Plus,T_matrix_Plus)
         #Check that each iterator is exactly once in the adibaticallyConnectediters_Plus set
         for it in included_orbitals:
             if adibaticallyConnectediters_Plus.count(it)!=1:
                 ValueError("Some eigenstates appear more or less then once as maximum weight states! Check your inputs!")
         #Get the adiabtically connected eigenvalues/states for the negative displacement
-        adibaticallyConnectediters_Minus=getadiabaticallyConnectedEigenstates(orthorgonalEigenstates_Eq,orthorgonalEigenstates_Minus,T_Matrix_Minus)
+        adibaticallyConnectediters_Minus,orthorgonalEigenstates_Minus=getadiabaticallyConnectedEigenstates(orthorgonalEigenstates_Eq,orthorgonalEigenstates_Minus,T_Matrix_Minus)
         #Check that each iterator is exactly once in the adibaticallyConnectediters set
         for it in included_orbitals:
             if adibaticallyConnectediters_Minus.count(it)!=1:
