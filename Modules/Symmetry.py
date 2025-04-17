@@ -57,7 +57,7 @@ class Structure():
     def detect_TranslationSymmetry(self):
         if self.periodicity:
             print("Periodic Calculation Detected!")
-            supercell,primitive_indices, scaled_lattice=getPrimitiveUnitCell(self.cellvectors, self.coordinates, self.atoms,tolerance=self.tol_translation,Nx=10,Ny=10,Nz=10)
+            supercell,primitive_indices, scaled_lattice=getPrimitiveUnitCell(self.cellvectors, self.coordinates, self.atoms,tolerance=self.tol_translation,Nx=5,Ny=5,Nz=5)
             self.supercell=supercell
             self.primitiveIndices=primitive_indices
             relative_cell_coordinates, _=getCellCoordinates(scaled_lattice,self.coordinates,primitive_indices,self.supercell,self.tol_translation)
@@ -572,7 +572,7 @@ def is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, N1,N2,N3,t
             return False, primitive_indices, scaled_lattice
 
     return True, primitive_indices, scaled_lattice
-def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols,tolerance=1e-5,Nx=5,Ny=5,Nz=5):
+def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols,tolerance=1e-8,Nx=5,Ny=5,Nz=5):
     """
     Identifies the primitive unit cell of a crystal lattice by determining the 
     smallest valid scaling factors along each lattice vector direction.
@@ -614,7 +614,8 @@ def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols,tolerance=1e-5,
     v1=cellvectors[0]
     v2=cellvectors[1]
     v3=cellvectors[2]
-    primes=[2,3,5,7,11,13,1]
+    #primes=[2,3,5,6,7,8,9,10,11,13,17,1]
+    primes=range(20,0,-1)
     #x1 divisor
     for itx in primes:
         iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, itx,1,1,tolerance=tolerance)
@@ -630,35 +631,37 @@ def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols,tolerance=1e-5,
         iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, 1,1,itz,tolerance=tolerance)
         if iscell:
             break
+    '''
     #Check maximum divisor:
     if itx!=1:
-        for multx in range(1,Nx):
+        for multx in range(Nx,1,-1):
             iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, multx*itx,1,1,tolerance=tolerance)
-            if not iscell:
+            print(multx,iscell)
+            if iscell:
                 break
-        multx-=1
     else:
         multx=1
     #Check maximum divisor:
     if ity!=1:
-        for multy in range(1,Ny):
+        for multy in range(Ny,1,-1):
             iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,1,multy*ity,1,tolerance=tolerance)
-            if not iscell:
+            if iscell:
                 break
-        multy-=1
     else:
         multy=1
     if itz!=1:
         #Check maximum divisor:
-        for multz in range(1,Nz):
+        for multz in range(Nz,1,-1):
             iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,1,1,multz*itz,tolerance=tolerance)
-            if not iscell:
+            if iscell:
                 break
-        multz-=1
     else:
         multz=1
-    iscell,primitive_indices, scaled_lattice=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,multx*itx,multy*ity,multz*itz,tolerance=tolerance)
-    return (multx*itx,multy*ity,multz*itz),primitive_indices, scaled_lattice
+    '''
+    
+    iscell,primitive_indices, scaled_lattice=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,itx,ity,itz,tolerance=tolerance)
+    print("(Super-)cell:",(itx,ity,itz))
+    return (itx,ity,itz),primitive_indices, scaled_lattice
 
 
 def getCellCoordinates(lattice,coordinates,primitive_indices,supercell,tolerance):

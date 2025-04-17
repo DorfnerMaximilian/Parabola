@@ -133,6 +133,28 @@ def Diagonalize_KS_Hamiltonian(parentfolder="./"):
             np.save(parentfolder+"/OLMm12.npy",Sm12)
             np.save(parentfolder+"/KS_Eigenvalues.npy",E)
             np.save(parentfolder+"/KS_orth_Eigenstates.npy",a_orth)
+    elif spinmultiplicity==3:
+        try:
+            E=np.load(parentfolder+"/KS_Eigenvalues_alpha.npy")
+            a_orth=np.load(parentfolder+"/KS_orth_Eigenstates.npy")
+            Sm12=np.load(parentfolder+"/OLMm12.npy")
+        except:
+            #Read in the KS Hamiltonian
+            KSHamiltonian_alpha,KSHamiltonian_beta,OLM=Read.readinMatrices(parentfolder)
+            Sm12=LoewdinTransformation(OLM)
+            KSHorth_alpha=np.dot(Sm12,np.dot(KSHamiltonian_alpha,Sm12))
+            KSHorth_beta=np.dot(Sm12,np.dot(KSHamiltonian_beta,Sm12))
+            E_alpha,a_orth_alpha=np.linalg.eigh(KSHorth_alpha)
+            E_beta,a_orth_beta=np.linalg.eigh(KSHorth_beta)
+            E=np.zeros((np.shape(E_alpha)[0],2))
+            E[:,0]=E_alpha
+            E[:,1]=E_beta
+            a_orth=np.zeros((np.shape(a_orth_alpha)[0],np.shape(a_orth_alpha)[1],2))
+            a_orth[:,:,0]=a_orth_alpha
+            a_orth[:,:,1]=a_orth_beta
+            np.save(parentfolder+"/OLMm12.npy",Sm12)
+            np.save(parentfolder+"/KS_Eigenvalues.npy",E)
+            np.save(parentfolder+"/KS_orth_Eigenstates.npy",a_orth)
     else:
         ValueError("Higher Spin Multiplicity not yet implemented!")
     return E,a_orth,Sm12

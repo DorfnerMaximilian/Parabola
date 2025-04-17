@@ -15,7 +15,7 @@ class TestTMatrix(unittest.TestCase):
         OLM_CP2K=np.load("./PBC/OLM_PBC.npy")
         Atoms=p.Read.readinAtomicCoordinates("./PBC/")
         Basis=p.AtomicBasis.getBasis("./PBC/")
-        cellvectors=p.Geometry.getNeibouringCellVectors("./PBC/",2)
+        cellvectors=p.Geometry.getNeibouringCellVectors("./PBC/",2,2,2)
         OLM_Parabola=p.AtomicBasis.getTransformationmatrix(Atoms,Atoms,Basis,cellvectors)
         np.testing.assert_array_almost_equal(OLM_Parabola, OLM_CP2K,13,"PBC Test failed!")
 	
