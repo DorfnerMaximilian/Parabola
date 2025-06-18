@@ -60,10 +60,10 @@ def writeXSFFile(data,filename="test.xsf",parentfolder='./'):
     return       
     
     
-def writeCubeFile(data,filename='test.cube',parentfolder='./'):
+def writeCubeFile(x,y,z,data,filename='test.cube',parentfolder='./'):
     '''Function to write a .cube file that is readable by e.g. Jmol, the origin is assumed to be [0.0,0.0,0.0]
-       input:   data:             (np.array)              Nx x Ny x Nz numpy array with the wave function coefficients at each gridpoint 
-       (opt.)   parentfolder:     (str)                   path to the .inp file of the cp2k calculation to read in the cell dimensions                               
+       input:   data:             (np.array)              Nx x Ny x Nz numpy array with the wave function coefficients at each gridpoint
+       (opt.)   parentfolder:     (str)                   path to the .inp file of the cp2k calculation to read in the cell dimensions
        output:  f                 (np.array)              Nx x Ny x Nz numpy array where first index is x, second y and third is z
     '''
     coordinates=Read.readinAtomicCoordinates(parentfolder)
@@ -72,15 +72,19 @@ def writeCubeFile(data,filename='test.cube',parentfolder='./'):
     Nx=np.shape(data)[0]
     Ny=np.shape(data)[1]
     Nz=np.shape(data)[2]
-    origin=[0.0,0.0,0.0]
-    CellSizes=Read.readinCellSize(parentfolder)
+    origin=[x[0],y[0],z[0]]
+    # Calculate voxel spacings — assuming uniform grid spacing
+    dx = (x[1] - x[0])
+    dy = (y[1] - y[0])
+    dz = (z[1] - z[0])
     with open(parentfolder+"/"+filename,'w') as file:
         file.write("Cube File generated with Parabola\n")
         file.write("OUTER LOOP: X, MIDDLE LOOP: Y, INNER LOOP: Z\n")
         file.write(format(numofatoms,'5.0f')+format(origin[0],'12.6f')+format(origin[1],'12.6f')+format(origin[2],'12.6f')+"\n")
-        file.write(format(Nx,'5.0f')+format(CellSizes[0][0]*conFactors['A->a.u.']/Nx,'12.6f')+format(CellSizes[0][1]*conFactors['A->a.u.']/Nx,'12.6f')+format(CellSizes[0][2]*conFactors['A->a.u.']/Nx,'12.6f')+"\n")
-        file.write(format(Ny,'5.0f')+format(CellSizes[1][0]*conFactors['A->a.u.']/Ny,'12.6f')+format(CellSizes[1][1]*conFactors['A->a.u.']/Ny,'12.6f')+format(CellSizes[1][2]*conFactors['A->a.u.']/Ny,'12.6f')+"\n")
-        file.write(format(Nz,'5.0f')+format(CellSizes[2][0]*conFactors['A->a.u.']/Nz,'12.6f')+format(CellSizes[2][1]*conFactors['A->a.u.']/Nz,'12.6f')+format(CellSizes[2][2]*conFactors['A->a.u.']/Nz,'12.6f')+"\n")
+        # Number of voxels and axis vectors
+        file.write(f"{Nx:5d} {dx:12.6f} {0.0:12.6f} {0.0:12.6f}\n")
+        file.write(f"{Ny:5d} {0.0:12.6f} {dy:12.6f} {0.0:12.6f}\n")
+        file.write(f"{Nz:5d} {0.0:12.6f} {0.0:12.6f} {dz:12.6f}\n")
         for atom in coordinates:
             file.write(format(PhysConst.AtomSymbolToAtomnumber(atom[1]),'5.0f')+format(0.0,'12.6f')+format(conFactors['A->a.u.']*atom[2],'12.6f')+format(conFactors['A->a.u.']*atom[3],'12.6f')+format(conFactors['A->a.u.']*atom[4],'12.6f')+"\n")
         for itx in range(Nx):
@@ -89,7 +93,7 @@ def writeCubeFile(data,filename='test.cube',parentfolder='./'):
                     if (itx or ity or itz) and itz%6==0:
                         file.write("\n")
                     file.write(" {0: .5E}".format(data[itx,ity,itz]))
-    return
+    return 
     
     
 def writemolFile(normalmodeEnergies,normalmodes,normfactors,parentfolder="./"):
@@ -142,7 +146,7 @@ def writemolFile(normalmodeEnergies,normalmodes,normfactors,parentfolder="./"):
                 f.write('   '+str(round(mode[3*s], 12))+'   '+str(round(mode[3*s+1], 12))+'   '+str(round(mode[3*s+2],12))+'\n')
             modeiter+=1
 
-def writexyzfile(atomicsym,coordinates,readpath="./",cellcoordinates=[],filename="dummyname"):
+def writexyzfile(atomicsym,coordinates,readpath="./",cellcoordinates=[],overwrite=False):
     xyzfilename=util.getxyzfilename(readpath)
     if len(cellcoordinates)==0:
         cell=Read.readinCellSize(readpath)
@@ -164,9 +168,11 @@ def writexyzfile(atomicsym,coordinates,readpath="./",cellcoordinates=[],filename
     inp_files = [f for f in os.listdir("./") if f.endswith('.xyz')]
     if len(inp_files) == 0:
         os.system("touch "+xyzfilename)
-    if filename=="dummyname":
+    if not overwrite:
         filename=xyzfilename[:-4]+"_new.xyz"
-    g=open("./"+filename,'a')
+    else:
+    	filename=xyzfilename
+    g=open(readpath+"/"+filename,'w')
     #generate the new content
     for line in xyzinput:
         g.write(line)
