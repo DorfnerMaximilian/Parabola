@@ -9,8 +9,12 @@ import os
 #get the environmental variable 
 pathtocp2k=os.environ["cp2kpath"]
 pathtobinaries=pathtocp2k+"/exe/local/"
-def Vib_Ana_inputs(deltas,vectors=[],parentpath="./",linktobinary=True,binary="cp2k.popt",binaryloc=pathtobinaries):
+def Vib_Ana_inputs(deltas=[],vectors=[],parentpath="./",linktobinary=True,binary="cp2k.popt",binaryloc=pathtobinaries):
     ConFactors=PhysConst.ConversionFactors()
+    deltasflag=False
+    if len(deltas)==0:
+        deltasflag=True
+        print("Using Standardvalue of 0.05 a_0 for Displacements!")
     cartesianflag=False
     if len(vectors)==0:
         cartesianflag=True
@@ -21,7 +25,7 @@ def Vib_Ana_inputs(deltas,vectors=[],parentpath="./",linktobinary=True,binary="c
     inpfilename = inp_files[0]
     CheckinpfileforVib_Ana(parentpath)
     Projectname='emptyString'
-    with open(inpfilename,'r') as f:
+    with open(parentpath+"/"+inpfilename,'r') as f:
         for lines in f:
             if len(lines.split())>0:
                 if lines.split()[0]=="PROJECT":
@@ -62,6 +66,8 @@ def Vib_Ana_inputs(deltas,vectors=[],parentpath="./",linktobinary=True,binary="c
         if np.linalg.matrix_rank(vectors)!=len(vectors):
             #do a second check based on SVD 
             print('Warning: The set of vectors given do not form a basis!')
+    if deltasflag:
+        deltas=0.05*np.ones(3*numberofatoms)
     with open(parentpath+"BasisHessian","w+") as g:
         if cartesianflag:
             g.write("delta="+str(deltas[0])+"\n")
@@ -102,7 +108,7 @@ def Vib_Ana_inputs(deltas,vectors=[],parentpath="./",linktobinary=True,binary="c
                 delta=deltas[0]
             else:
                 delta=deltas[it]
-            Geometry.changeConfiguration(folderlabel,vec,delta*ConFactors['a.u.->A'],sign,parentpath)
+            Geometry.changeConfiguration(folderlabel=folderlabel,vector=vec,delta=delta*ConFactors['a.u.->A'],sign=sign,path_xyz=parentpath,path_to=parentpath)
             os.system("cp "+parentpath+inpfilename+" "+parentpath+work_dir)
             if RestartfileFlag:
                 os.system("cp "+parentpath+Restart_filename+" "+parentpath+work_dir)
@@ -126,7 +132,7 @@ def CheckinpfileforVib_Ana(parentpath):
     RestartFlag=False
     NDIGITSForcesFlag=False
     Forces_FilenameFlag=False
-    with open(inpfile,'r') as f:
+    with open(parentpath+"/"+inpfile,'r') as f:
         lines=f.readlines()
         for line in lines:
             if len(line.split())>0:
@@ -230,14 +236,14 @@ def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",re
     - Roteigenvectors (list of np.arrays): Rotational eigenvectors in the rescaled Cartesian Basis |\tilde{s,alpha}>.
 
     Notes:
-    - The function relies on the `getCoordinatesAndMasses`, `getInertiaTensor`, and `ComputeCenterOfMassCoordinates` functions.
+    - The function relies on the 'readCoordinatesAndMasses`, `getInertiaTensor`, and `ComputeCenterOfMassCoordinates` functions.
     - The rotational eigenvectors are generated based on the principle axis obtained from the inertia tensor.
     - The translational eigenvectors are generated along each Cartesian axis.
     - The generated eigenvectors can be rescaled based on atom masses if the `rescale` flag is set to True.
     - All generated eigenvectors are normalized.
     """
 
-    coordinates,masses,_=Geometry.getCoordinatesAndMasses(pathtoEquilibriumxyz)
+    coordinates,masses,_=Read.readCoordinatesAndMasses(pathtoEquilibriumxyz)
     #Compute the Intertia Tensor
     I=Geometry.getInertiaTensor(coordinates,masses)
     centerofmasscoordinates,_=Geometry.ComputeCenterOfMassCoordinates(coordinates,masses)
@@ -279,7 +285,6 @@ def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",re
         Transeigenvectors.append(TransEigenvector)
     
     return Transeigenvectors,Roteigenvectors
-
 #######################################################################################################
 #Reads in Forces and compute the Hessian
 #######################################################################################################
@@ -362,11 +367,15 @@ def getHessian(parentfolder="./",writeMolFile=True):
         #Project out the Force components into direction of rotation and translation D.O.F.
         try:
             Fplus=np.array(Read.readinForces(parentfolder+"/"+folderplus))
+            if len(Fplus)==0:
+                print("Error in folder: "+parentfolder+"/"+folderplus)
         except:
             print("Error in folder: "+parentfolder+"/"+folderplus)
             exit()
         try:
             Fminus=np.array(Read.readinForces(parentfolder+"/"+folderminus))
+            if len(Fminus)==0:
+                print("Error in folder: "+parentfolder+"/"+folderminus)
         except:
             print("Error in folder: "+parentfolder+"/"+folderminus)
             exit()
