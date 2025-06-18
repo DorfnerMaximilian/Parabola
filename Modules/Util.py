@@ -29,16 +29,19 @@ def progressbar(it, prefix="", size=60, out=sys.stdout): # Python3.3+
         yield item
         show(i+1)
     print("\n", flush=True, file=out)
-def getxyzfilename(path="./"):
+def getxyzfilename(path="./",opt=False):
     ##returns the xyz filename in path returns error, when in this folder are two xyz files
     ## input:
     ## (opt.)   folder              path to the folder of the .xyz file         (string)
     ## output:  fileanem            list of sublists. 
 
     #get the Projectname
-    xyz_files = [f for f in os.listdir(path) if f.endswith('.xyz')]
+    if not opt:
+        xyz_files = [f for f in os.listdir(path) if f.endswith('.xyz')]
+    else:
+        xyz_files = [f for f in os.listdir(path) if f.endswith('_opt.xyz')]
     if len(xyz_files) != 1:
-        raise ValueError('InputError: There should be only one *.xyz file in the current directory')
+        raise ValueError('InputError: There should be only one *.xyz/*_opt.xyz file in the current directory')
     filename = path+"/"+xyz_files[0]
     return filename
 
