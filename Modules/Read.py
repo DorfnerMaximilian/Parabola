@@ -341,7 +341,7 @@ def readinCubeFile(filename,parentfolder="./"):
                 data[itx][ity][itz]=predata[it]
                 it+=1
     return data
-def readinAtomicCoordinates(folder="./"):
+def readinAtomicCoordinates(folder="./",opt=False):
     ##Reads in the atomic coordinates from a provided xyz file (these coordinates are independent from cell vectors)! 
     ## input:
     ## (opt.)   folder              path to the folder of the .xyz file         (string)
@@ -350,7 +350,7 @@ def readinAtomicCoordinates(folder="./"):
     ##                              Sublist[0] contains the atomorder as a int.
     ##                              Sublist[1] contains the symbol of the atom.
     ##                              Sublist[2:] containst the x y z coordinates.
-    filename=util.getxyzfilename(folder)
+    filename=util.getxyzfilename(folder,opt=opt)
     Atoms=[]
     with open(filename) as f:
         lines=f.readlines()
@@ -360,6 +360,39 @@ def readinAtomicCoordinates(folder="./"):
             it+=1
     f.close()
     return Atoms
+def readCoordinatesAndMasses(pathtoxyz="./Equilibrium_Geometry/",opt=False):
+    """
+    Helper routine to parse coordinates and masses from an xyz file.
+
+    Parameters:
+    - pathtoxyz (str, optional): Path to the corresponding xyz file where the data is saved.
+
+    Returns:
+    - coordinates (Nx3 numpy.array): Coordinates of the atoms with respect to some basis.
+    - masses (N numpy.array): Masses of the atoms as a numpy array, in the same ordering as the coordinates.
+    - atomicsymbols (list): Atomic symbols corresponding to each atom in the same ordering as the coordinates.
+
+    Notes:
+    - This function relies on the `getAtomicCoordinates` function and the `StandardAtomicWeights` functions defined in ReadFile & PhysConst.
+    - The `getAtomicCoordinates` function is assumed to return a list of atomic coordinates in the xyz file format.
+    - The `StandardAtomicWeights` class is assumed to provide standard atomic weights for element symbols.
+    - The returned coordinates are in the format of a numpy array with shape (number of atoms, 3).
+    - The returned masses are in the format of a numpy array with shape (number of atoms,).
+    - The returned atomicsymbols is a list of atomic symbols in the same order as the coordinates.
+    """
+    SaW=PhysConst.StandardAtomicWeights()
+    #Get the Atomic coordinates 
+    AtomicCoordinates=readinAtomicCoordinates(pathtoxyz,opt=opt)
+    #Parse the Coordinates & the Masses
+    coordinates=[]
+    masses=[]
+    atomicsymbols=[]
+    for coords in AtomicCoordinates:
+        mass=SaW[coords[1]]
+        atomicsymbols.append(coords[1])
+        masses.append(mass)
+        coordinates.append(np.array([coords[2],coords[3],coords[4]]))
+    return coordinates,masses,atomicsymbols
 def readinVibrations(parentfolder="./"):
     try:
         VibrationalFrequencies=np.load(parentfolder+"/Normal-Mode-Energies.npy")
@@ -433,6 +466,18 @@ def readinForces(folder):
                 readinflag=True
             
     f.close()
+    if len(Forces)==0:
+        for line in lines:
+            if len(line.split())>=2:
+                if line.split()[0]=="FORCES|" and line.split()[1]=="Sum":
+                    readinflag=False
+                if readinflag:
+                    Forces.append(float(line.split()[2]))
+                    Forces.append(float(line.split()[3]))
+                    Forces.append(float(line.split()[4]))
+                if line.split()[0]=="FORCES|" and line.split()[1]=="Atom":
+                    readinflag=True
+
     return Forces
 
 def readinCellSize(path="./"):
@@ -740,4 +785,46 @@ def readinGSEnergy(path="./"):
     
     return GSEnergy      
 
+def readinHessian(path="./"):
+    #Read in the basis vectors of the finite displacements:
+    BasisVectors,deltas=readinBasisVectors(path+"/")
+    #Built the T matrix from b basis 
+    T=np.zeros((len(deltas),len(deltas)))
+    for salpha in range(len(deltas)):
+        for lambd in range(len(deltas)):
+            T[salpha][lambd]=BasisVectors[lambd][salpha]
+    #invert the Tmatrix:
+    Tinv=np.linalg.inv(T)
+    ##########################################
+    #get the subdirectories
+    ##########################################
+    Hessian=np.zeros((len(deltas),len(deltas)))
+    subdirectories=[f for f in os.listdir(path) if f.startswith('vector=')]
+    if len(subdirectories)!=2*len(deltas):
+        raise ValueError('InputError: Number of subdirectories does not match the number of needed Ones!')
+    
+    partialFpartialY=np.zeros((len(deltas),len(deltas)))
+    for lambd in range(len(deltas)):
+        folderplus='vector='+str(lambd+1)+'sign=+'
+        folderminus='vector='+str(lambd+1)+'sign=-'
+        #Project out the Force components into direction of rotation and translation D.O.F.
+        try:
+            Fplus=np.array(readinForces(path+"/"+folderplus))
+            if len(Fplus)==0:
+                print("Error in folder: "+path+"/"+folderplus)
+        except:
+            print("Error in folder: "+path+"/"+folderplus)
+            exit()
+        try:
+            Fminus=np.array(readinForces(path+"/"+folderminus))
+            if len(Fminus)==0:
+                print("Error in folder: "+path+"/"+folderminus)
+        except:
+            print("Error in folder: "+path+"/"+folderminus)
+            exit()
+        diffofforces=(Fplus-Fminus)/(2*deltas[lambd])
+        for s1alpha1 in range(len(deltas)):
+            partialFpartialY[s1alpha1][lambd]=diffofforces[s1alpha1]
+    Hessian=-partialFpartialY@Tinv
+    return Hessian
     
