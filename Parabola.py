@@ -18,6 +18,10 @@ import Modules.PhysConst as PhysConst
 #########################################################################
 ## Gaussian Basis Construction Routines
 #########################################################################
+import Modules.Structure as Structure
+#########################################################################
+## Gaussian Basis Construction Routines
+#########################################################################
 import Modules.AtomicBasis as AtomicBasis
 #########################################################################
 ## Module to read in KS Hamiltonian,OLM, .cube file, Forces, Vibrations
