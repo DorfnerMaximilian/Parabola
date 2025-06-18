@@ -2,8 +2,6 @@ import Modules.Geometry as Geometry
 import numpy as np
 import Modules.PhysConst as PhysConst
 import Modules.Read as Read
-import Modules.Write as Write
-import Modules.Util as Util
 import os
 pathtocp2k=os.environ["cp2kpath"]
 pathtobinaries=pathtocp2k+"/exe/local/"
@@ -12,7 +10,7 @@ pathtobinaries=pathtocp2k+"/exe/local/"
 class Structure():
     def __init__(self,path="./"):
         self.path=path
-        coordinates, _, atomic_symbols = Geometry.getCoordinatesAndMasses(path)
+        coordinates, _, atomic_symbols = Read.readCoordinatesAndMasses(path)
         self.coordinates=coordinates
         self.atoms=atomic_symbols
         self.periodicity=Read.readinPeriodicity(path)
@@ -23,51 +21,27 @@ class Structure():
         self.GlobalRotationSymmetry=False
         self.TranslationSymmetry=False
         self.TranslationSymmetry_Generators=[]
-        self.tol_translation = 5*10**(-3)
+        self.tol_translation = 5*10**(-4)
         self.InversionSymmetry=False
         self.InversionSymmetry_Generator=[]
         self.tol_Inversion = 5*10**(-2)
         self.MirrorSymmetry=[]
 
     def detect_GlobalTranslationalSymmetry(self):
-        str=input("Do You Want to use the Global Translation Symmetry?[Y/N]")
-        if str=="Y" or len(str)==0:
-            print("Using Global Translation Symmetry.")
-            self.GlobalTranslationSymmetry=True
-        elif str=="N":
-            self.GlobalTranslationSymmetry=False
-        else:
-            print("Have not recognized Input.")
-            print("Continuing With Default (Y).")
-            self.GlobalTranslationSymmetry=True
+        print("Using Global Translation Symmetry.")
+        self.GlobalTranslationSymmetry=True
         return 
-    #def detect_GlobalRotationalSymmetry(self):
-        #IsPeriodic=Read.readinPeriodicity(self.path)
-        #str=input("Do You Want to use the Global Rotation Symmetry?[Y/N]")
-        #if str=="Y" or len(str)==0:
-        #    print("Using Global Rotational Symmetry.")
-        #    self.GlobalRotationSymmetry=True
-        #elif str=="N":
-        #    self.GlobalRotationSymmetry=False
-        #else:
-        #    print("Have not recognized Input.")
-        #    print("Continuing With Default (Y).")
-        #    self.GlobalRotationSymmetry=True
-        #return 
     def detect_TranslationSymmetry(self):
         if self.periodicity:
             print("Periodic Calculation Detected!")
-            supercell,primitive_indices, scaled_lattice=getPrimitiveUnitCell(self.cellvectors, self.coordinates, self.atoms,tolerance=self.tol_translation,Nx=5,Ny=5,Nz=5)
+            supercell,primitive_indices, scaled_lattice=getPrimitiveUnitCell(self.cellvectors, self.coordinates, self.atoms,tolerance=self.tol_translation)
             self.supercell=supercell
             self.primitiveIndices=primitive_indices
             relative_cell_coordinates, _=getCellCoordinates(scaled_lattice,self.coordinates,primitive_indices,self.supercell,self.tol_translation)
             Tx,Ty,Tz=getTranslationOps(relative_cell_coordinates,supercell)
-            if not(supercell[0]==1):
-                self.TranslationSymmetry_Generators.append(Tx)
-            if not(supercell[1]==1):
-                self.TranslationSymmetry_Generators.append(Ty)
-            if not(supercell[2]==1):
-                self.TranslationSymmetry_Generators.append(Tz)
+            self.TranslationSymmetry_Generators.append(Tx)
+            self.TranslationSymmetry_Generators.append(Ty)
+            self.TranslationSymmetry_Generators.append(Tz)
             if supercell[0]==1 and supercell[1]==1 and supercell[2]==1:
                 print("Primitive Cell is given Cell!")
             else:
@@ -96,7 +70,7 @@ class Structure():
         self.InversionSymmetry=has_symmetry
 
 '''
-        return has_symmetry
+
 class xyMirrorSymmetry(Structure):
     """Class to detect inversion symmetry."""
     def detect_symmetry(self):
@@ -133,14 +107,14 @@ def getTransEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",rescale=
     - Roteigenvectors (list of np.arrays): Rotational eigenvectors in the rescaled Cartesian Basis |\tilde{s,alpha}>.
 
     Notes:
-    - The function relies on the `getCoordinatesAndMasses`, `getInertiaTensor`, and `ComputeCenterOfMassCoordinates` functions.
+    - The function relies on the `readCoordinatesAndMasses`, `getInertiaTensor`, and `ComputeCenterOfMassCoordinates` functions.
     - The rotational eigenvectors are generated based on the principle axis obtained from the inertia tensor.
     - The translational eigenvectors are generated along each Cartesian axis.
     - The generated eigenvectors can be rescaled based on atom masses if the `rescale` flag is set to True.
     - All generated eigenvectors are normalized.
     """
 
-    _,masses,_=Geometry.getCoordinatesAndMasses(pathtoEquilibriumxyz)
+    _,masses,_=Read.readCoordinatesAndMasses(pathtoEquilibriumxyz)
     numofatoms=int(len(masses))
     Transeigenvectors=[]
     for it in [0,1,2]:
@@ -275,14 +249,14 @@ def getRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",rescale=Tr
     - Roteigenvectors (list of np.arrays): Rotational eigenvectors in the rescaled Cartesian Basis |\tilde{s,alpha}>.
 
     Notes:
-    - The function relies on the `getCoordinatesAndMasses`, `getInertiaTensor`, and `ComputeCenterOfMassCoordinates` functions.
+    - The function relies on the `readCoordinatesAndMasses`, `getInertiaTensor`, and `ComputeCenterOfMassCoordinates` functions.
     - The rotational eigenvectors are generated based on the principle axis obtained from the inertia tensor.
     - The translational eigenvectors are generated along each Cartesian axis.
     - The generated eigenvectors can be rescaled based on atom masses if the `rescale` flag is set to True.
     - All generated eigenvectors are normalized.
     """
 
-    coordinates,masses,_=Geometry.getCoordinatesAndMasses(pathtoEquilibriumxyz)
+    coordinates,masses,_=Read.readCoordinatesAndMasses(pathtoEquilibriumxyz)
     #Compute the Intertia Tensor
     I=Geometry.getInertiaTensor(coordinates,masses)
     centerofmasscoordinates,_=Geometry.ComputeCenterOfMassCoordinates(coordinates,masses)
@@ -572,7 +546,7 @@ def is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, N1,N2,N3,t
             return False, primitive_indices, scaled_lattice
 
     return True, primitive_indices, scaled_lattice
-def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols,tolerance=1e-8,Nx=5,Ny=5,Nz=5):
+def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols,tolerance=1e-8):
     """
     Identifies the primitive unit cell of a crystal lattice by determining the 
     smallest valid scaling factors along each lattice vector direction.
@@ -615,10 +589,11 @@ def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols,tolerance=1e-8,
     v2=cellvectors[1]
     v3=cellvectors[2]
     #primes=[2,3,5,6,7,8,9,10,11,13,17,1]
-    primes=range(20,0,-1)
+    primes=range(30,0,-1)
     #x1 divisor
     for itx in primes:
         iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, itx,1,1,tolerance=tolerance)
+        print(itx,iscell)
         if iscell:
             break
     #x2 divisor
@@ -631,34 +606,6 @@ def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols,tolerance=1e-8,
         iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, 1,1,itz,tolerance=tolerance)
         if iscell:
             break
-    '''
-    #Check maximum divisor:
-    if itx!=1:
-        for multx in range(Nx,1,-1):
-            iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, multx*itx,1,1,tolerance=tolerance)
-            print(multx,iscell)
-            if iscell:
-                break
-    else:
-        multx=1
-    #Check maximum divisor:
-    if ity!=1:
-        for multy in range(Ny,1,-1):
-            iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,1,multy*ity,1,tolerance=tolerance)
-            if iscell:
-                break
-    else:
-        multy=1
-    if itz!=1:
-        #Check maximum divisor:
-        for multz in range(Nz,1,-1):
-            iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,1,1,multz*itz,tolerance=tolerance)
-            if iscell:
-                break
-    else:
-        multz=1
-    '''
-    
     iscell,primitive_indices, scaled_lattice=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,itx,ity,itz,tolerance=tolerance)
     print("(Super-)cell:",(itx,ity,itz))
     return (itx,ity,itz),primitive_indices, scaled_lattice
@@ -761,6 +708,9 @@ def getTranslationOps(relative_cell_coordinates,supercell):
     Tx=np.zeros((len(relative_cell_coordinates),len(relative_cell_coordinates)))
     Ty=np.zeros((len(relative_cell_coordinates),len(relative_cell_coordinates)))
     Tz=np.zeros((len(relative_cell_coordinates),len(relative_cell_coordinates)))
+    xFlag=False
+    yFlag=False
+    zFlag=False
     for it1,rel_cell_coo1 in enumerate(relative_cell_coordinates):
         shiftedx=np.array([np.mod(rel_cell_coo1[0]+1,supercell[0]),rel_cell_coo1[1],rel_cell_coo1[2],rel_cell_coo1[3]])
         shiftedy=np.array([rel_cell_coo1[0],np.mod(rel_cell_coo1[1]+1,supercell[1]),rel_cell_coo1[2],rel_cell_coo1[3]])
@@ -772,12 +722,21 @@ def getTranslationOps(relative_cell_coordinates,supercell):
             if (shiftedx==rel_cell_coo2).all() and not Txflag:
                 Tx[it2,it1]=1.0
                 Txflag=True
+                xFlag=True
             elif (shiftedy==rel_cell_coo2).all() and not Tyflag:
                 Ty[it2,it1]=1.0
                 Tyflag=True
+                yFlag=True
             elif (shiftedz==rel_cell_coo2).all() and not Tzflag:
                 Tz[it2,it1]=1.0
                 Tzflag=True
+                zFlag=True
+    if not xFlag:
+        Tx=np.eye(len(relative_cell_coordinates))
+    if not yFlag:
+        Ty=np.eye(len(relative_cell_coordinates))
+    if not zFlag:
+        Tz=np.eye(len(relative_cell_coordinates))
     return Tx,Ty,Tz
 
 def determineSymmetry(parentfolder="./"):
