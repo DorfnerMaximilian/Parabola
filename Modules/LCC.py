@@ -243,10 +243,10 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
                 else:
                     overlap1=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus_dot_states_Plus[:,adibaticallyConnectediters_Plus[it1]])
                     overlap2=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus_dot_states_Minus[:,adibaticallyConnectediters_Minus[it1]])
-                    deltaE=(E_Eq[included_orbitals[it1]]-E_Eq[included_orbitals[it0]])*(overlap1-overlap2)/(2*deltas[mu])*normfactors[mu]
+                    deltaE=(overlap1-overlap2)/(2*deltas[mu])*normfactors[mu]*(E_Eq[included_orbitals[it1]]-E_Eq[included_orbitals[it0]])
                     couplingConstants[mu,included_orbitals[it0],included_orbitals[it1]]=ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*deltaE
     np.save(parentfolder+"/Linear_Coupling_Constants",couplingConstants)
-def getLCC_STATES(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0],):
+def getLCC_STATES(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
     '''Compute linear coupling constants from finitly displaced geometries.
     
     Parameters:
