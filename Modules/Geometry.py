@@ -6,40 +6,6 @@ import numpy as np
 import os
 pathtocp2k=os.environ["cp2kpath"]
 pathtobinaries=pathtocp2k+"/exe/local/"
-def getCoordinatesAndMasses(pathtoxyz="./Equilibrium_Geometry/"):
-    """
-    Helper routine to parse coordinates and masses from an xyz file.
-
-    Parameters:
-    - pathtoxyz (str, optional): Path to the corresponding xyz file where the data is saved.
-
-    Returns:
-    - coordinates (Nx3 numpy.array): Coordinates of the atoms with respect to some basis.
-    - masses (N numpy.array): Masses of the atoms as a numpy array, in the same ordering as the coordinates.
-    - atomicsymbols (list): Atomic symbols corresponding to each atom in the same ordering as the coordinates.
-
-    Notes:
-    - This function relies on the `getAtomicCoordinates` function and the `StandardAtomicWeights` functions defined in ReadFile & PhysConst.
-    - The `getAtomicCoordinates` function is assumed to return a list of atomic coordinates in the xyz file format.
-    - The `StandardAtomicWeights` class is assumed to provide standard atomic weights for element symbols.
-    - The returned coordinates are in the format of a numpy array with shape (number of atoms, 3).
-    - The returned masses are in the format of a numpy array with shape (number of atoms,).
-    - The returned atomicsymbols is a list of atomic symbols in the same order as the coordinates.
-    """
-    SaW=PhysConst.StandardAtomicWeights()
-    #Get the Atomic coordinates 
-    AtomicCoordinates=Read.readinAtomicCoordinates(pathtoxyz)
-    #Parse the Coordinates & the Masses
-    coordinates=[]
-    masses=[]
-    atomicsymbols=[]
-    for coords in AtomicCoordinates:
-        mass=SaW[coords[1]]
-        atomicsymbols.append(coords[1])
-        masses.append(mass)
-        coordinates.append(np.array([coords[2],coords[3],coords[4]]))
-    return coordinates,masses,atomicsymbols
-
 def ComputeCenterOfMassCoordinates(coordinates,masses):
     """
     Computes the center of mass of a molecule with respect to the basis of the coordinate file.
@@ -141,73 +107,75 @@ def getInertiaTensor(coordinates,masses):
     #The moment of inertia tensor
     I=np.array([[Ixx,Ixy,Ixz],[Ixy,Iyy,Iyz],[Ixz,Iyz,Izz]])
     return I
-def getPrincipleAxis(centerofmasscoordinates,masses):
+def getPrincipleAxis(centerofmasscoordinates, masses, tol=1e-3):
     """
-    Computes the principal axes of a system of particles based on their center-of-mass coordinates and masses. 
-    It ensures that the computed principal axes are orthogonal, normalized, and right-handed.
+    Computes and orients the principal axes of a system of particles.
 
     Parameters
     ----------
     centerofmasscoordinates : np.ndarray
-        A 2D array of shape (N, 3) representing the Cartesian coordinates of the particles relative to their center of mass. 
-        Each row corresponds to the coordinates of a particle.
-
+        Coordinates (N, 3) relative to the center of mass.
     masses : np.ndarray
-        A 1D array of length N containing the masses of the particles.
+        Masses of the N particles.
 
     Returns
     -------
     tuple of np.ndarray
-        A tuple containing three 1D arrays (v1, v2, v3) of length 3, which represent the normalized and orthogonal 
-        principal axes of the system in the following order:
-        - v1: First principal axis
-        - v2: Second principal axis
-        - v3: Third principal axis (adjusted to ensure a right-handed coordinate system)
-
-    Raises
-    ------
-    ValueError
-        If the principal axes are not orthogonal within a tolerance of 1e-12.
-    ValueError
-        If the principal axes are not normalized (within 1e-12 tolerance), which may lead to incorrect results.
-
-    Notes
-    -----
-    - The principal axes are obtained by diagonalizing the inertia tensor of the system.
-    - If degeneracy occurs (multiple identical eigenvalues), orthogonality of the eigenvectors might not be guaranteed.
-      This implementation raises an error in such cases, suggesting that a more robust handling of degenerate cases is needed.
-    - The function ensures that the returned principal axes form a right-handed coordinate system.
+        Orthonormal principal axes (v1, v2, v3), forming a right-handed system.
     """
-    #Compute the Inertia Tensor
-    I=getInertiaTensor(centerofmasscoordinates,masses)
-    #Get the principle Axis
-    _,principleAxis=np.linalg.eigh(I)
-    #Check that the principle axis are orthorgonal (Could be not the case in case of degeneracy)
-    for it1 in range(3):
-        for it2 in range(3):
-            if it1!=it2 and np.abs(np.dot(principleAxis[:,it1],principleAxis[:,it2]))>10**(-12):
-                ValueError("Principle Axis of Molecules are not orthorgonal! Implement the Degenerate Case!")
-            if it1==it2 and np.abs(np.dot(principleAxis[:,it1],principleAxis[:,it2])-1.0)>10**(-12):
-                ValueError("Principle Axis are not normalized! This leads to Errorious results!")
-    #Represent the centerofMassCoordinates in terms of the principle axis frame
-    #Fix Orientation of Principle Axis 
-    v1=principleAxis[:,0]
-    v2=principleAxis[:,1]
-    v3=principleAxis[:,2]
-    if v1[0]<0.0:
-        v1*=-1.0
-    if v2[0]<0.0:
-        v2*=-1.0
-    #This makes Principle Axis righthanded
-    B=np.zeros((3,3))
-    B[:,0]=v1
-    B[:,1]=v2
-    B[:,2]=v3
-    determinant=np.linalg.det(B)
-    if determinant<0:
-        v3*=-1.0
-    return v1,v2,v3
-def getPrincipleAxisCoordinates(path="./"):
+    def is_degenerate(evals, threshold=tol):
+        # Check for near-equal eigenvalues
+        for i in range(3):
+            for j in range(i+1, 3):
+                if np.abs(evals[i] - evals[j]) / np.mean([evals[i], evals[j]]) < threshold:
+                    return True, (i, j)
+        return False, ()
+
+    # Compute the inertia tensor
+    I = getInertiaTensor(centerofmasscoordinates, masses)
+
+    # Diagonalize
+    evals, evecs = np.linalg.eigh(I)
+
+    # Check degeneracy
+    degenerate, pair = is_degenerate(evals)
+    if degenerate:
+        # Reorient degenerate subspace eigenvectors to align with x-axis as much as possible
+        i, j = pair
+        subspace = evecs[:, [i, j]]
+        # Choose axis with maximal x-component in subspace
+        x_proj = subspace.T @ np.array([1, 0, 0])
+        best_index = np.argmax(np.abs(x_proj))
+        v1 = subspace[:, best_index]
+        v1 *= np.sign(v1[0])  # Ensure positive x
+        # Orthogonalize second vector
+        v2 = subspace[:, 1 - best_index]
+        v2 = v2 - np.dot(v1, v2) * v1
+        v2 /= np.linalg.norm(v2)
+    else:
+        v1 = evecs[:, 0]
+        v2 = evecs[:, 1]
+        v3 = evecs[:, 2]
+
+    # Construct orthonormal basis (ensure right-handedness)
+    if degenerate:
+        v3 = np.cross(v1, v2)
+        v3 /= np.linalg.norm(v3)
+    else:
+        # Ensure v1 and v2 have positive x-component for consistency
+        if v1[0] < 0: v1 *= -1
+        if v2[0] < 0: v2 *= -1
+        v3 = np.cross(v1, v2)
+        v3 /= np.linalg.norm(v3)
+        
+
+    # Sanity checks
+    B = np.stack([v1, v2, v3], axis=1)
+    if np.linalg.det(B) < 0:
+        v3 *= -1
+
+    return v1, v2, v3
+def getPrincipleAxisCoordinates(xyzcoordinates,masses,atomicsymbols):
     """
     Centers the molecule in the unit cell, aligns the principal axes, and 
     transforms the coordinates to the principal axis frame.
@@ -237,7 +205,6 @@ def getPrincipleAxisCoordinates(path="./"):
     - The function returns the transformed coordinates in the new frame, along with the masses 
       and atomic symbols.
     """                                                         
-    xyzcoordinates,masses,atomicsymbols=getCoordinatesAndMasses(path)
     centerofmasscoordinates,_=ComputeCenterOfMassCoordinates(xyzcoordinates,masses)
     v1,v2,v3=getPrincipleAxis(centerofmasscoordinates,masses)
     principleaxiscoordinates=[]
@@ -301,7 +268,7 @@ def getNeibouringCellVectors(path,m=1,n=1,l=1):
                 cellvectors.append(vectortoappend[1])
                 cellvectors.append(vectortoappend[2])
     return cellvectors
-def centerMolecule(path="./",Principle_Axis=False):
+def centerMolecule(path="./",overwrite=False,Principle_Axis=False):
     """
     Centers a molecule or collection of atoms within the unit cell. It can optionally align 
     the molecule along its principal axes before centering.
@@ -352,7 +319,7 @@ def centerMolecule(path="./",Principle_Axis=False):
     centerofcellCoordinates=[]
     geometric_mean=np.array([0.0,0.0,0.0])
     if not Principle_Axis:
-        xyzcoordinates,_,atomicsym=getCoordinatesAndMasses(path)
+        xyzcoordinates,_,atomicsym=Read.readCoordinatesAndMasses(path)
         for coordinate in xyzcoordinates:
             geometric_mean+=coordinate
         geometric_mean/=len(xyzcoordinates)
@@ -393,7 +360,7 @@ def centerMolecule(path="./",Principle_Axis=False):
     if mincellsizez<=0.5*distz:
         ValueError("Increase cell size in z direction to at least ",2*mincellsizez)
     
-    Write.writexyzfile(atomicsym,centerofcellCoordinates,path)
+    Write.writexyzfile(atomicsym,centerofcellCoordinates,path,cellcoordinates,overwrite)
 def changeConfiguration(folderlabel,vector,delta,sign,path_xyz='./',path_to="./"):
     """
     Modifies the atomic configuration of an equilibrium XYZ file by shifting the 
