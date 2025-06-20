@@ -4,6 +4,8 @@ import Modules.Read as Read
 import Modules.Write as Write
 import Modules.Geometry as Geometry
 import numpy as np
+from scipy.linalg import null_space
+from scipy.optimize import minimize
 import pickle
 import os
 pathtocp2k=os.environ["cp2kpath"]
@@ -28,6 +30,7 @@ class MolecularStructure():
         self._test_translation(tol_translation=5*10**(-4))
         self._test_inversion(tol_inversion=5*10**(-2))
         self._test_rotation(tol_rotation=5*10**(-2))
+        self._getIrrep_Projector(tol=10**(-12))
 
     def _test_translation(self,tol_translation):
         if self.periodicity==(1,1,1):
@@ -130,6 +133,12 @@ class MolecularStructure():
                     Ultimate_Pairs[it]=it
             PrimitiveRotation=get_Inversion_Symmetry_Generator(Ultimate_Pairs,nAtoms)
             self.symmetry["Cz"+"_"+str(n)]=PrimitiveRotation
+    def _getIrrep_Projector(self,tol=10**(-12)):
+        matrices=[self.symmetry[it] for it in self.symmetry]
+        centralizers=compute_common_centralizer(matrices)
+        P=getIrrepsProjector(centralizers,tolerance=tol)
+        if P is not None:
+            self.symmetry["P"]=0.5*(P+P.T)
     def save(self, filename):
         """Save the current object to a pickle file."""
         with open(filename, "wb") as f:
@@ -603,30 +612,65 @@ class VibrationalStructure():
         self.MassMatrix=np.kron(np.diag(MS.masses),np.eye(3))
         self.Vibrational_Frequencies=[]
         self.Normalized_Carthesian_Displacements=[]
-    def determine_symmetry(self):
-        self.symmetry.determineSymmetry(self)
-    def info(self):
-        print("=================================")
-        print("Vibrational Structure Information")
-        print("=================================")
-        print(f"Relative Path: {self.path}")
-        print(f"Number of atoms: {len(self.atoms)}")
-        print("Atomic Symbols:")
-        print(", ".join(self.atoms))
-        print("\n Carthesian Coordinates [in Angstroms]:")
-        for i, coord in enumerate(self.coordinates):
-            print(f"  Atom {i+1} [{self.atoms[i]}]: {coord}")
-        print("\nCell Vectors (in Angstroms):")
-        for i, vec in enumerate(self.cellvectors):
-            print(f"  Vector {i+1}: {vec}")
-        print("\nPeriodicity:")
-        print(f"  {self.periodicity}")
-        print("\nSymmetry Information:")
-        if self.symmetry and isinstance(self.symmetry.SymmetryOperations, dict) and self.symmetry.SymmetryOperations:
-            for sym_type, op in self.symmetry.SymmetryOperations.items():
-                print(f"\nSymmetry Type: {sym_type}")
-                print(f"  Generator matrix:\n{op.generator}")
-        else:
-            print("  No symmetry information available.")
-
+    #def Symmetrize_Hessian(self):
         
+
+def compute_centralizer(matrix):
+    """
+    Given a list of d x d numpy arrays (matrices),
+    compute the centralizer: all X that commute with all of them.
+    Returns basis matrices of the centralizer.
+    """
+    d = matrix.shape[0]
+    I = np.eye(d)
+    A = np.kron(I, matrix) - np.kron(matrix.T, I)
+    null = null_space(A)  # Each column is a solution vector
+    # Convert each solution back to a d x d matrix
+    centralizer_basis = [vec.reshape((d, d)) for vec in null.T]
+    return centralizer_basis
+
+def full_loss(alpha, X_basis, trace_target=None):
+    P = sum(a * X for a, X in zip(alpha, X_basis))
+    loss = np.linalg.norm(P @ P - P, 'fro')**2
+    if trace_target is not None:
+        loss += 10 * (np.trace(P) - trace_target)**2
+    if not np.allclose(P, P.conj().T):
+        loss += 10 * np.linalg.norm(P - P.conj().T, 'fro')**2
+    return loss
+
+def compute_common_centralizer(matrices):
+    """
+    Given a list of d x d numpy arrays (matrices),
+    compute the common centralizer: all X such that [X, A] = 0 for all A in matrices.
+    Returns basis matrices of the centralizer.
+    """
+    d = matrices[0].shape[0]
+    I = np.eye(d)
+    A_blocks = []
+
+    for M in matrices:
+        A = np.kron(I, M) - np.kron(M.T, I)
+        A_blocks.append(A)
+
+    A_total = np.vstack(A_blocks)
+    null = null_space(A_total)
+
+    # Each column corresponds to vec(X), reshape to d x d matrix
+    centralizer_basis = [vec.reshape((d, d)) for vec in null.T]
+    return centralizer_basis
+def getIrrepsProjector(centralizers,tolerance=10**(-12)):
+    m = len(centralizers)
+    x0 = np.random.randn(m)
+    dim=np.shape(centralizers[0])[0]
+    divisors = [ d for d in range(2,dim) if dim % d == 0 ]
+    for element in divisors:
+        res = minimize(full_loss, x0, args=(centralizers,int(dim/element)), method="BFGS",tol=tolerance)
+        if res.fun<tolerance:
+            break
+    if res.fun<tolerance:
+        alpha_opt = res.x
+        P = sum(a * X for a, X in zip(alpha_opt, centralizers))
+        return P
+    else:
+        print("Could not obtain Solution!")
+        return None
