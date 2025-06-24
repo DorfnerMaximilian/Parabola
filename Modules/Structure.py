@@ -6,6 +6,7 @@ import Modules.Geometry as Geometry
 import numpy as np
 from scipy.linalg import null_space
 from scipy.optimize import minimize
+import matplotlib.pyplot as plt
 import pickle
 import os
 pathtocp2k=os.environ["cp2kpath"]
@@ -25,120 +26,8 @@ class MolecularStructure():
             self.periodicity=(0,0,0)
         self.primitive_indices=np.arange(len(self.coordinates))
         self.cellvectors=Read.readinCellSize(path)
-        self.symmetry={}
-    def determine_symmetry(self):
-        self._test_translation(tol_translation=5*10**(-4))
-        self._test_inversion(tol_inversion=5*10**(-2))
-        self._test_rotation(tol_rotation=5*10**(-2))
-        self._getIrrep_Projector(tol=10**(-12))
-
-    def _test_translation(self,tol_translation):
-        if self.periodicity==(1,1,1):
-            coords=self.coordinates
-            cellvectors=self.cellvectors
-            atomic_symbols=self.atoms
-            supercell,primitive_indices, scaled_lattice=getPrimitiveUnitCell(cellvectors, coords, atomic_symbols,tolerance=tol_translation)
-            self.periodicity=supercell
-            self.primitive_indices=primitive_indices
-            relative_cell_coordinates, _=getCellCoordinates(scaled_lattice,coords,primitive_indices,supercell,tolerance=tol_translation)
-            Tx,Ty,Tz,xFlag,yFlag,zFlag=getTranslationOps(relative_cell_coordinates,supercell)
-            if xFlag and np.sum(np.abs(Tx-np.eye(np.shape(Tx)[0])))>10**(-10):
-                self.symmetry["t1"]=Tx
-            if yFlag and np.sum(np.abs(Ty-np.eye(np.shape(Ty)[0])))>10**(-10):
-                self.symmetry["t2"]=Ty
-            if zFlag and  np.sum(np.abs(Tz-np.eye(np.shape(Tz)[0])))>10**(-10):
-                self.symmetry["t3"]=Tz
-    def _test_inversion(self, tol_inversion):
-        coords = self.coordinates
-        atomic_symbols=self.atoms
-        primitive_indices=self.primitive_indices
-        geometry_centered_coordinates, _ = Geometry.ComputeCenterOfGeometryCoordinates(np.array(coords)[primitive_indices])
-        has_symmetry, inversion_pairs = detect_inversion_symmetry(geometry_centered_coordinates, np.array(atomic_symbols)[primitive_indices], tol_inversion)
-        if has_symmetry:
-            #Generate the Original Pairs
-            pairs={}
-            for idx, inv_idx in inversion_pairs.items():
-                pairs[primitive_indices[idx]]=primitive_indices[inv_idx]
-            #Add the remaining pairs on the diagonal
-            Ultimate_Pairs={}
-            nAtoms=len(atomic_symbols)
-            for it in range(nAtoms):
-                if it in pairs:
-                    Ultimate_Pairs[it]=pairs[it]
-                else:
-                    Ultimate_Pairs[it]=it
-            PrimitiveInversion=get_Inversion_Symmetry_Generator(Ultimate_Pairs,nAtoms)
-            self.symmetry["i"]=PrimitiveInversion
-    def _test_rotation(self,tol_rotation,nmax=10):
-        coordinates=self.coordinates
-        atomic_symbols=self.atoms
-        masses=self.masses
-        primitive_indices=self.primitive_indices
-        principleaxiscoordinates,masses,atomic_symbols=Geometry.getPrincipleAxisCoordinates(np.array(coordinates)[primitive_indices],np.array(masses)[primitive_indices],np.array(atomic_symbols)[primitive_indices])
-        for n in range(nmax,1,-1):
-            has_symmetry, rotation_pairs=detect_rotational_symmetry(principleaxiscoordinates, atomic_symbols, axis='x', n=n, tolerance=tol_rotation)
-            if has_symmetry and n!=1:
-                break
-        if has_symmetry and n!=1:
-            #Generate the Original Pairs
-            pairs={}
-            for idx, rot_idx in rotation_pairs.items():
-                pairs[primitive_indices[idx]]=primitive_indices[rot_idx]
-            #Add the remaining pairs on the diagonal
-            Ultimate_Pairs={}
-            nAtoms=len(atomic_symbols)
-            for it in range(nAtoms):
-                if it in pairs:
-                    Ultimate_Pairs[it]=pairs[it]
-                else:
-                    Ultimate_Pairs[it]=it
-            PrimitiveRotation=get_Inversion_Symmetry_Generator(Ultimate_Pairs,nAtoms)
-            self.symmetry["Cx"+"_"+str(n)]=PrimitiveRotation
-        for n in range(nmax,1,-1):
-            has_symmetry, rotation_pairs=detect_rotational_symmetry(principleaxiscoordinates, atomic_symbols, axis='y', n=n, tolerance=tol_rotation)
-            if has_symmetry and n!=1:
-                break
-        if has_symmetry and n!=1:
-            #Generate the Original Pairs
-            pairs={}
-            for idx, rot_idx in rotation_pairs.items():
-                pairs[primitive_indices[idx]]=primitive_indices[rot_idx]
-            #Add the remaining pairs on the diagonal
-            Ultimate_Pairs={}
-            nAtoms=len(atomic_symbols)
-            for it in range(nAtoms):
-                if it in pairs:
-                    Ultimate_Pairs[it]=pairs[it]
-                else:
-                    Ultimate_Pairs[it]=it
-            PrimitiveRotation=get_Inversion_Symmetry_Generator(Ultimate_Pairs,nAtoms)
-            self.symmetry["Cy"+"_"+str(n)]=PrimitiveRotation
-        #check rotations 
-        for n in range(nmax,1,-1):
-            has_symmetry, rotation_pairs=detect_rotational_symmetry(principleaxiscoordinates, atomic_symbols, axis='z', n=n, tolerance=tol_rotation)
-            if has_symmetry and n!=1:
-                break
-        if has_symmetry and n!=1:
-            #Generate the Original Pairs
-            pairs={}
-            for idx, rot_idx in rotation_pairs.items():
-                pairs[primitive_indices[idx]]=primitive_indices[rot_idx]
-            #Add the remaining pairs on the diagonal
-            Ultimate_Pairs={}
-            nAtoms=len(atomic_symbols)
-            for it in range(nAtoms):
-                if it in pairs:
-                    Ultimate_Pairs[it]=pairs[it]
-                else:
-                    Ultimate_Pairs[it]=it
-            PrimitiveRotation=get_Inversion_Symmetry_Generator(Ultimate_Pairs,nAtoms)
-            self.symmetry["Cz"+"_"+str(n)]=PrimitiveRotation
-    def _getIrrep_Projector(self,tol=10**(-12)):
-        matrices=[self.symmetry[it] for it in self.symmetry]
-        centralizers=compute_common_centralizer(matrices)
-        P=getIrrepsProjector(centralizers,tolerance=tol)
-        if P is not None:
-            self.symmetry["P"]=0.5*(P+P.T)
+        self.sym=Symmetry(self)
+    
     def save(self, filename):
         """Save the current object to a pickle file."""
         with open(filename, "wb") as f:
@@ -166,13 +55,118 @@ class MolecularStructure():
         print("\nPeriodicity:")
         print(f"  {self.periodicity}")
         print("\nSymmetry Information:")
-        if self.symmetry:
-            for sym_type, op in self.symmetry.items():
+        if self.sym.SymOp:
+            for sym_type, op in self.sym.SymOp.items():
                 print(f"\nSymmetry Type: {sym_type}")
                 print(f"  Generator matrix:\n{op}")
         else:
             print("  No symmetry information available.")
+#### Define Symmetry Class ####
+class Symmetry():
+    def __init__(self,MolecularStructure):
+        self.SymOp={}
+        self.Proj=None
+        self.determine_symmetry(MolecularStructure)
+    def determine_symmetry(self,MolecularStructure):
+        self._test_translation(MolecularStructure,tol_translation=5*10**(-4))
+        self._test_inversion(MolecularStructure,tol_inversion=5*10**(-2))
+        self._test_rotation(MolecularStructure,tol_rotation=5*10**(-2))
+        self._test_mirror(MolecularStructure,tol_mirror=5*10**(-2))
+        self._getIrrep_Projector(tol=10**(-12))
 
+    def _test_translation(self,MolecularStructure,tol_translation):
+        if MolecularStructure.periodicity==(1,1,1):
+            coords=MolecularStructure.coordinates
+            cellvectors=MolecularStructure.cellvectors
+            atomic_symbols=MolecularStructure.atoms
+            supercell,primitive_indices, scaled_lattice=getPrimitiveUnitCell(cellvectors, coords, atomic_symbols,tolerance=tol_translation)
+            MolecularStructure.periodicity=supercell
+            MolecularStructure.primitive_indices=primitive_indices
+            relative_cell_coordinates, _=getCellCoordinates(scaled_lattice,coords,primitive_indices,supercell,tolerance=tol_translation)
+            Tx,Ty,Tz,xFlag,yFlag,zFlag=getTranslationOps(relative_cell_coordinates,supercell)
+            if xFlag and np.sum(np.abs(Tx-np.eye(np.shape(Tx)[0])))>10**(-10):
+                self.SymOp["t1"]=Tx
+            if yFlag and np.sum(np.abs(Ty-np.eye(np.shape(Ty)[0])))>10**(-10):
+                self.SymOp["t2"]=Ty
+            if zFlag and  np.sum(np.abs(Tz-np.eye(np.shape(Tz)[0])))>10**(-10):
+                self.SymOp["t3"]=Tz
+    def _test_inversion(self,MolecularStructure, tol_inversion):
+        coords = MolecularStructure.coordinates
+        atomic_symbols=MolecularStructure.atoms
+        primitive_indices=MolecularStructure.primitive_indices
+        geometry_centered_coordinates, _ = Geometry.ComputeCenterOfGeometryCoordinates(np.array(coords)[primitive_indices])
+        has_symmetry, inversion_pairs = detect_inversion_symmetry(geometry_centered_coordinates, np.array(atomic_symbols)[primitive_indices], tol_inversion)
+        if has_symmetry:
+            #Generate the Original Pairs
+            pairs={}
+            for idx, inv_idx in inversion_pairs.items():
+                pairs[primitive_indices[idx]]=primitive_indices[inv_idx]
+            #Add the remaining pairs on the diagonal
+            Ultimate_Pairs={}
+            nAtoms=len(atomic_symbols)
+            for it in range(nAtoms):
+                if it in pairs:
+                    Ultimate_Pairs[it]=pairs[it]
+                else:
+                    Ultimate_Pairs[it]=it
+            PrimitiveInversion=get_Inversion_Symmetry_Generator(Ultimate_Pairs,nAtoms)
+            self.SymOp["i"]=PrimitiveInversion
+    def _test_rotation(self,MolecularStructure,tol_rotation,nmax=10):
+        coordinates=MolecularStructure.coordinates
+        atomic_symbols=MolecularStructure.atoms
+        masses=MolecularStructure.masses
+        primitive_indices=MolecularStructure.primitive_indices
+        principleaxiscoordinates,masses,atomic_symbols=Geometry.getPrincipleAxisCoordinates(np.array(coordinates)[primitive_indices],np.array(masses)[primitive_indices],np.array(atomic_symbols)[primitive_indices])
+        for axis in ["x","y","z"]:
+            for n in range(nmax,1,-1):
+                has_symmetry, rotation_pairs=detect_rotational_symmetry(principleaxiscoordinates, atomic_symbols, axis=axis, n=n, tolerance=tol_rotation)
+                if has_symmetry and n!=1:
+                    break
+            if has_symmetry and n!=1:
+                #Generate the Original Pairs
+                pairs={}
+                for idx, rot_idx in rotation_pairs.items():
+                    pairs[primitive_indices[idx]]=primitive_indices[rot_idx]
+                #Add the remaining pairs on the diagonal
+                Ultimate_Pairs={}
+                nAtoms=len(atomic_symbols)
+                for it in range(nAtoms):
+                    if it in pairs:
+                        Ultimate_Pairs[it]=pairs[it]
+                    else:
+                        Ultimate_Pairs[it]=it
+                PrimitiveRotation=get_Inversion_Symmetry_Generator(Ultimate_Pairs,nAtoms)
+                self.SymOp["C"+axis+"_"+str(n)]=PrimitiveRotation
+    
+    def _test_mirror(self,MolecularStructure,tol_mirror):
+        coordinates=MolecularStructure.coordinates
+        atomic_symbols=MolecularStructure.atoms
+        masses=MolecularStructure.masses
+        primitive_indices=MolecularStructure.primitive_indices
+        principleaxiscoordinates,masses,atomic_symbols=Geometry.getPrincipleAxisCoordinates(np.array(coordinates)[primitive_indices],np.array(masses)[primitive_indices],np.array(atomic_symbols)[primitive_indices])
+        for axis in ["x","y","z"]:
+            has_symmetry, mirror_pairs=detect_mirror_symmetry(principleaxiscoordinates, atomic_symbols, axis=axis, tolerance=tol_mirror)
+            if has_symmetry:
+                #Generate the Original Pairs
+                pairs={}
+                for idx, rot_idx in mirror_pairs.items():
+                    pairs[primitive_indices[idx]]=primitive_indices[rot_idx]
+                #Add the remaining pairs on the diagonal
+                Ultimate_Pairs={}
+                nAtoms=len(atomic_symbols)
+                for it in range(nAtoms):
+                    if it in pairs:
+                        Ultimate_Pairs[it]=pairs[it]
+                    else:
+                        Ultimate_Pairs[it]=it
+                PrimitiveMirror=get_Inversion_Symmetry_Generator(Ultimate_Pairs,nAtoms)
+                self.SymOp["S"+axis]=PrimitiveMirror
+    def _getIrrep_Projector(self,tol=10**(-12)):
+        matrices=[self.SymOp[it] for it in self.SymOp]
+        centralizers=compute_common_centralizer(matrices)
+        P=getIrrepsProjector(centralizers,tolerance=tol)
+        if P is not None:
+            self.Proj=0.5*(P+P.T)
 #### Translation Symmetry Helper Functions ####
 def to_fractional(lattice, positions):
     """
@@ -533,7 +527,7 @@ def get_Inversion_Symmetry_Generator(pairs_pairs, n_atoms):
     for idx, inv_idx in pairs_pairs.items():
         perm_matrix[idx, inv_idx] = 1.0
     return perm_matrix
-
+#### Rotation Symmetry Helper Functions ####
 def rotate_coords(coords, axis, angle_rad):
     """
     Rotates coordinates around a given axis by a given angle (in radians).
@@ -602,6 +596,43 @@ def detect_rotational_symmetry(centered_coords, atomic_symbols, axis='z', n=2, t
     angle_rad = 2 * np.pi / n
     rotated_coords = rotate_coords(centered_coords, axis, angle_rad)
     return find_rotated_match(rotated_coords, centered_coords, atomic_symbols, tolerance=tolerance)
+#### Mirror Symmetry Helper Functions ####
+def reflect_coords(coords, axis):
+    """
+    Reflects coordinates across the specified axis-aligned mirror plane.
+    """
+    if axis == 'x':
+        R = np.array([[-1, 0, 0],
+                      [0, 1, 0],
+                      [0, 0, 1]])
+    elif axis == 'y':
+        R = np.array([[1, 0, 0],
+                      [0, -1, 0],
+                      [0, 0, 1]])
+    elif axis == 'z':
+        R = np.array([[1, 0, 0],
+                      [0, 1, 0],
+                      [0, 0, -1]])
+    else:
+        raise ValueError("Axis must be 'x', 'y', or 'z'.")
+    
+    return [R @ coord for coord in coords]
+def detect_mirror_symmetry(centered_coords, atomic_symbols, axis='z', tolerance=1e-5):
+    """
+    Detects mirror symmetry across a specified axis-aligned plane.
+
+    Args:
+        centered_coords (list): List of numpy arrays of atomic coordinates.
+        atomic_symbols (list): List of atomic symbols.
+        axis (str): Mirror plane normal direction: 'x', 'y', or 'z'.
+        tolerance (float): Distance tolerance for matching atoms.
+
+    Returns:
+        bool: True if mirror symmetry is detected.
+        dict: Mapping of original atom indices to reflected counterparts if symmetry exists.
+    """
+    reflected_coords = reflect_coords(centered_coords, axis)
+    return find_rotated_match(reflected_coords, centered_coords, atomic_symbols, tolerance=tolerance)
 
 class VibrationalStructure():
     def __init__(self,name,path="./"):
@@ -631,11 +662,9 @@ def compute_centralizer(matrix):
 
 def full_loss(alpha, X_basis, trace_target=None):
     P = sum(a * X for a, X in zip(alpha, X_basis))
-    loss = np.linalg.norm(P @ P - P, 'fro')**2
+    loss = np.linalg.norm(P @ P - P, 'fro')**2/np.shape(P)[0]**2
     if trace_target is not None:
-        loss += 10 * (np.trace(P) - trace_target)**2
-    if not np.allclose(P, P.conj().T):
-        loss += 10 * np.linalg.norm(P - P.conj().T, 'fro')**2
+        loss +=(np.trace(P) - trace_target)**2/np.shape(P)[0]**2
     return loss
 
 def compute_common_centralizer(matrices):
@@ -651,20 +680,33 @@ def compute_common_centralizer(matrices):
     for M in matrices:
         A = np.kron(I, M) - np.kron(M.T, I)
         A_blocks.append(A)
+    # Symmetric constraint: X = X^T -> X_ij - X_ji = 0 for i < j
+    sym_constraints = []
+    for i in range(d):
+        for j in range(i+1, d):
+            row = np.zeros((d, d))
+            row[i, j] = 1
+            row[j, i] = -1
+            sym_constraints.append(row.flatten())
 
-    A_total = np.vstack(A_blocks)
+    # Combine all constraints
+    A_total = np.vstack(A_blocks + sym_constraints)
     null = null_space(A_total)
 
     # Each column corresponds to vec(X), reshape to d x d matrix
     centralizer_basis = [vec.reshape((d, d)) for vec in null.T]
-    return centralizer_basis
+    # Enforce symmetry numerically
+    symmetric_basis = [(X + X.T)/2 for X in centralizer_basis]
+    print(len(centralizer_basis))
+    return symmetric_basis
 def getIrrepsProjector(centralizers,tolerance=10**(-12)):
     m = len(centralizers)
     x0 = np.random.randn(m)
     dim=np.shape(centralizers[0])[0]
     divisors = [ d for d in range(2,dim) if dim % d == 0 ]
+    print(np.shape(centralizers))
     for element in divisors:
-        res = minimize(full_loss, x0, args=(centralizers,int(dim/element)), method="BFGS",tol=tolerance)
+        res = minimize(full_loss, x0, args=(centralizers,int(dim/element)), method="L-BFGS-B",tol=tolerance)
         if res.fun<tolerance:
             break
     if res.fun<tolerance:
@@ -674,3 +716,19 @@ def getIrrepsProjector(centralizers,tolerance=10**(-12)):
     else:
         print("Could not obtain Solution!")
         return None
+def test_IrrepsProjector(name):
+    s=MolecularStructure(name)
+    #this is the Projector
+    P=s.sym.Proj
+    _,V=np.linalg.eigh(P)
+    for sym in s.sym.SymOp:
+        diag=V.T@s.sym.SymOp[sym]@V
+        plt.imshow(diag, cmap='viridis', interpolation='nearest')
+        plt.colorbar()
+        plt.title(sym)
+
+        # Save the figure
+        print(s.path)
+        plt.savefig("./{}.png".format(sym))
+        plt.close()
+
