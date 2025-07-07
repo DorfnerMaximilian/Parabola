@@ -16,49 +16,69 @@ def LCC_inputs(deltas,parentfolder="./",linktobinary=True,binaryloc=pathtobinari
         nCD.append(normCD[it,:])
     VibAna.Vib_Ana_inputs(deltas,nCD,parentpath=parentfolder)
 
-def getManyBodyCouplings(eta,LCC,id_homo):
-    ''' Function to obtain the Many-Body Coupling Constants from the CP2K TDDFT excited states and the DFT Coupling constants
-        input:  eta:         (np.array)            numpy array which encodes the states
-                                                      required structure: states[n] encodes the n th excited state
-                                                                          states[n][0] is its energy
-                                                                          states[n][1] is a list of lists, where each list in this list contains 
-                                                                          list[0] hole index list[1] particle index and list[2] the weight of this 
-                                                                          particle hole state
-                                                                          second index first component
-                couplingConstants (np.array)          the DFT coupling constants as outputted by "getLinearCouplingConstants"
-                                                                            
-                HOMOit                (int)           the index of the HOMO orbital (python convention)
-    '''
+def getManyBodyCouplings(eta, LCC, id_homo):
+    """
+    Calculates the Many-Body Coupling Constants using vectorized NumPy operations.
 
-            #generate g matrix, h matrix and k matrices
-    g=LCC[:,id_homo+1:,id_homo+1:]
-    h=LCC[:,:id_homo+1,:id_homo+1]*(-1) # minus 1 due to fermionic commutator!
-    k=LCC[:,:id_homo+1,id_homo+1:]
-    #get the number of excited States to take into account
-    Num_OfExciteStates=np.shape(eta)[-1]
-    Num_OfModes=np.shape(LCC)[0]
-    #Normalize the eta
-    for p in Util.progressbar(range(Num_OfExciteStates),"Normalizing States:",40):
-        eta[:,:,p]/=np.trace(np.transpose(eta[:,:,p])@eta[:,:,p])
-    K=np.zeros((Num_OfModes,Num_OfExciteStates)) #Coupling of excited state to ground state
-    for m in Util.progressbar(range(Num_OfExciteStates),"Computing Coupling to Ground State:",40):
-        etap=eta[id_homo+1:,:id_homo+1,m] #First index electrons second hole
-        for lamb in range(Num_OfModes):
-            klamb=k[lamb,:,:]
-            K[lamb,m]=np.trace(klamb@etap)
-    H=np.zeros((Num_OfModes,Num_OfExciteStates,Num_OfExciteStates)) #Coupling between the excited states
-    for p in Util.progressbar(range(Num_OfExciteStates),"Computing Coupling between Excited State 1:",40):
-        for q in Util.progressbar(range(p,Num_OfExciteStates),"Computing Coupling between Excited State 2:",40):
-            etap=eta[id_homo+1:,:id_homo+1,p] #First index electrons second hole
-            etaq=eta[id_homo+1:,:id_homo+1,q]
-            for lamb in range(Num_OfModes):
-                glamb=g[lamb,:,:]
-                hlamb=h[lamb,:,:]
-                H[lamb,q,p]=np.trace(np.transpose(etaq)@glamb@etap)+np.trace(etaq@hlamb@np.transpose(etap))
-                H[lamb,p,q]=H[lamb,q,p]
-    np.save("H_CouplingConstants",H)
-    np.save("K_CouplingConstants",K)
-    return H,K
+    Args:
+        eta (np.ndarray): 3D array encoding the excited states.
+                          Shape: (orbitals, orbitals, num_excited_states).
+        LCC (np.ndarray): The DFT linear coupling constants.
+                          Shape: (num_modes, orbitals, orbitals).
+        id_homo (int): The index of the HOMO orbital (0-indexed).
+
+    Returns:
+        tuple[np.ndarray, np.ndarray]: A tuple containing:
+            - H (np.ndarray): Coupling matrix between excited states.
+                              Shape: (num_modes, num_excited_states, num_excited_states).
+            - K (np.ndarray): Coupling matrix to the ground state.
+                              Shape: (num_modes, num_excited_states).
+    """
+    # --- Setup: No changes needed here, these are fast operations ---
+    Num_OfModes = LCC.shape[0]
+    Num_OfExciteStates = eta.shape[-1]
+    
+    # Slicing assumes the first (id_homo + 1) orbitals are holes
+    # and the remaining are electrons (particles).
+    num_holes = id_homo + 1
+    
+    g = LCC[:, num_holes:, num_holes:]        # Particle-particle block
+    h = LCC[:, :num_holes, :num_holes] * -1   # Hole-hole block
+    k = LCC[:, :num_holes, num_holes:]        # Hole-particle block
+
+    # --- 1. Vectorized State Normalization ---
+    # The original loop calculates the squared Frobenius norm for each state matrix
+    # and divides by it. This can be done for all states at once.
+    # The norm is sum of squares of all elements.
+    norm_factors = np.sum(eta**2, axis=(0, 1), keepdims=True)
+    norm_factors[norm_factors == 0] = 1  # Avoid division by zero for null states
+    eta = eta / norm_factors
+    # --- 2. Vectorized Ground State Coupling (K matrix) ---
+    # The nested loops for K are replaced by a single, powerful np.einsum call.
+    # 'einsum' stands for Einstein summation, a notation for tensor operations.
+    # Original operation: K[lamb, m] = np.trace(k[lamb] @ etap[m])
+    # einsum equivalent: K_lm = sum_{i,j} k_lij * eta_jim
+    eta_slice_k = eta[num_holes:, :num_holes, :]
+    K = np.einsum('lij,jim->lm', k, eta_slice_k, optimize=True)
+    # --- 3. Vectorized Excited State Coupling (H matrix) ---
+    # The slow triple nested loop is replaced by two einsum calls.
+    eta_sub = eta[num_holes:, :num_holes, :] # particle-hole slice of all states
+    # Term 1: np.trace(np.transpose(etaq) @ g @ etap)
+    # einsum: H_lqp = sum_{e,f,h} eta_ehq * g_lef * eta_fhp
+    term1 = np.einsum('ehq,lef,fhp->lqp', eta_sub, g, eta_sub, optimize=True)
+    
+    # Term 2: np.trace(etaq @ h @ np.transpose(etap))
+    # einsum: H_lqp = sum_{e,i,j} eta_eiq * h_lij * eta_ejp
+    term2 = np.einsum('eiq,lij,ejp->lqp', eta_sub, h, eta_sub, optimize=True)
+    H = term1 + term2
+    # The original code copied H[l,q,p] to H[l,p,q]. The einsum calculation
+    # computes the full, symmetric matrix at once, making this unnecessary.
+
+    # --- 4. Save and Return ---
+    np.save("H_CouplingConstants", H)
+    np.save("K_CouplingConstants", K)
+    return H, K
+
 #######################################################################################################
 #Helper routine to get the range of considered electronic states
 #######################################################################################################
