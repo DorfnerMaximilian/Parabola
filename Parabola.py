@@ -50,7 +50,7 @@ import Modules.TDDFT as TDDFT
 #########################################################################
 ## module to perform & analize Convergence Checks of num. Parameters
 #########################################################################
-import Modules.ConvTests as ConvTests
+#import Modules.ConvTests as ConvTests
 #########################################################################
 ##  module to compute the linear coupling constants
 #########################################################################
