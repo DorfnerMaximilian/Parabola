@@ -65,6 +65,7 @@ class MolecularStructure():
 class Symmetry():
     def __init__(self,MolecularStructure):
         self.SymOp={}
+        self.SymLabels={}
         self.Proj=None
         self.determine_symmetry(MolecularStructure)
     def determine_symmetry(self,MolecularStructure):
@@ -73,6 +74,7 @@ class Symmetry():
         self._test_rotation(MolecularStructure,tol_rotation=5*10**(-2))
         self._test_mirror(MolecularStructure,tol_mirror=5*10**(-2))
         self._getIrrep_Projector(tol=10**(-12))
+        self._determineSymmetrySectors()
 
     def _test_translation(self,MolecularStructure,tol_translation):
         if MolecularStructure.periodicity==(1,1,1):
@@ -164,9 +166,21 @@ class Symmetry():
     def _getIrrep_Projector(self,tol=10**(-12)):
         matrices=[self.SymOp[it] for it in self.SymOp]
         centralizers=compute_common_centralizer(matrices)
-        P=getIrrepsProjector(centralizers,tolerance=tol)
-        if P is not None:
-            self.Proj=0.5*(P+P.T)
+        P=getIrrepsProjector(centralizers)
+        self.Proj=P
+    def _determineSymmetrySectors(self):
+        for i,V in enumerate(self.Proj):
+            label="" 
+            for sym in self.SymOp:
+                EV=V.T@self.SymOp[sym]@V
+                print(i,sym,EV,np.trace(EV),np.linalg.det(EV))
+                if np.shape(V)[1]==1:
+                    label+=sym+"=("+str(int(np.trace(EV)))+")"
+                elif np.shape(V)[1]==2:
+                    label+=sym+"=("+str(int(np.trace(EV)))+","+str(int(np.linalg.det(EV)))+")"
+
+            print(label)
+
 #### Translation Symmetry Helper Functions ####
 def to_fractional(lattice, positions):
     """
@@ -699,6 +713,7 @@ def compute_common_centralizer(matrices):
     symmetric_basis = [(X + X.T)/2 for X in centralizer_basis]
     print(len(centralizer_basis))
     return symmetric_basis
+'''
 def getIrrepsProjector(centralizers,tolerance=10**(-12)):
     m = len(centralizers)
     x0 = np.random.randn(m)
@@ -716,13 +731,58 @@ def getIrrepsProjector(centralizers,tolerance=10**(-12)):
     else:
         print("Could not obtain Solution!")
         return None
+'''
+def get_degenerate_eigenspaces(eigenvalues, eigenvectors, tol=1e-8):
+    """
+    Groups numerically degenerate eigenspaces and returns basis vectors
+    grouped as separate numpy arrays.
+
+    Parameters:
+    - eigenvalues: 1D array from np.eigh
+    - eigenvectors: 2D array (columns are eigenvectors)
+    - tol: Tolerance to determine numerical degeneracy
+
+    Returns:
+    - List of numpy arrays: each of shape (n, k), where k is the dimension
+      of the degenerate eigenspace. Columns are basis vectors.
+    """
+    n = eigenvectors.shape[0]
+    grouped_bases = []
+
+    current_group = [0]
+
+    for i in range(1, len(eigenvalues)):
+        if abs(eigenvalues[i] - eigenvalues[current_group[-1]]) < tol:
+            current_group.append(i)
+        else:
+            basis = eigenvectors[:, current_group]
+            grouped_bases.append(basis)
+            current_group = [i]
+
+    # Don't forget the last group
+    if current_group:
+        basis = eigenvectors[:, current_group]
+        grouped_bases.append(basis)
+
+    return grouped_bases
+def getIrrepsProjector(centralizers):
+    m = len(centralizers)
+    alpha = np.random.randn(m)
+    print(np.shape(centralizers))
+    P = sum(a * X for a, X in zip(alpha, centralizers))
+    eigenvalues,eigenvectors=np.linalg.eigh(P)
+    eigenspaces=get_degenerate_eigenspaces(eigenvalues, eigenvectors, tol=1e-8)
+    return eigenspaces
+
 def test_IrrepsProjector(name):
     s=MolecularStructure(name)
-    #this is the Projector
-    P=s.sym.Proj
-    _,V=np.linalg.eigh(P)
     for sym in s.sym.SymOp:
-        diag=V.T@s.sym.SymOp[sym]@V
+        diag=np.zeros((len(s.atoms),len(s.atoms)))
+        iter=0
+        for i,V in enumerate(s.sym.Proj):
+            diag_block=V.T@s.sym.SymOp[sym]@V
+            diag[iter:iter+np.shape(V)[1],iter:iter+np.shape(V)[1]]=diag_block
+            iter+=np.shape(V)[1]
         plt.imshow(diag, cmap='viridis', interpolation='nearest')
         plt.colorbar()
         plt.title(sym)
