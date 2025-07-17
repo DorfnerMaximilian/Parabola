@@ -67,7 +67,27 @@ def ComputeCenterOfGeometryCoordinates(coordinates):
     for coords in coordinates:
         centercoordinates.append(coords-center)
     return centercoordinates,center
+def getGeometryCovarianceTensor(coordinates):
+    """
+    Computes the covariance matrix of the molecular geometry based on coordinates 
+    centered at the center of geometry.
 
+    Parameters:
+    - coordinates (Nx3 numpy.array): Coordinates of the atoms with respect to some basis (arbitrary origin).
+
+    Returns:
+    - cov (3x3 numpy.array): Covariance matrix of the centered coordinates,
+      representing the spread of atoms around the center of geometry.
+
+    Notes:
+    - The coordinates provided have an arbitrary origin.
+    - The covariance is computed after translating the coordinates so that their origin
+      is at the center of geometry.
+    - The center of geometry is the arithmetic mean of the atomic coordinates (equal weighting).
+    """
+    centercoordinates,_=ComputeCenterOfGeometryCoordinates(coordinates)
+    cov = np.cov(np.array(centercoordinates).T)
+    return cov
 def getInertiaTensor(coordinates,masses):
     """
     Computes the inertia tensor of a molecule with respect to the basis of the coordinate file.
@@ -107,7 +127,7 @@ def getInertiaTensor(coordinates,masses):
     #The moment of inertia tensor
     I=np.array([[Ixx,Ixy,Ixz],[Ixy,Iyy,Iyz],[Ixz,Iyz,Izz]])
     return I
-def getPrincipleAxis(centerofmasscoordinates, masses, tol=1e-3):
+def getPrincipleAxis(centeredCoordinates, masses=None, tol=1e-3):
     """
     Computes and orients the principal axes of a system of particles.
 
@@ -124,58 +144,103 @@ def getPrincipleAxis(centerofmasscoordinates, masses, tol=1e-3):
         Orthonormal principal axes (v1, v2, v3), forming a right-handed system.
     """
     def is_degenerate(evals, threshold=tol):
+        pairs=[]
         # Check for near-equal eigenvalues
         for i in range(3):
             for j in range(i+1, 3):
                 if np.abs(evals[i] - evals[j]) / np.mean([evals[i], evals[j]]) < threshold:
-                    return True, (i, j)
-        return False, ()
-
-    # Compute the inertia tensor
-    I = getInertiaTensor(centerofmasscoordinates, masses)
-
+                    pairs.append((i,j))
+        if not pairs:
+            return False, [()]
+        else:
+            return True, pairs
+    if masses is not None:
+        # Compute the inertia tensor
+        I = getInertiaTensor(centeredCoordinates, masses)
+    else:
+        I = getGeometryCovarianceTensor(np.array(centeredCoordinates))
     # Diagonalize
     evals, evecs = np.linalg.eigh(I)
 
     # Check degeneracy
-    degenerate, pair = is_degenerate(evals)
+    degenerate, pairs = is_degenerate(evals)
     if degenerate:
-        # Reorient degenerate subspace eigenvectors to align with x-axis as much as possible
-        i, j = pair
-        subspace = evecs[:, [i, j]]
-        # Choose axis with maximal x-component in subspace
-        x_proj = subspace.T @ np.array([1, 0, 0])
-        best_index = np.argmax(np.abs(x_proj))
-        v1 = subspace[:, best_index]
-        v1 *= np.sign(v1[0])  # Ensure positive x
-        # Orthogonalize second vector
-        v2 = subspace[:, 1 - best_index]
-        v2 = v2 - np.dot(v1, v2) * v1
-        v2 /= np.linalg.norm(v2)
+        if len(pairs) == 3:
+            # Fully degenerate case: all eigenvalues nearly equal
+            # Just align the first axis with x as much as possible
+            v1 = evecs[:, 0]
+            if v1[0] < 0:
+                v1 *= -1
+            # Gram-Schmidt to get orthonormal basis
+            v2 = evecs[:, 1]
+            v2 = v2 - np.dot(v1, v2) * v1
+            v2 /= np.linalg.norm(v2)
+            v3 = np.cross(v1, v2)
+            v3 /= np.linalg.norm(v3)
+        else:
+            # Partially degenerate: reorient degenerate subspace
+            i, j = pairs[0]
+            subspace = evecs[:, [i, j]]
+            x_proj = subspace.T @ np.array([1, 0, 0])
+            best_index = np.argmax(np.abs(x_proj))
+            v1 = subspace[:, best_index]
+            v1 *= np.sign(v1[0])  # Ensure positive x
+            v2 = subspace[:, 1 - best_index]
+            v2 = v2 - np.dot(v1, v2) * v1
+            v2 /= np.linalg.norm(v2)
+            v3 = np.cross(v1, v2)
+            v3 /= np.linalg.norm(v3)
     else:
         v1 = evecs[:, 0]
         v2 = evecs[:, 1]
         v3 = evecs[:, 2]
-
-    # Construct orthonormal basis (ensure right-handedness)
-    if degenerate:
-        v3 = np.cross(v1, v2)
-        v3 /= np.linalg.norm(v3)
-    else:
         # Ensure v1 and v2 have positive x-component for consistency
         if v1[0] < 0: v1 *= -1
         if v2[0] < 0: v2 *= -1
         v3 = np.cross(v1, v2)
         v3 /= np.linalg.norm(v3)
+    
+
+    axes = [v1, v2, v3]
+    overlap_matrix = np.abs(np.array(axes))
+
+    max_overlap = -1.0
+    best_assignment = None
+
+    # Iterate through all 3! = 6 permutations of the axis assignments
+    for p in [[0, 1, 2],[1, 0, 2],[0, 2, 1],[2, 1, 0],[1, 2, 0],[2, 0, 1]]:
+        # 'p' represents a potential assignment. For example, p=(2,0,1) means:
+        #   - new x-axis is old axis 2 (v3)
+        #   - new y-axis is old axis 0 (v1)
+        #   - new z-axis is old axis 1 (v2)
+        # We calculate the total overlap score for this assignment.
+        current_overlap = (overlap_matrix[p[0], 0] +  # old axis p[0] with new x
+                           overlap_matrix[p[1], 1] +  # old axis p[1] with new y
+                           overlap_matrix[p[2], 2])   # old axis p[2] with new z
+
+        if current_overlap > max_overlap:
+            max_overlap = current_overlap
+            best_assignment = p
+
+    # The best_assignment tells us which old axis to use for each new axis.
+    # For example, if best_assignment is (2, 0, 1), the ordered list is [axes[2], axes[0], axes[1]].
+    ordered_axes = [axes[i] for i in best_assignment]
+    v1_final, v2_final, _ = ordered_axes
+
+    # --- END: NumPy-based ordering logic ---
+    
+    # Ensure a consistent, right-handed final orientation.
+    if np.dot(v1_final, [1, 0, 0]) < 0:
+        v1_final = -v1_final
         
+    if np.dot(v2_final, [0, 1, 0]) < 0:
+        v2_final = -v2_final
+        
+    # Set v3 from the cross product to guarantee a right-handed system.
+    v3_final = np.cross(v1_final, v2_final)
 
-    # Sanity checks
-    B = np.stack([v1, v2, v3], axis=1)
-    if np.linalg.det(B) < 0:
-        v3 *= -1
-
-    return v1, v2, v3
-def getPrincipleAxisCoordinates(xyzcoordinates,masses,atomicsymbols):
+    return v1_final, v2_final, v3_final
+def getPrincipleAxisCoordinates(xyzcoordinates,masses=None,axis=None):
     """
     Centers the molecule in the unit cell, aligns the principal axes, and 
     transforms the coordinates to the principal axis frame.
@@ -204,17 +269,27 @@ def getPrincipleAxisCoordinates(xyzcoordinates,masses,atomicsymbols):
       molecule along the principal axes.
     - The function returns the transformed coordinates in the new frame, along with the masses 
       and atomic symbols.
-    """                                                         
-    centerofmasscoordinates,_=ComputeCenterOfMassCoordinates(xyzcoordinates,masses)
-    v1,v2,v3=getPrincipleAxis(centerofmasscoordinates,masses)
+    """
+    centered_coordinates=xyzcoordinates
+    if axis is None:
+        if masses is not None:
+            centered_coordinates,_=ComputeCenterOfMassCoordinates(xyzcoordinates,masses)
+            v1,v2,v3=getPrincipleAxis(centered_coordinates,masses)
+        else:
+            centered_coordinates,_=ComputeCenterOfGeometryCoordinates(xyzcoordinates)
+            v1,v2,v3=getPrincipleAxis(np.array(centered_coordinates))
+    else:
+        v1=axis[0]
+        v2=axis[1]
+        v3=axis[2]
     principleaxiscoordinates=[]
-    for coordinate in centerofmasscoordinates:
+    for coordinate in centered_coordinates:
         v1coordinate=np.dot(coordinate,v1)
         v2coordinate=np.dot(coordinate,v2)
         v3coordinate=np.dot(coordinate,v3)
         principleaxiscoordinates.append(np.array([v1coordinate,v2coordinate,v3coordinate]))
     
-    return principleaxiscoordinates,masses,atomicsymbols
+    return principleaxiscoordinates
 
 def getNeibouringCellVectors(path,m=1,n=1,l=1):
     """
@@ -676,6 +751,7 @@ def getNewXYZ(path='.'):
         if len(line.split())>0:
             if line.split()[0]=="PROJECT":
                 projectname=line.split()[1]
+                print(projectname)
     f.close()
     xyz_files = [f for f in os.listdir(path) if f.endswith('.xyz')]
     #remove the projectname+'-pos-1.xyz' file from xyz files
