@@ -18,7 +18,10 @@ import Modules.PhysConst as PhysConst
 #########################################################################
 ## Gaussian Basis Construction Routines
 #########################################################################
-import Modules.Structure as Structure
+#########################################################################
+import Modules.MolecularStructure as MolecularStructure
+#########################################################################
+import Modules.VibrationalStructure as VibrationalStructure
 #########################################################################
 ## Gaussian Basis Construction Routines
 #########################################################################
@@ -50,7 +53,7 @@ import Modules.TDDFT as TDDFT
 #########################################################################
 ## module to perform & analize Convergence Checks of num. Parameters
 #########################################################################
-#import Modules.ConvTests as ConvTests
+import Modules.ConvTests as ConvTests
 #########################################################################
 ##  module to compute the linear coupling constants
 #########################################################################
