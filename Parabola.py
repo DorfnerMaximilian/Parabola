@@ -19,9 +19,13 @@ import Modules.PhysConst as PhysConst
 ## Gaussian Basis Construction Routines
 #########################################################################
 #########################################################################
-import Modules.MolecularStructure as MolecularStructure
+import Modules.Molecular_Structure as Molecular_Structure
 #########################################################################
-import Modules.VibrationalStructure as VibrationalStructure
+import Modules.Vibrational_Structure as Vibrational_Structure
+#########################################################################
+import Modules.Electronic_Structure as Electronic_Structure
+#########################################################################
+import Modules.Molecular_Graph as Molecular_Graph
 #########################################################################
 ## Gaussian Basis Construction Routines
 #########################################################################
