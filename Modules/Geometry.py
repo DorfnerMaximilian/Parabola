@@ -290,7 +290,12 @@ def getPrincipleAxisCoordinates(xyzcoordinates,masses=None,axis=None):
         principleaxiscoordinates.append(np.array([v1coordinate,v2coordinate,v3coordinate]))
     
     return principleaxiscoordinates
-
+def get_Geometric_Principle_Axis_Coordinates(path="./"):
+    xyzfilename=util.get_xyz_filename(path,verbose=False)
+    coordinates,_,atomic_symbols=Read.readCoordinatesAndMasses(path)
+    principleaxiscoordinates=getPrincipleAxisCoordinates(coordinates)
+    Write.write_xyz_file(atomic_symbols=atomic_symbols, coordinates=principleaxiscoordinates, filename=xyzfilename, path=path, cell_coordinates=None, overwrite=True)
+    centerMolecule(path)
 def getNeibouringCellVectors(path,m=1,n=1,l=1):
     """
     Computes the vectors connecting the central cell to its neighboring cells 
@@ -343,19 +348,16 @@ def getNeibouringCellVectors(path,m=1,n=1,l=1):
                 cellvectors.append(vectortoappend[1])
                 cellvectors.append(vectortoappend[2])
     return cellvectors
-def centerMolecule(path="./",overwrite=False,Principle_Axis=False):
+def centerMolecule(path=None, overwrite=False):
     """
-    Centers a molecule or collection of atoms within the unit cell. It can optionally align 
-    the molecule along its principal axes before centering.
+    Centers a molecule or collection of atoms within the unit cell.
 
     Parameters
     ----------
     path : str, optional
         Path to the folder containing the calculation data (default is "./").
-
-    Principle_Axis : bool, optional
-        If True, the function aligns the molecule along its principal axes before centering.
-        If False, it uses the raw Cartesian coordinates without alignment (default is False).
+    overwrite : bool, optional
+        Whether to overwrite the existing output file (default is False).
 
     Returns
     -------
@@ -368,74 +370,58 @@ def centerMolecule(path="./",overwrite=False,Principle_Axis=False):
     ValueError
         If the unit cell is not orthorhombic (i.e., non-orthogonal vectors are detected).
     ValueError
-        If the molecule is too large to fit within the current cell size, suggesting the need for 
-        a larger unit cell.
+        If the molecule is too large to fit within the current cell size.
 
     Notes
     -----
-    - The function assumes an **orthorhombic unit cell** (orthogonal basis vectors). If non-orthogonal 
-      vectors are detected, it raises an error.
-    - If `Principle_Axis` is True, the molecule is first aligned along its principal axes before centering.
-    - The function checks whether the molecule fits within the cell; if it doesn’t, it raises an error and suggests 
-      increasing the unit cell size.
+    - The function assumes an **orthorhombic unit cell** (orthogonal basis vectors).
+    - The function checks whether the molecule fits within the cell; if it doesn’t, it raises an error 
+      and suggests increasing the unit cell size.
     """
-    cellcoordinates=Read.readinCellSize(path)
-    print(cellcoordinates)
-    #Check if the cell is orthorhombic, otherwise throw error:
+    if path is None:
+        path=os.getcwd()
+    cellcoordinates = Read.readinCellSize(path)
+
+    # Check if the cell is orthorhombic, otherwise throw error:
     for cellvector1 in cellcoordinates:
         for cellvector2 in cellcoordinates:
-            absscalarproduct =np.abs(np.dot(cellvector1,cellvector2))
-            abscrossproduct = np.linalg.norm((np.cross(cellvector1,cellvector2)))
-            if absscalarproduct >10**(-10) and abscrossproduct>10**(-10):
-                ValueError("Centering of Molecule in Unit Cell makes only sense for Non-Periodic Calculations! Use Orthorhombic Unit cells for this case!")
+            absscalarproduct = np.abs(np.dot(cellvector1, cellvector2))
+            abscrossproduct = np.linalg.norm(np.cross(cellvector1, cellvector2))
+            if absscalarproduct > 1e-10 and abscrossproduct > 1e-10:
+                raise ValueError("Centering of molecule requires orthorhombic unit cells. Use orthogonal vectors.")
 
-    #Compute center of Cell (assuming orthogonal basis vectors)
-    cellcenter=0.5*cellcoordinates[0]+0.5*cellcoordinates[1]+0.5*cellcoordinates[2]
-    centerofcellCoordinates=[]
-    geometric_mean=np.array([0.0,0.0,0.0])
-    if not Principle_Axis:
-        xyzcoordinates,_,atomicsym=Read.readCoordinatesAndMasses(path)
-        for coordinate in xyzcoordinates:
-            geometric_mean+=coordinate
-        geometric_mean/=len(xyzcoordinates)
-        for coordinate in xyzcoordinates:
-            centerofcellCoordinates.append(coordinate+cellcenter-geometric_mean)
-    else:
-        xyzcoordinates,_,atomicsym=getPrincipleAxisCoordinates(path)
-        for coordinate in xyzcoordinates:
-            geometric_mean+=coordinate
-        geometric_mean/=len(xyzcoordinates)
-        for coordinate in xyzcoordinates:
-            centerofcellCoordinates.append(coordinate+cellcenter-geometric_mean)
-    #Compute maximum distance of atom from coordinatecenter
-    maxdistx=0
-    maxdisty=0
-    maxdistz=0
-    for coordinates in xyzcoordinates:
-        distx=np.abs(coordinates[0])
-        disty=np.abs(coordinates[1])
-        distz=np.abs(coordinates[2])
-        if distx > maxdistx:
-            maxdistx=distx
-        if disty > maxdisty:
-            maxdisty=disty
-        if distz > maxdistz:
-            maxdistz=distz
-    #Add cutoff to maximum distance
-    cutoff=2
-    mincellsizex=cutoff+maxdistx
-    mincellsizey=cutoff+maxdisty
-    mincellsizez=cutoff+maxdistz
-    #Check if molecule fits into box otherwise shift coordinates to center of cell
-    
-    if mincellsizex<=0.5*distx:
-        ValueError("Increase cell size in z direction to at least ",2*mincellsizez)
-    if mincellsizey<=0.5*disty:
-        ValueError("Increase cell size in y direction to at least ",2*mincellsizey)
-    if mincellsizez<=0.5*distz:
-        ValueError("Increase cell size in z direction to at least ",2*mincellsizez)
-    
-    Write.writexyzfile(atomicsym,centerofcellCoordinates,path,cellcoordinates,overwrite)
+    # Compute center of cell (assuming orthogonal basis vectors)
+    cellcenter = 0.5 * cellcoordinates[0] + 0.5 * cellcoordinates[1] + 0.5 * cellcoordinates[2]
+    centerofcellCoordinates = []
+    geometric_mean = np.array([0.0, 0.0, 0.0])
+
+    xyzcoordinates, _, atomicsym = Read.readCoordinatesAndMasses(path)
+    for coordinate in xyzcoordinates:
+        geometric_mean += coordinate
+    geometric_mean /= len(xyzcoordinates)
+
+    for coordinate in xyzcoordinates:
+        centerofcellCoordinates.append(coordinate + cellcenter - geometric_mean)
+
+    # Compute maximum distance of atom from coordinate center
+    maxdistx = max(np.abs(coord[0]) for coord in xyzcoordinates)
+    maxdisty = max(np.abs(coord[1]) for coord in xyzcoordinates)
+    maxdistz = max(np.abs(coord[2]) for coord in xyzcoordinates)
+
+    cutoff = 2
+    mincellsizex = cutoff + maxdistx
+    mincellsizey = cutoff + maxdisty
+    mincellsizez = cutoff + maxdistz
+
+    if mincellsizex <= 0.5 * maxdistx:
+        raise ValueError(f"Increase cell size in x direction to at least {2 * mincellsizex}")
+    if mincellsizey <= 0.5 * maxdisty:
+        raise ValueError(f"Increase cell size in y direction to at least {2 * mincellsizey}")
+    if mincellsizez <= 0.5 * maxdistz:
+        raise ValueError(f"Increase cell size in z direction to at least {2 * mincellsizez}")
+    filename=util.get_xyz_filename(path=path,verbose=False)
+    Write.write_xyz_file(atomicsym, centerofcellCoordinates,filename, path, cellcoordinates, overwrite=True,success_comment="Successfully centered coordinates in path")
+
 def changeConfiguration(folderlabel,vector,delta,sign,path_xyz='./',path_to="./"):
     """
     Modifies the atomic configuration of an equilibrium XYZ file by shifting the 
