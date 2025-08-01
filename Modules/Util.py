@@ -29,21 +29,51 @@ def progressbar(it, prefix="", size=60, out=sys.stdout): # Python3.3+
         yield item
         show(i+1)
     print("\n", flush=True, file=out)
-def getxyzfilename(path="./",opt=False):
-    ##returns the xyz filename in path returns error, when in this folder are two xyz files
-    ## input:
-    ## (opt.)   folder              path to the folder of the .xyz file         (string)
-    ## output:  fileanem            list of sublists. 
+def get_xyz_filename(path="./",verbose=True):
+    """
+    Finds a unique geometry file, prioritizing the optimized ('*_opt.xyz') version.
 
-    #get the Projectname
-    if not opt:
-        xyz_files = [f for f in os.listdir(path) if f.endswith('.xyz')]
-    else:
-        xyz_files = [f for f in os.listdir(path) if f.endswith('_opt.xyz')]
-    if len(xyz_files) != 1:
-        raise ValueError('InputError: There should be only one *.xyz/*_opt.xyz file in the current directory')
-    filename = path+"/"+xyz_files[0]
-    return filename
+    The function first searches for an optimized file. If exactly one is found,
+    it's used. Otherwise, it searches for a standard '*.xyz' file. A message
+    is printed to clarify which file is selected.
+    
+    Args:
+        path (str): The directory path to search in.
+        
+    Returns:
+        str: The full path to the selected .xyz file.
+        
+    Raises:
+        ValueError: If multiple files of the same type are found.
+        FileNotFoundError: If no suitable geometry file is found at all.
+    """
+    # 1. Prioritize the optimized '_opt.xyz' file
+    opt_files = [f for f in os.listdir(path) if f.endswith('_opt.xyz')]
+    
+    if len(opt_files) == 1:
+        filename = opt_files[0]
+        if verbose:
+            print(f"✅: Found and selected geometry from optimized file: {filename}")
+        return os.path.join(path, filename)
+    elif len(opt_files) > 1:
+        raise ValueError(f"AmbiguityError: Found {len(opt_files)} '*_opt.xyz' files in '{path}'. Please keep only one.")
+
+    # 2. If no optimized file, fall back to standard '.xyz' file
+    # Ensure we don't accidentally match an '_opt.xyz' file here
+    xyz_files = [f for f in os.listdir(path) if f.endswith('.xyz') and not f.endswith('_opt.xyz')]
+
+    if len(xyz_files) == 1:
+        filename = xyz_files[0]
+        if verbose:
+            print(f"ℹ️: No optimized xyz file found. Selected standard file: {filename}")
+        return os.path.join(path, filename)
+    elif len(xyz_files) > 1:
+        raise ValueError(f"AmbiguityError: Found {len(xyz_files)} standard '*.xyz' files in '{path}'. Please keep only one.")
+    
+    # 3. If no files of either type are found
+    raise FileNotFoundError(f"InputError: No suitable '*.xyz' or '*_opt.xyz' file found in '{path}'.")
+
+
 
 
 def getHOMOId(parentfolder):
@@ -121,8 +151,8 @@ def Diagonalize_KS_Hamiltonian(parentfolder="./"):
     ##  Function to compute the electronic energies from the equilibrium file
     ##   input:   parentfolder:         (string)            absolute/relative path, where the geometry optimized .xyz file lies 
     ##                                                      in the subfolders there we find the electronic structure at displaced geometries                         
-    spinmultiplicity=Read.checkforSpinMultiplicity(parentfolder)
-    if spinmultiplicity==1:
+    UKS=Read.checkforUKS(parentfolder)
+    if not UKS:
         try:
             E=np.load(parentfolder+"/KS_Eigenvalues.npy")
             a_orth=np.load(parentfolder+"/KS_orth_Eigenstates.npy")
@@ -136,7 +166,7 @@ def Diagonalize_KS_Hamiltonian(parentfolder="./"):
             np.save(parentfolder+"/OLMm12.npy",Sm12)
             np.save(parentfolder+"/KS_Eigenvalues.npy",E)
             np.save(parentfolder+"/KS_orth_Eigenstates.npy",a_orth)
-    elif spinmultiplicity==3:
+    else:
         try:
             E=np.load(parentfolder+"/KS_Eigenvalues_alpha.npy")
             a_orth=np.load(parentfolder+"/KS_orth_Eigenstates.npy")
@@ -158,8 +188,6 @@ def Diagonalize_KS_Hamiltonian(parentfolder="./"):
             np.save(parentfolder+"/OLMm12.npy",Sm12)
             np.save(parentfolder+"/KS_Eigenvalues.npy",E)
             np.save(parentfolder+"/KS_orth_Eigenstates.npy",a_orth)
-    else:
-        ValueError("Higher Spin Multiplicity not yet implemented!")
     return E,a_orth,Sm12
 def compressKSfile(parentfolder="./"):
     _,_,_=Read.readinMatrices(parentfolder)
