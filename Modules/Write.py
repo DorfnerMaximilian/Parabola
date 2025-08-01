@@ -96,7 +96,7 @@ def writeCubeFile(x,y,z,data,filename='test.cube',parentfolder='./'):
     return 
     
     
-def writemolFile(normalmodeEnergies,normalmodes,normfactors,parentfolder="./"):
+def writemolFile(normalmodeEnergies,normalmodes,normfactors,coordinates,atoms,parentfolder="./"):
     '''
     Function to generate a .mol file for use with e.g., Jmol.
     
@@ -114,27 +114,18 @@ def writemolFile(normalmodeEnergies,normalmodes,normfactors,parentfolder="./"):
     - The generated .mol file is named "Vibrations.mol" and is saved in the specified parent folder.
     '''
     ConFactor=PhysConst.ConversionFactors()
-    xyzfilename=util.getxyzfilename()
     ##########################################
     #Get the number of atoms from the xyz file
     ##########################################
-    numofatoms=0
-    with open(parentfolder+"/"+xyzfilename) as g:
-        lines=g.readlines()
-        numofatoms=int(lines[0])
-        moldencoordinates=[]
-        for line in lines[2:]:
-            if len(line.split())>0:
-                atom=line.split()[0]
-                moldencoordinates.append([atom,float(line.split()[1])*ConFactor['A->a.u.'],float(line.split()[2])*ConFactor['A->a.u.'],float(line.split()[3])*ConFactor['A->a.u.']])
+    numofatoms=len(coordinates)
     with open(parentfolder+"/Vibrations.mol",'w') as f:
         f.write('[Molden Format]\n')
         f.write('[FREQ]\n')
         for Frequency in normalmodeEnergies:
             f.write('   '+str(Frequency)+'\n')
         f.write('[FR-COORD]\n')
-        for atoms in moldencoordinates:
-            f.write(atoms[0]+'   '+str(atoms[1])+'   '+str(atoms[2])+'   '+str(atoms[3])+'\n')
+        for it,coord in enumerate(coordinates):
+            f.write(atoms[it]+'   '+str(coord[0]*ConFactor["A->a.u."])+'   '+str(coord[1]*ConFactor["A->a.u."])+'   '+str(coord[2]*ConFactor["A->a.u."])+'\n')
         f.write('[NORM-FACTORS]\n')
         for normfactor in normfactors:
             f.write(str(normfactor)+'\n')
@@ -146,35 +137,61 @@ def writemolFile(normalmodeEnergies,normalmodes,normfactors,parentfolder="./"):
                 f.write('   '+str(round(mode[3*s], 12))+'   '+str(round(mode[3*s+1], 12))+'   '+str(round(mode[3*s+2],12))+'\n')
             modeiter+=1
 
-def writexyzfile(atomicsym,coordinates,readpath="./",cellcoordinates=[],overwrite=False):
-    xyzfilename=util.getxyzfilename(readpath)
-    if len(cellcoordinates)==0:
-        cell=Read.readinCellSize(readpath)
+def write_xyz_file(atomic_symbols, coordinates, filename, path="./", cell_coordinates=None, overwrite=False,success_comment="Successfully wrote XYZ file to"):
+    """
+    Writes atomic coordinates to a standard .xyz file.
+
+    Args:
+        atomic_symbols (list[str]): A list of atomic symbols (e.g., ['C', 'H', 'H']).
+        coordinates (list[list[float]] or np.ndarray): An Nx3 list or NumPy array of atomic coordinates.
+        filename (str): The name for the output file (e.g., 'molecule.xyz').
+        path (str, optional): The directory where the file will be saved. Defaults to the current directory.
+        cell_coordinates (list[list[float]], optional): A 3x3 list or array of lattice vectors for the
+                                                        comment line, used for periodic systems. Defaults to None.
+        overwrite (bool, optional): If True, overwrites the file if it exists. If False, a new file
+                                    with a '_new' suffix is created. Defaults to False.
+    """
+    # Ensure the target directory exists, creating it if necessary
+    os.makedirs(path, exist_ok=True)
+
+    # Construct the full, platform-independent file path
+    full_path = os.path.join(path, filename)
+
+    # Check if the file exists and handle the overwrite logic
+    if not overwrite and os.path.exists(full_path):
+        base, ext = os.path.splitext(filename)
+        new_filename = f"{base}_new{ext if ext else '.xyz'}"
+        full_path = os.path.join(path, new_filename)
+        print(f"⚠️ File '{os.path.join(path, filename)}' exists. Saving as '{full_path}'.")
+
+    # Validate that the number of symbols matches the number of coordinates
+    num_atoms = len(atomic_symbols)
+    if num_atoms != len(coordinates):
+        raise ValueError("The number of atomic symbols must match the number of coordinates.")
+
+    # Prepare the comment line for the XYZ file
+    if cell_coordinates is not None and len(np.array(cell_coordinates).flatten()) == 9:
+        # Format cell vectors for the comment line, a common convention (e.g., for ASE)
+        cell_str = " ".join(map(str, np.array(cell_coordinates).flatten()))
+        comment = f'Lattice="{cell_str}"'
     else:
-        cell=np.array(cellcoordinates)
-    xyzfilename=xyzfilename.split("/")[-1]
-    # generate new xyz file
-    xyzinput=[]
-    with open(readpath+"/"+xyzfilename) as g:
-        lines = g.readlines()
-        xyzinput.append(str(len(coordinates))+"\n")
-        xyzinput.append("cell:"+str(cell[0][0])+" "+str(cell[0][1])+" "+str(cell[0][2])+";"+str(cell[1][0])+" "+str(cell[1][1])+" "+str(cell[1][2])+";"+str(cell[2][0])+" "+str(cell[2][1])+" "+str(cell[2][2])+"\n")
-    g.close()
-    for it,xyz in enumerate(coordinates):
-        xyzinput.append(atomicsym[it]+' '+str(xyz[0])+' '+str(xyz[1])+' '+str(xyz[2])+'\n')
-    #open the old xyz file
-    
-    #Check if the file exist in the write directory
-    inp_files = [f for f in os.listdir("./") if f.endswith('.xyz')]
-    if len(inp_files) == 0:
-        os.system("touch "+xyzfilename)
-    if not overwrite:
-        filename=xyzfilename[:-4]+"_new.xyz"
-    else:
-    	filename=xyzfilename
-    g=open(readpath+"/"+filename,'w')
-    #generate the new content
-    for line in xyzinput:
-        g.write(line)
-    g.close()
+        comment = f"Atom count: {num_atoms}"
+
+    # Use a 'with' statement for safe and automatic file handling
+    try:
+        with open(full_path, 'w') as xyz_file:
+            # Write the header: number of atoms and a comment line
+            xyz_file.write(f"{num_atoms}\n")
+            xyz_file.write(f"{comment}\n")
+
+            # Write the atomic coordinates
+            for symbol, coord in zip(atomic_symbols, coordinates):
+                # Format the line for clean, readable output
+                x, y, z = coord
+                xyz_file.write(f"{symbol:<4} {x:12.8f} {y:12.8f} {z:12.8f}\n")
+        
+        print(f"✅ {success_comment} '{full_path}'")
+
+    except IOError as e:
+        print(f"❌ Error writing file: {e}")
 
