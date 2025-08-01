@@ -21,7 +21,7 @@ class Symmetry:
         for sym1 in generators:
             for sym2 in generators:
                 comm=generators[sym1]@generators[sym2]-generators[sym2]@generators[sym1]
-                if np.linalg.norm(comm)<10**(-9):
+                if np.linalg.norm(comm)>10**(-9):
                     commutative=False
                     break
         self.commutative=commutative
