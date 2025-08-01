@@ -119,7 +119,7 @@ def getMatricesfromfile_mulTwo(parentfolder,filename="KSHamiltonian"):
                         KSFlag1=True
             Nlines2+=1
     return KSlines_alpha,KSlines_beta,OLMlines,NumBasisfunctions
-def checkforSpinMultiplicity(path="./"):
+def checkforUKS(path="./"):
     ##opens the .inp file in the directory and checks, if Multiplicity is 1
     ## input:
     ## (opt.)   folder              path to the folder of the .inp file         (string)
@@ -130,13 +130,13 @@ def checkforSpinMultiplicity(path="./"):
     if len(inp_files) != 1:
         raise ValueError('InputError: There should be only one *.inp file in the current directory')
     pathtofile = path+"/"+inp_files[0]
-    mul=1
+    UKS=False
     with open(pathtofile,"r") as f:
         for line in f:
-            if len(line.split())>1:
-                if line.split()[0]=="MULTIPLICITY":
-                    mul=int(line.split()[1])
-    return mul
+            if len(line.split())>=1:
+                if line.split()[0]=="LSD":
+                    UKS=True
+    return UKS
 #-------------------------------------------------------------------------
 def readinMatrices(parentfolder="./",filename='KSHamiltonian'):
     ## Reads the Kohn-Sham Hamiltonian (for spin-species alpha/-beta) and the overlapmatrix from a provided file
@@ -145,8 +145,8 @@ def readinMatrices(parentfolder="./",filename='KSHamiltonian'):
     ## output:  KSHamiltonian       Kohn-Sham Hamiltonian   symmetric np.array(NumBasisfunctions,Numbasisfunction)
     ##                              In case of Multiplicity 2 KSHamiltonian is the KS_Hamiltonian of the alpha spin!
     ##          OLM                 Overlapmatrix           symmetric np.array(NumBasisfunctions,Numbasisfunction)
-    mul=checkforSpinMultiplicity(parentfolder)
-    if mul==1:
+    UKS=checkforUKS(parentfolder)
+    if not UKS:
         try:
             KSlines,OLMlines,NumBasisfunctions=getMatricesfromfile_mulOne(parentfolder,filename)
             KSHamiltonian=np.zeros((NumBasisfunctions,NumBasisfunctions))
@@ -178,7 +178,7 @@ def readinMatrices(parentfolder="./",filename='KSHamiltonian'):
             KSHamiltonian_alpha=np.load(parentfolder+"/KSHamiltonian.npy")
             KSHamiltonian_beta=KSHamiltonian_alpha
             OLM=np.load(parentfolder+"/OLM.npy")
-    elif mul==2:
+    else:
         try:
             KSlines_alpha,KSlines_beta,OLMlines,NumBasisfunctions=getMatricesfromfile_mulTwo(parentfolder,filename)
             KSHamiltonian_alpha=np.zeros((NumBasisfunctions,NumBasisfunctions))
@@ -341,7 +341,7 @@ def readinCubeFile(filename,parentfolder="./"):
                 data[itx][ity][itz]=predata[it]
                 it+=1
     return data
-def readinAtomicCoordinates(folder="./",opt=False):
+def readinAtomicCoordinates(folder="./"):
     ##Reads in the atomic coordinates from a provided xyz file (these coordinates are independent from cell vectors)! 
     ## input:
     ## (opt.)   folder              path to the folder of the .xyz file         (string)
@@ -350,7 +350,7 @@ def readinAtomicCoordinates(folder="./",opt=False):
     ##                              Sublist[0] contains the atomorder as a int.
     ##                              Sublist[1] contains the symbol of the atom.
     ##                              Sublist[2:] containst the x y z coordinates.
-    filename=util.getxyzfilename(folder,opt=opt)
+    filename=util.get_xyz_filename(folder)
     Atoms=[]
     with open(filename) as f:
         lines=f.readlines()
@@ -360,7 +360,7 @@ def readinAtomicCoordinates(folder="./",opt=False):
             it+=1
     f.close()
     return Atoms
-def readCoordinatesAndMasses(pathtoxyz="./Equilibrium_Geometry/",opt=False):
+def readCoordinatesAndMasses(pathtoxyz="./"):
     """
     Helper routine to parse coordinates and masses from an xyz file.
 
@@ -382,7 +382,7 @@ def readCoordinatesAndMasses(pathtoxyz="./Equilibrium_Geometry/",opt=False):
     """
     SaW=PhysConst.StandardAtomicWeights()
     #Get the Atomic coordinates 
-    AtomicCoordinates=readinAtomicCoordinates(pathtoxyz,opt=opt)
+    AtomicCoordinates=readinAtomicCoordinates(pathtoxyz)
     #Parse the Coordinates & the Masses
     coordinates=[]
     masses=[]
@@ -663,15 +663,9 @@ def readinBasisVectors(parentfolder="./"):
     unit (str): Unit of the displacement factor, either 'Bohr' or 'sqrt(u)*Bohr'.
     """
 
-    # Identify the .xyz file in the directory
-    xyz_files = [f for f in os.listdir(parentfolder) if f.endswith('.xyz')]
-    if len(xyz_files) != 1:
-        raise ValueError('InputError: There should be only one xyz file in the current directory')
-    
-    # Get the number of atoms from the xyz file
-    xyzfilename = xyz_files[0]
+    xyzfilename=util.get_xyz_filename(parentfolder,verbose=False)
     numofatoms = 0
-    with open(os.path.join(parentfolder, xyzfilename)) as g:
+    with open(xyzfilename) as g:
         lines = g.readlines()
         numofatoms = int(lines[0])
 
@@ -812,6 +806,7 @@ def readinHessian(path="./"):
             Fplus=np.array(readinForces(path+"/"+folderplus))
             if len(Fplus)==0:
                 print("Error in folder: "+path+"/"+folderplus)
+            
         except:
             print("Error in folder: "+path+"/"+folderplus)
             exit()
