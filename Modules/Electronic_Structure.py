@@ -2,6 +2,7 @@ import Modules.Read as Read
 import Modules.AtomicBasis as AtomicBasis
 from Modules.Molecular_Structure import MolecularStructure
 import Modules.Symmetry as Symmetry
+import Modules.Util as Util
 import numpy as np
 from scipy.linalg import schur
 from itertools import permutations
@@ -9,7 +10,7 @@ import matplotlib.pyplot as plt
 import os
 pathtocp2k=os.environ["cp2kpath"]
 pathtobinaries=pathtocp2k+"/exe/local/"
-def get_representation_matrices():
+def get_tensor_representation():
     """
     Constructs real-valued Cartesian tensor representations of the spherical harmonics
     for s, p, d, f, and g orbitals.
@@ -103,7 +104,7 @@ def get_representation_matrices():
             representation_matrices[lm] = ten4 # 3x3x3x3 tensor
 
     return representation_matrices
-def get_transformation_matrices(O):
+def get_basis_transformation_matrices_l_block(O):
     def scalar_product(tensor1,tensor2):
         rank=len(np.shape(tensor1))
         if rank>0:
@@ -129,7 +130,7 @@ def get_transformation_matrices(O):
     canonical_ordering["g"]=["g-4","g-3","g-2","g-1","g0","g+1","g+2","g+3","g+4"]
 
 
-    representation_matrices=get_representation_matrices()
+    representation_matrices=get_tensor_representation()
     transformation_matrices={}
     for l in ["s","p","d","f","g"]:
         transformation_matrix=np.zeros((len(canonical_ordering[l]),len(canonical_ordering[l])))
@@ -149,12 +150,58 @@ def get_l_ordering(Basis):
     for atom in Basis:
         ordering_atom=[]
         ordering_atom.append(Basis[atom][0][2][0])
-        print(ordering_atom)
         for it in range(1,len(Basis[atom])):
-            if (Basis[atom][it][2][0]!=ordering_atom[it-1] or Basis[atom][it][1]!=Basis[atom][it-1][1]) or Basis[atom][it][0]!=Basis[atom][it-1][0]:
+            if (Basis[atom][it][2][0]!=Basis[atom][it - 1][2][0] or Basis[atom][it][1]!=Basis[atom][it-1][1]) or Basis[atom][it][0]!=Basis[atom][it-1][0]:
                 ordering_atom.append(Basis[atom][it][2][0])
         ordering[atom]=ordering_atom
     return ordering
+def get_l_sizes(label):
+    if label=="s":
+        return 1
+    elif label=="p":
+        return 3
+    elif label=="d":
+        return 5
+    elif label=="f":
+        return 7
+    elif label=="g":
+        return 9
+    else:
+        ValueError("Higher labels not yet implemented")
+def get_index_block_start(atom_index,atoms,l_ordering):
+    start_index=0
+    for idx,atom in enumerate(atoms):
+        if idx<atom_index:
+            for order in l_ordering[atom]:
+                start_index+=get_l_sizes(order)
+    return start_index
+        
+def get_basis_transformation(O,P,atoms,basis):
+    basis_transformation_matrices_l_block=get_basis_transformation_matrices_l_block(O)
+    l_ordering=get_l_ordering(basis)
+    basis_size=0
+    for atom in atoms:
+        for order in l_ordering[atom]:
+            basis_size+=get_l_sizes(order)
+    basis_transformation=np.zeros((basis_size,basis_size))
+    nonzero_indices = np.nonzero(P)
+    for idx1, idx2 in zip(nonzero_indices[0], nonzero_indices[1]):
+        start_index_1=get_index_block_start(idx1,atoms,l_ordering)
+        start_index_2=get_index_block_start(idx2,atoms,l_ordering)
+        for l in l_ordering[atoms[idx1]]:
+            block=basis_transformation_matrices_l_block[l]
+            basis_transformation[start_index_1:start_index_1+np.shape(block)[0],start_index_2:start_index_2+np.shape(block)[1]]=block
+            start_index_1+=np.shape(block)[0]
+            start_index_2+=np.shape(block)[1]
+    return basis_transformation
+
+
+
+
+
+
+
+
         
 class ElectronicStructure(MolecularStructure):
     def __init__(self,name,path="./"):
@@ -166,23 +213,148 @@ class ElectronicStructure(MolecularStructure):
         if hasattr(self, 'Hamiltonian'):
             return
         self.Basis=AtomicBasis.getBasis(path)
-        print(self.Basis)
         KS_alpha,KS_beta,OLM=Read.readinMatrices(path)
         self.UKS=Read.checkforUKS(path)
         self.KS_Hamiltonian_alpha=KS_alpha
         self.KS_Hamiltonian_beta=KS_beta
         self.OLM=OLM
-        self.Electronic_Symmetry = Electronic_Symmetry(self.Molecular_Symmetry)
+        cond_number=np.linalg.cond(OLM)
+        if cond_number>10**(6):
+            Warning("Large Condition number of the Overlap Matrix! Cond(OLM)="+str(cond_number))
+        self.inverse_sqrt_OLM=Util.LoewdinTransformation(OLM,algorithm='Schur-Pade')
+        self.ElectronicEigenstates={}
+        self.ElectronicEigenstates["alpha"]={}
+        if self.UKS:
+            self.ElectronicEigenstates["beta"]={}
+        self.Electronic_Symmetry = Electronic_Symmetry(self)
+        self.getElectronicEigenstates()
+        self.save()
+    def getElectronicEigenstates(self):
+        def TransformHamiltonian(self):
+            U=get_basis_transformation(np.array(self.Geometric_UC_Principle_Axis).T,np.eye(len(self.atoms)),self.atoms,self.Basis)
+            if self.UKS:
+                KS_Hamiltonian_alpha=self.KS_Hamiltonian_alpha
+                KS_Hamiltonian_beta=self.KS_Hamiltonian_beta
+                KS_Hamiltonian_alpha=U.T@KS_Hamiltonian_alpha@U
+                KS_Hamiltonian_beta=U.T@KS_Hamiltonian_beta@U
+            else:
+                KS_Hamiltonian_alpha=self.KS_Hamiltonian_alpha
+                KS_Hamiltonian_alpha=U.T@KS_Hamiltonian_alpha@U
+                KS_Hamiltonian_beta=KS_Hamiltonian_alpha
+            return KS_Hamiltonian_alpha,KS_Hamiltonian_beta,U
         
-    
+        # --- Setup and Hessian Transformation ---
+        KS_Hamiltonian_alpha,KS_Hamiltonian_beta,U=TransformHamiltonian(self)
+        sqrtSm1 = self.inverse_sqrt_OLM
+        sqrtSm1=U.T@sqrtSm1@U
+        KS_Hamiltonian_alpha_orth = np.real(sqrtSm1 @ KS_Hamiltonian_alpha @ sqrtSm1)
+        if self.UKS:
+            KS_Hamiltonian_beta_orth = sqrtSm1 @ KS_Hamiltonian_beta @ sqrtSm1
+        
+        
+        # (Optional) Visualize the original mass-weighted Hessian
+        plt.imshow(KS_Hamiltonian_alpha_orth, cmap='viridis', interpolation='nearest')
+        plt.colorbar()
+        plt.savefig("./Hamiltonian_alpha_orth_Original.png")
+        plt.close()
+
+        if self.UKS:
+            # (Optional) Visualize the original mass-weighted Hessian
+            plt.imshow(KS_Hamiltonian_beta_orth, cmap='viridis', interpolation='nearest')
+            plt.colorbar()
+            plt.savefig("./Hamiltonian_beta_orth_Original.png")
+            plt.close()
+        
+        # --- CONSISTENT SYMMETRY ORDERING ---
+        SymSectors = self.Electronic_Symmetry.SymSectors
+        VIrr = self.Electronic_Symmetry.IrrepsProjector
+        
+        # 1. Sort symmetry labels alphabetically to ensure a consistent order.
+        sorted_sym_labels = sorted(SymSectors.keys())
+        
+        # 2. Build the reordering array based on the sorted labels.
+        # This groups basis functions by symmetry, in a fixed order.
+        reordering = np.concatenate([SymSectors[key] for key in sorted_sym_labels])
+        
+        # 3. Reorder the projector matrix columns based on the sorted symmetry order.
+        VIrr_reordered = VIrr[:, reordering]
+        
+        # 4. Create the block-diagonal Hessian. The blocks are now in a consistent order.
+        KS_Hamiltonian_alpha_orth_Sectors = VIrr_reordered.T @ KS_Hamiltonian_alpha_orth @ VIrr_reordered
+        if self.UKS:
+            KS_Hamiltonian_beta_orth_Sectors = VIrr_reordered.T @ KS_Hamiltonian_beta_orth @ VIrr_reordered
+        
+        # (Optional) Visualize the block-diagonalized Hessian
+        plt.imshow(KS_Hamiltonian_alpha_orth_Sectors, cmap='viridis', interpolation='nearest')
+        plt.colorbar()
+        plt.savefig("./Hamiltonian_alpha_orth_Sectors.png")
+        plt.close()
+        if self.UKS:
+            plt.imshow(KS_Hamiltonian_alpha_orth_Sectors, cmap='viridis', interpolation='nearest')
+            plt.colorbar()
+            plt.savefig("./Hamiltonian_beta_orth_Sectors.png")
+            plt.close()
+        
+        # --- BLOCK DIAGONALIZATION (IN CONSISTENT ORDER) ---
+        print(f"ℹ️ : Symmetry Sectors and Electronic Energies")
+        current_index = 0
+        # 5. Iterate through the sorted labels to process each block.
+        for sym in sorted_sym_labels:
+            block_size = len(SymSectors[sym])
+            
+            # Extract the symmetry block
+            Block_Hamiltonian_alpha = KS_Hamiltonian_alpha_orth_Sectors[current_index : current_index + block_size,
+                                                        current_index : current_index + block_size]
+            if self.UKS:
+                Block_Hamiltonian_beta = KS_Hamiltonian_beta_orth_Sectors[current_index : current_index + block_size,
+                                                        current_index : current_index + block_size]
+            
+            # Diagonalize the block to get eigenvalues and eigenvectors for this symmetry
+            eigenvalues_alpha, eigenvectors_alpha = np.linalg.eigh(Block_Hamiltonian_alpha)
+            
+            # Frequencies (cm^-1) are the signed square roots of the eigenvalues
+            energies_alpha_eV = eigenvalues_alpha*27.211
+            print(f"Symmetry Sector: {sym}, Energies (eV): \n {energies_alpha_eV}")
+            
+            # Transform eigenvectors from the symmetry basis back to the mass-weighted basis
+            V_mwh_alpha = U@VIrr_reordered[:, current_index : current_index + block_size] @ eigenvectors_alpha
+            if self.UKS:
+                 # Diagonalize the block to get eigenvalues and eigenvectors for this symmetry
+                eigenvalues_beta, eigenvectors_beta = np.linalg.eigh(Block_Hamiltonian_beta)
+                
+                # Frequencies (cm^-1) are the signed square roots of the eigenvalues
+                energies_beta_eV = eigenvalues_beta*27.211
+                print(f"Symmetry Sector: {sym}, Energies (eV): \n {energies_beta_eV}")
+                
+                # Transform eigenvectors from the symmetry basis back to the mass-weighted basis
+                V_mwh_beta = U@VIrr_reordered[:, current_index : current_index + block_size] @ eigenvectors_beta
+            
+            # Store the calculated vibrational modes
+            if sym not in self.ElectronicEigenstates["alpha"]:
+                self.ElectronicEigenstates["alpha"][sym] = []
+                if self.UKS:
+                    self.ElectronicEigenstates["beta"][sym] = []
+
+
+            for i in range(block_size):
+                state = ElectronicState(A=V_mwh_alpha[:, i],a=self.inverse_sqrt_OLM@V_mwh_alpha[:, i],energy=eigenvalues_alpha[i],symmetry_label=sym)
+                self.ElectronicEigenstates["alpha"][sym].append(state)
+                if self.UKS:
+                    state = ElectronicState(A=V_mwh_beta[:, i],a=self.inverse_sqrt_OLM@V_mwh_beta[:, i],energy=eigenvalues_beta[i],symmetry_label=sym)
+                    self.ElectronicEigenstates["beta"][sym].append(state)
+            # Advance the index to the start of the next block
+            current_index += block_size
+            
     
 
 
 class ElectronicState:
-    def __init__(self,state, symmetry_label=None):
-        self.a=state
-        self.A=None
+    def __init__(self,A=None,a=None,energy=None,symmetry_label=None):
+        self.A=A
+        self.a=a
+        self.energy=energy
         self.symmetry_label=symmetry_label
+
         
 
     
@@ -199,9 +371,13 @@ class Electronic_Symmetry(Symmetry.Symmetry):
 
         if "Id" not in molecular_symmetry.Symmetry_Generators.keys():
             generators={}
+            for sym in molecular_symmetry.Symmetry_Generators:
+                P=molecular_symmetry.Symmetry_Generators[sym]
+                O=get_xyz_representation(symmetrylabel=sym)
+                generator=get_basis_transformation(O,P,ElectronicStructure.atoms,ElectronicStructure.Basis)
+                generators[sym]=generator
             self.Symmetry_Generators=generators
             self._iscommutative()
-
             if self.commutative:
                 self.IrrepsProjector=simultaneous_real_block_diagonalization(list(self.Symmetry_Generators.values()))
             else:
@@ -305,7 +481,7 @@ def simultaneous_real_block_diagonalization(matrices):
     return Q
     
     
-def getXYZRepresentation(symmetrylabel):
+def get_xyz_representation(symmetrylabel):
     """
     Return the 3 × 3 Cartesian (XYZ) matrix representation of a basic
     point‑symmetry operation.
@@ -389,4 +565,25 @@ def getXYZRepresentation(symmetrylabel):
             return np.array([[1, 0, 0],[0, 1, 0],[0, 0, -1]])
     elif symmetrylabel[0]=="t":
         return np.eye(3)
-
+def test_IrrepsProjector(name):
+    el=ElectronicStructure(name)
+    SymSectors = el.Electronic_Symmetry.SymSectors
+    VIrr = el.Electronic_Symmetry.IrrepsProjector
+    
+    # 1. Sort symmetry labels alphabetically to ensure a consistent order.
+    sorted_sym_labels = sorted(SymSectors.keys())
+    
+    # 2. Build the reordering array based on the sorted labels.
+    # This groups basis functions by symmetry, in a fixed order.
+    reordering = np.concatenate([SymSectors[key] for key in sorted_sym_labels])
+    
+    # 3. Reorder the projector matrix columns based on the sorted symmetry order.
+    VIrr_reordered = VIrr[:, reordering]
+    for sym in el.Electronic_Symmetry.Symmetry_Generators:
+        symm=VIrr_reordered.T@el.Electronic_Symmetry.Symmetry_Generators[sym]@VIrr_reordered
+        plt.imshow(symm, cmap='viridis', interpolation='nearest')
+        plt.colorbar()
+        plt.title(sym)
+        # Save the figure
+        plt.savefig("./{}.png".format(sym))
+        plt.close()
