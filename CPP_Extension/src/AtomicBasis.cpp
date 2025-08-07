@@ -61,7 +61,9 @@ struct Monomial {
 
     // Method to decrease index1 by 1
     void decreaseIndex1() {
+        if (indices[0]>0) {
         indices[0]--;
+        }
     }
 
     // Method to increase index2 by 1
@@ -71,7 +73,9 @@ struct Monomial {
 
     // Method to decrease index2 by 1
     void decreaseIndex2() {
+        if (indices[1]>0) {
         indices[1]--;
+        }
     }
 
     // Method to increase index3 by 1
@@ -81,7 +85,9 @@ struct Monomial {
 
     // Method to decrease index3 by 1
     void decreaseIndex3() {
+        if (indices[2]>0) {
         indices[2]--;
+        }
     }
 };
 
@@ -233,7 +239,63 @@ double IJ_Int(const std::array<double, 3>& X, const std::vector<Monomial>& lm1,c
 
     return integral;
 }
+double IJ_Int_momentum(const std::array<double, 3>& X, const std::vector<Monomial>& lm1,const std::vector<Monomial>& lm2, double A1, double A2,int modus) {
+    // computes the IJ integral using the monomial decomposition of the 
+    // solid harmonics.
+    //Input: X of the difference vector R1-R2
+    //A1: positive numerical
+    //A2: positive numerical
+    
+    //Initialize all constants
+    std::array<double,3> Y1={A2*X[0]/(A1+A2),A2*X[1]/(A1+A2),A2*X[2]/(A1+A2)};
+    std::array<double,3> Y2={-1.0*A1*X[0]/(A1+A2),-1.0*A1*X[1]/(A1+A2),-1.0*A1*X[2]/(A1+A2)};
+    double A12red = -1.0*A1 * A2 / (A1 + A2);
+    double Exponent = A12red * (X[0]*X[0]+X[1]*X[1]+X[2]*X[2]);
+    double gaussianPrefactor = std::exp(Exponent);
+    double alpha=A1+A2;
 
+    double first_term=0.0;
+    double n_prefactor=1.0;
+    //Perform the sum 
+    for (const auto& Z1 : lm1) {
+        for (const auto& Z2orig : lm2) {
+            auto Z2 = Z2orig;
+         if (modus == 1) {
+            n_prefactor=Z2.indices[0];
+            Z2.decreaseIndex1();
+        } else if (modus == 2) {
+            n_prefactor=Z2.indices[1];
+            Z2.decreaseIndex2();
+        } else if (modus == 3) {
+            n_prefactor=Z2.indices[2];
+            Z2.decreaseIndex3();
+        }
+            first_term += n_prefactor*Z1.prefactor * Z2.prefactor * KFunction(Y1, Y2, Z1.indices, Z2.indices, alpha);
+        }
+    }
+    
+    double integral_1 = gaussianPrefactor*first_term;
+
+    double second_term=0.0;
+    //Perform the sum 
+    for (const auto& Z1 : lm1) {
+        for (const auto& Z2orig : lm2) {
+            auto Z2 = Z2orig;
+          if (modus == 1) {
+            Z2.increaseIndex1();
+        } else if (modus == 2) {
+            Z2.increaseIndex2();
+        } else if (modus == 3) {
+            Z2.increaseIndex3();
+        }
+            second_term += Z1.prefactor * Z2.prefactor * KFunction(Y1, Y2, Z1.indices, Z2.indices, alpha);
+        }
+    }
+
+    double integral_2 =(-2)*A2* gaussianPrefactor * second_term;
+
+    return integral_1+integral_2;
+}
 // Function to compute the overlap of two basis functions
 double getoverlap(const std::array<double,3>& R1,
                   const std::vector<double>& contr_coeff1,
@@ -308,7 +370,42 @@ for (size_t it2 = 0; it2 < alphas2.size(); ++it2) {
 
 return matrix_element;
 }
+// Function to compute the overlap of two basis functions
+double get_p_Matrix_Element(const std::array<double,3>& R1,
+    const std::vector<double>& contr_coeff1,
+    const std::vector<double>& alphas1,
+    const std::vector<Monomial>& lm1,
+    const std::array<double,3>& R2,
+    const std::vector<double>& contr_coeff2,
+    const std::vector<double>& alphas2,
+    const std::vector<Monomial>& lm2,
+    const std::vector<double>& cell_vectors,
+    const int direction
+  ) {
 
+double matrix_element = 0.0;
+// Loop over cell vectors
+for (size_t cell_index = 0; cell_index < cell_vectors.size(); cell_index += 3) {
+std::array<double, 3> cell_vector = {cell_vectors[cell_index],
+                              cell_vectors[cell_index + 1],
+                              cell_vectors[cell_index + 2]};
+
+// Compute the shifted positions
+std::array<double, 3> R2_shifted = {R2[0] + cell_vector[0],
+                             R2[1] + cell_vector[1],
+                             R2[2] + cell_vector[2]};
+
+// Compute the overlap for the shifted positions
+for (size_t it1 = 0; it1 < alphas1.size(); ++it1) {
+for (size_t it2 = 0; it2 < alphas2.size(); ++it2) {
+  matrix_element += contr_coeff1[it1] * contr_coeff2[it2] *
+             IJ_Int_momentum({R1[0] - R2_shifted[0], R1[1] - R2_shifted[1], R1[2] - R2_shifted[2]},
+                  lm1, lm2, alphas1[it1], alphas2[it2],direction);
+}
+}
+}
+return matrix_element;
+  }
 
 double* get_T_Matrix(const char* atoms_set1[],
                                 const double positions_set1[],
@@ -712,5 +809,115 @@ OLPasArray_ptr[i * size_set2 + j] = overlap;
 }
 return OLPasArray_ptr;
 }
+double* get_Momentum_Operators(const char* atoms_set1[],
+    const double positions_set1[],
+    const double alphas_set1[],
+    const int alphasLengths_set1[],
+    const double contr_coef_set1[],
+    const int contr_coefLengths_set1[],
+    const char* lms_set1[],
+    int size_set1,
+    const char* atoms_set2[],
+    const double positions_set2[],
+    const double alphas_set2[],
+    const int alphasLengths_set2[],
+    const double contr_coef_set2[],
+    const int contr_coefLengths_set2[],
+    const char* lms_set2[],
+    int size_set2,
+    const double cell_vectors[],
+    int size_cell_vectors,
+    int direction
+    ) {
 
+// Initialize the map of monomials
+std::unordered_map<std::string, std::vector<Monomial>> solidHarmonics = getSolidHarmonics();
+//Process the cell_vectors
+std::vector<double> cell_vectors_vec(cell_vectors, cell_vectors + size_cell_vectors);
+
+
+// Process the input arrays - construct Basisfunction instances for set 1
+std::vector<Basisfunction> basisfunctions_set1;
+int arrayIndex_set1 = 0;
+int alphasIndex_set1 = 0;
+int contrCoefIndex_set1 = 0;
+
+for (int i = 0; i < size_set1; ++i) {
+std::string atom(atoms_set1[i]);
+std::array<double, 3> position = {positions_set1[arrayIndex_set1],
+              positions_set1[arrayIndex_set1 + 1],
+              positions_set1[arrayIndex_set1 + 2]};
+
+// Extract alphas for the current basis function in set 1
+int alphasLength_set1 = alphasLengths_set1[i];
+std::vector<double> alphas_list_set1(alphas_set1 + alphasIndex_set1, alphas_set1 + alphasIndex_set1 + alphasLength_set1);
+alphasIndex_set1 += alphasLength_set1;
+
+// Extract contr_coef for the current basis function in set 1
+int contrCoefLength_set1 = contr_coefLengths_set1[i];
+std::vector<double> contr_coef_list_set1(contr_coef_set1 + contrCoefIndex_set1, contr_coef_set1 + contrCoefIndex_set1 + contrCoefLength_set1);
+contrCoefIndex_set1 += contrCoefLength_set1;
+
+std::string lm(lms_set1[i]);
+
+Basisfunction basisfunction(atom, position, alphas_list_set1, contr_coef_list_set1, lm);
+basisfunctions_set1.push_back(basisfunction);
+
+arrayIndex_set1 += 3;  // Increment by 3 for positions (3 elements per position)
 }
+
+// Process the input arrays - construct Basisfunction instances for set 2
+std::vector<Basisfunction> basisfunctions_set2;
+int arrayIndex_set2 = 0;
+int alphasIndex_set2 = 0;
+int contrCoefIndex_set2 = 0;
+
+for (int i = 0; i < size_set2; ++i) {
+std::string atom(atoms_set2[i]);
+std::array<double, 3> position = {positions_set2[arrayIndex_set2],
+              positions_set2[arrayIndex_set2 + 1],
+              positions_set2[arrayIndex_set2 + 2]};
+
+// Extract alphas for the current basis function in set 2
+int alphasLength_set2 = alphasLengths_set2[i];
+std::vector<double> alphas_list_set2(alphas_set2 + alphasIndex_set2, alphas_set2 + alphasIndex_set2 + alphasLength_set2);
+alphasIndex_set2 += alphasLength_set2;
+
+// Extract contr_coef for the current basis function in set 2
+int contrCoefLength_set2 = contr_coefLengths_set2[i];
+std::vector<double> contr_coef_list_set2(contr_coef_set2 + contrCoefIndex_set2, contr_coef_set2 + contrCoefIndex_set2 + contrCoefLength_set2);
+contrCoefIndex_set2 += contrCoefLength_set2;
+
+std::string lm(lms_set2[i]);
+
+Basisfunction basisfunction(atom, position, alphas_list_set2, contr_coef_list_set2, lm);
+basisfunctions_set2.push_back(basisfunction);
+
+arrayIndex_set2 += 3;  // Increment by 3 for positions (3 elements per position)
+}
+double* OLPasArray_ptr = new double[size_set1*size_set2];
+// Now, loop over both sets and compute overlaps
+#pragma omp parallel for collapse(2)
+for (int i = 0; i < size_set1; ++i) {
+for (int j = 0; j < size_set2; ++j) {
+double overlap = get_p_Matrix_Element(basisfunctions_set1[i].position,
+            basisfunctions_set1[i].contr_coef,
+            basisfunctions_set1[i].alphas,
+            solidHarmonics[basisfunctions_set1[i].lm],
+            basisfunctions_set2[j].position,
+            basisfunctions_set2[j].contr_coef,
+            basisfunctions_set2[j].alphas,
+            solidHarmonics[basisfunctions_set2[j].lm],
+            cell_vectors_vec,
+            direction
+        );
+
+// Assign result to the appropriate index in the output array
+OLPasArray_ptr[i * size_set2 + j] = overlap;
+}
+}
+return OLPasArray_ptr;
+}
+}
+
+
