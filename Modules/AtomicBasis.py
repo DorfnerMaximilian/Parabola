@@ -1040,3 +1040,151 @@ def get_Position_Operators(Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib
     z_operator = np.array(array_list).reshape((len(atoms_set1), len(atoms_set2)))
 
     return x_operator/ConFactors['A->a.u.'],y_operator/ConFactors['A->a.u.'],z_operator/ConFactors['A->a.u.']
+
+def get_momentum_operators(Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib=pathtocpp_lib):
+    
+    
+    # Load the shared library
+    lib = cdll.LoadLibrary(pathtolib)
+    
+    # Conversion factors and other initialization
+    ConFactors = PhysConst.ConversionFactors()
+
+    # Initialize the python lists for Basis Set 1
+    atoms_set1 = []
+    positions_set1 = []
+    alphas_lengths_set1 = []
+    alphas_set1 = []
+    contr_coef_set1 = []
+    lms_set1 = []
+
+    # Create Python lists for input (Set 1)
+    for itAtom1 in range(len(Atoms)):
+        Atom_type1 = Atoms[itAtom1][1]
+        B1 = Basis[Atom_type1]
+        for itBasis1 in range(len(Basis[Atom_type1])):
+            atoms_set1.append(Atom_type1)
+            R1 = np.array(Atoms[itAtom1][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            for it1 in range(len(R1)):
+                positions_set1.append(R1[it1])
+            state1 = B1[itBasis1]
+            dalpha1 = state1[3:]
+            alphas_lengths_set1.append(len(dalpha1))
+            for it2 in range(len(dalpha1)):
+                alphas_set1.append(dalpha1[it2][0])
+                contr_coef_set1.append(dalpha1[it2][1])
+            lm1 = state1[2][:]
+            lms_set1.append(lm1)
+
+    contr_coef_lengths_set1 = alphas_lengths_set1  # Lengths of contr_coef for each basis function in Set 1
+
+    # Initialize the python lists for Basis Set 2
+    atoms_set2 = []
+    positions_set2 = []
+    alphas_lengths_set2 = []
+    alphas_set2 = []
+    contr_coef_set2 = []
+    lms_set2 = []
+
+    # Fill Python lists for input (Set 2)
+    for itAtom2 in range(len(Atoms)):
+        Atom_type2 = Atoms[itAtom2][1]
+        B2 = Basis[Atom_type2]
+        for itBasis2 in range(len(Basis[Atom_type2])):
+            atoms_set2.append(Atom_type2)
+            R2 = np.array(Atoms[itAtom2][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            for it1 in range(len(R2)):
+                positions_set2.append(R2[it1])
+            state2 = B2[itBasis2]
+            dalpha2 = state2[3:]
+            alphas_lengths_set2.append(len(dalpha2))
+            for it2 in range(len(dalpha2)):
+                alphas_set2.append(dalpha2[it2][0])
+                contr_coef_set2.append(dalpha2[it2][1])
+            lm2 = state2[2][:]
+            lms_set2.append(lm2)
+
+    contr_coef_lengths_set2 = alphas_lengths_set2  # Lengths of contr_coef for each basis function in Set 1
+
+    # Define the function signature
+    get_Momentum_Operators = lib.get_Momentum_Operators
+    get_Momentum_Operators.restype = POINTER(c_double)
+    get_Momentum_Operators.argtypes = [POINTER(c_char_p),
+                             POINTER(c_double),
+                             POINTER(c_double),
+                             POINTER(c_int),
+                             POINTER(c_double),
+                             POINTER(c_int),
+                             POINTER(c_char_p),
+                             c_int,
+                             POINTER(c_char_p),
+                             POINTER(c_double),
+                             POINTER(c_double),
+                             POINTER(c_int),
+                             POINTER(c_double),
+                             POINTER(c_int),
+                             POINTER(c_char_p),
+                             c_int,
+                             POINTER(c_double),
+                             c_int,
+                             c_int
+                             ]
+
+    freeArray = lib.free_ptr
+    freeArray.argtypes = [POINTER(c_double)]
+
+    # Convert Python lists to pointers
+    atoms_set1_ptr = (c_char_p * len(atoms_set1))(*[s.encode("utf-8") for s in atoms_set1])
+    positions_set1_ptr = (c_double * len(positions_set1))(*positions_set1)
+    alphas_set1_ptr = (c_double * len(alphas_set1))(*alphas_set1)
+    alphas_lengths_set1_ptr = (c_int * len(alphas_lengths_set1))(*alphas_lengths_set1)
+    contr_coef_set1_ptr = (c_double * len(contr_coef_set1))(*contr_coef_set1)
+    contr_coef_lengths_set1_ptr = (c_int * len(contr_coef_lengths_set1))(*contr_coef_lengths_set1)
+    lms_set1_ptr = (c_char_p * len(lms_set1))(*[s.encode("utf-8") for s in lms_set1])
+
+    atoms_set2_ptr = (c_char_p * len(atoms_set2))(*[s.encode("utf-8") for s in atoms_set2])
+    positions_set2_ptr = (c_double * len(positions_set2))(*positions_set2)
+    alphas_set2_ptr = (c_double * len(alphas_set2))(*alphas_set2)
+    alphas_lengths_set2_ptr = (c_int * len(alphas_lengths_set2))(*alphas_lengths_set2)
+    contr_coef_set2_ptr = (c_double * len(contr_coef_set2))(*contr_coef_set2)
+    contr_coef_lengths_set2_ptr = (c_int * len(contr_coef_lengths_set2))(*contr_coef_lengths_set2)
+    lms_set2_ptr = (c_char_p * len(lms_set2))(*[s.encode("utf-8") for s in lms_set2])
+
+    cell_vectors_ptr = (c_double * len(cell_vectors))(*cell_vectors)
+
+    # Call the C++ function
+    OLP_array_ptr = get_Momentum_Operators(atoms_set1_ptr, positions_set1_ptr, alphas_set1_ptr, alphas_lengths_set1_ptr,
+                                  contr_coef_set1_ptr, contr_coef_lengths_set1_ptr, lms_set1_ptr, len(atoms_set1),
+                                  atoms_set2_ptr, positions_set2_ptr, alphas_set2_ptr, alphas_lengths_set2_ptr,
+                                  contr_coef_set2_ptr, contr_coef_lengths_set2_ptr, lms_set2_ptr, len(atoms_set2),
+                                  cell_vectors_ptr, len(cell_vectors),1)
+
+    array_data = np.ctypeslib.as_array(OLP_array_ptr, shape=(len(atoms_set1) * len(atoms_set2),))
+    array_list = deepcopy(array_data)
+    freeArray(OLP_array_ptr)
+
+    p_x = np.array(array_list).reshape((len(atoms_set1), len(atoms_set2)))
+    # Call the C++ function
+    OLP_array_ptr = get_Momentum_Operators(atoms_set1_ptr, positions_set1_ptr, alphas_set1_ptr, alphas_lengths_set1_ptr,
+                                  contr_coef_set1_ptr, contr_coef_lengths_set1_ptr, lms_set1_ptr, len(atoms_set1),
+                                  atoms_set2_ptr, positions_set2_ptr, alphas_set2_ptr, alphas_lengths_set2_ptr,
+                                  contr_coef_set2_ptr, contr_coef_lengths_set2_ptr, lms_set2_ptr, len(atoms_set2),
+                                  cell_vectors_ptr, len(cell_vectors),2)
+
+    array_data = np.ctypeslib.as_array(OLP_array_ptr, shape=(len(atoms_set1) * len(atoms_set2),))
+    array_list = deepcopy(array_data)
+    freeArray(OLP_array_ptr)
+    p_y = np.array(array_list).reshape((len(atoms_set1), len(atoms_set2)))
+    # Call the C++ function
+    OLP_array_ptr = get_Momentum_Operators(atoms_set1_ptr, positions_set1_ptr, alphas_set1_ptr, alphas_lengths_set1_ptr,
+                                  contr_coef_set1_ptr, contr_coef_lengths_set1_ptr, lms_set1_ptr, len(atoms_set1),
+                                  atoms_set2_ptr, positions_set2_ptr, alphas_set2_ptr, alphas_lengths_set2_ptr,
+                                  contr_coef_set2_ptr, contr_coef_lengths_set2_ptr, lms_set2_ptr, len(atoms_set2),
+                                  cell_vectors_ptr, len(cell_vectors),3)
+
+    array_data = np.ctypeslib.as_array(OLP_array_ptr, shape=(len(atoms_set1) * len(atoms_set2),))
+    array_list = deepcopy(array_data)
+    freeArray(OLP_array_ptr)
+    p_z = np.array(array_list).reshape((len(atoms_set1), len(atoms_set2)))
+
+    return p_x.T,p_y.T,p_z.T
