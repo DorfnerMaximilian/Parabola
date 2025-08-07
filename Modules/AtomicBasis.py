@@ -1187,4 +1187,4 @@ def get_momentum_operators(Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib
     freeArray(OLP_array_ptr)
     p_z = np.array(array_list).reshape((len(atoms_set1), len(atoms_set2)))
 
-    return p_x.T,p_y.T,p_z.T
+    return -1.0j*p_x,-1.0j*p_y,-1.0j*p_z
