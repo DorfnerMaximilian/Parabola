@@ -1,45 +1,82 @@
-import Modules.Read as Read
-import Modules.Write as Write
-from Modules.PhysConst import ConversionFactors as ConFactors
-from Modules.Molecular_Structure import MolecularStructure
-import Modules.Symmetry as Symmetry
+from . import Read
+from .PhysConst import ConversionFactors
+from . import Symmetry
 import numpy as np
 from scipy.linalg import schur
 import matplotlib.pyplot as plt
 import os
 pathtocp2k=os.environ["cp2kpath"]
 pathtobinaries=pathtocp2k+"/exe/local/"
-class VibrationalStructure(MolecularStructure):
-    def __init__(self,name,path="./",disable_symmetry=False):
-        # If the object was loaded from a pickle, it will already have its
-        # vibrational attributes. If so, we can exit immediately.
-        # We check for 'Hessian', an attribute unique to this child class.
-        if hasattr(self, 'Hessian'):
-            return
-        # Initialize MolecularStructure
-        super().__init__(name, path)
-        Hessian=Read.readinHessian(path)
+def getRotProjector(Mass_UC_Centered_Coordinates,Geometric_UC_Principle_Axis,Mass_UC_Principle_Axis,masses,periodicity):
+        if periodicity==(0,0,0):
+            centerofmasscoordinates=Mass_UC_Centered_Coordinates
+            V=np.array(Geometric_UC_Principle_Axis)
+            U=np.array(Mass_UC_Principle_Axis)
+            T=V@U.T
+            Roteigenvectors=[]
+            for it in [0,1,2]:
+                #Define the RotEigenvector
+                RotEigenvector=np.zeros(3*len(masses))
+                #generate the vector X along the principle axis
+                X=np.zeros(3)
+                X[it]=1.0
+                for s in range(len(masses)):
+                    rvector=np.cross(X,centerofmasscoordinates[s])
+                    #Expand rvector in basis [v1,v2,v3]
+                    rvector=T@rvector
+                    RotEigenvector[3*s]=rvector[0]
+                    RotEigenvector[3*s+1]=rvector[1]
+                    RotEigenvector[3*s+2]=rvector[2]
+                #Normalize the generated Eigenvector
+                RotEigenvector/=np.linalg.norm(RotEigenvector)
+                Roteigenvectors.append(RotEigenvector)
+            projector=np.zeros((3*len(masses),3*len(masses)))
+            for it in range(3):
+                projector+=np.outer(Roteigenvectors[it],Roteigenvectors[it])
+            return projector
+        else:
+            return None
+def getTransProjector(masses):
+    NumDisplacements=3*len(masses)
+    trans_projector=np.zeros((NumDisplacements,NumDisplacements))
+    for it in range(3):
+        TransEigenvector = np.zeros(NumDisplacements)
+        TransEigenvector[it::3] = 1.0/np.sqrt(NumDisplacements/3.0)
+        trans_projector+=np.outer(TransEigenvector,TransEigenvector)
+    return trans_projector
+class VibrationalStructure:
+    def __init__(self, mol,disable_symmetry=False):
+        #Parse the Data
+        vibrational_structure_path=mol.vibrational_structure_path
+        masses=mol.masses
+        molecular_symmetry=mol.Molecular_Symmetry
+        axes=mol.Geometric_UC_Principle_Axis
+        Hessian=Read.read_hessian(vibrational_structure_path)
         self.Hessian=Hessian
-        self.inverse_sqrt_MassMatrix=np.sqrt(np.linalg.inv(np.kron(np.diag(self.masses),np.eye(3))))
+        self.inverse_sqrt_MassMatrix=np.sqrt(np.linalg.inv(np.kron(np.diag(masses),np.eye(3))))
         self.VibrationalModes={}
         if disable_symmetry:
             print("❗ Symmetry Disabled for Vibrational Analysis.")
             # 1. Get the number of atoms
-            num_atoms = len(self.masses)
+            num_atoms = len(masses)
             
             # 2. Create an identity matrix of size N_atoms x N_atoms
             #    This represents the identity permutation of atoms.
             id_matrix = np.eye(num_atoms)
 
             # 3. Create a new, blank Symmetry object
-            self.Molecular_Symmetry.Symmetry_Generators={"Id": id_matrix}
+            molecular_symmetry.Symmetry_Generators={"Id": id_matrix}
             
         # Now safe to access parent attributes
-        self.Vibrational_Symmetry = Vibrational_Symmetry(self.Molecular_Symmetry)
-        self.ImposeTranslationalSymmetry()
-        self.getVibrationalModes()
-        self.save()
-    def getVibrationalModes(self):
+        self.Vibrational_Symmetry = Vibrational_Symmetry(molecular_symmetry)
+        self.ImposeTranslationalSymmetry(masses=masses)
+        self.getVibrationalModes(axes=axes)
+        #Generate Projectors:
+        rot_projector=getRotProjector(mol.Mass_UC_Centered_Coordinates,mol.Geometric_UC_Principle_Axis,mol.Mass_UC_Principle_Axis,mol.masses,mol.periodicity)
+        trans_projector=getTransProjector(mol.masses)
+        self.identify_external_dof(trans_projector,rot_projector)
+        self.write_mol_file(mol.coordinates,mol.masses,mol.atoms,mol.path)
+    def getVibrationalModes(self,axes):
         def TransformHessian(Hessian,Axis):
             M = np.array(Axis).T  # M is 3x3
             N = Hessian.shape[0] // 3  # Number of blocks
@@ -47,7 +84,7 @@ class VibrationalStructure(MolecularStructure):
             return block.T @ Hessian @ block, block
         
         # --- Setup and Hessian Transformation ---
-        Hessian,O=TransformHessian(self.Hessian,self.Geometric_UC_Principle_Axis)
+        Hessian,O=TransformHessian(self.Hessian,axes)
         sqrtMm1 = self.inverse_sqrt_MassMatrix
         MassWeightedHessian = sqrtMm1 @ Hessian @ sqrtMm1
         # Convert units to get frequencies in cm^-1
@@ -108,13 +145,12 @@ class VibrationalStructure(MolecularStructure):
                 self.VibrationalModes[sym] = []
             
             for i in range(block_size):
-                mode = VibrationalMode(frequencies_cm_inv[i], V_mwh[:, i], sym, self)
+                mode = VibrationalMode(frequencies_cm_inv[i], V_mwh[:, i],sqrtMm1@V_mwh[:, i], sym)
                 self.VibrationalModes[sym].append(mode)
                 
             # Advance the index to the start of the next block
             current_index += block_size
-        self.WriteMolFile()
-    def ImposeTranslationalSymmetry(self):
+    def ImposeTranslationalSymmetry(self,masses):
         # Imposes exact relation on the Hessian, that has to be fullfilled for the Translational D.O.F. to decouple from the rest
         #input: 
         #Hessian:    (numpy.array)  Hessian in carthesian coordinates 
@@ -145,14 +181,29 @@ class VibrationalStructure(MolecularStructure):
                     J[3*it1+2][3*it2+2]=Jupdown[it1][it2]
             return J
         
-        J=getJ(self.masses)
+        J=getJ(masses)
         Hessiantilde=np.transpose(np.linalg.inv(J))@self.Hessian@np.linalg.inv(J)
-        for it1 in range(3*len(self.masses)):
-            for it2 in range(3*len(self.masses)):
-                if it1>=3*len(self.masses)-3 or it2>=3*len(self.masses)-3:
+        for it1 in range(3*len(masses)):
+            for it2 in range(3*len(masses)):
+                if it1>=3*len(masses)-3 or it2>=3*len(masses)-3:
                     Hessiantilde[it1][it2]=0.0
         Hessian=np.transpose(J)@Hessiantilde@J
         self.Hessian=0.5*(Hessian+np.transpose(Hessian))
+    def identify_external_dof(self,projector_trans,projector_rot):
+        def isTranslation(mode,projector_trans,tolerance=0.95):
+            if np.abs(np.dot(mode.normalized_carthesian_displacement,projector_trans@mode.normalized_carthesian_displacement))>tolerance:
+                mode.istranslation=True
+        def isRotation(mode,projector_rot,tolerance=0.8):
+            if np.abs(np.dot(mode.normalized_carthesian_displacement,projector_rot@mode.normalized_carthesian_displacement))>tolerance:
+                mode.isrotation=True
+
+        for sym in self.VibrationalModes:
+            for mode in self.VibrationalModes[sym]:
+                isTranslation(mode,projector_trans)
+                if projector_rot is not None:
+                    isRotation(mode,projector_rot)
+
+
     def CheckSymmetry(self):
         for sym in self.Vibrational_Symmetry.Symmetry_Generators:
             print(sym)
@@ -161,7 +212,7 @@ class VibrationalStructure(MolecularStructure):
             print(np.linalg.norm(comm1))
             print(np.linalg.norm(comm2))
             print(np.linalg.norm(self.Hessian))
-    def WriteMolFile(self):
+    def write_mol_file(self,coordinates,masses,atoms,path):
         '''
         Function to generate a .mol file for use with e.g., Jmol.
         
@@ -178,13 +229,12 @@ class VibrationalStructure(MolecularStructure):
         - The .mol file is generated with sections for frequencies, atomic coordinates, normalization factors, and vibrational modes.
         - The generated .mol file is named "Vibrations.mol" and is saved in the specified parent folder.
         '''
-        ConFactor=ConFactors()
         ##########################################
         #Get the number of atoms from the xyz file
         ##########################################
-        numofatoms=len(self.masses)
-        coordinates=self.coordinates
-        atoms=self.atoms
+        numofatoms=len(masses)
+        coordinates=coordinates
+        atoms=atoms
         SymSectors=[sym for sym in self.VibrationalModes]
         normalmodeEnergies=[]
         Normalized_Displacement=[]
@@ -193,16 +243,16 @@ class VibrationalStructure(MolecularStructure):
             for Mode in self.VibrationalModes[sym]:
                 if not Mode.istranslation and not Mode.isrotation:
                     normalmodeEnergies.append(Mode.frequency)
-                    Normalized_Displacement.append(Mode.Normalized_Displacement)
-                    normfactors.append(Mode.NormFactor)
-        with open(self.path+"/Vibrations.mol",'w') as f:
+                    Normalized_Displacement.append(Mode.normalized_carthesian_displacement)
+                    normfactors.append(Mode.norm_factor)
+        with open(path+"/Vibrations.mol",'w') as f:
             f.write('[Molden Format]\n')
             f.write('[FREQ]\n')
             for Frequency in normalmodeEnergies:
                 f.write('   '+str(Frequency)+'\n')
             f.write('[FR-COORD]\n')
             for it,coord in enumerate(coordinates):
-                f.write(atoms[it]+'   '+str(coord[0]*ConFactor["A->a.u."])+'   '+str(coord[1]*ConFactor["A->a.u."])+'   '+str(coord[2]*ConFactor["A->a.u."])+'\n')
+                f.write(atoms[it]+'   '+str(coord[0]*ConversionFactors["A->a.u."])+'   '+str(coord[1]*ConversionFactors["A->a.u."])+'   '+str(coord[2]*ConversionFactors["A->a.u."])+'\n')
             f.write('[SYMMETRY-SECTORS]\n')
             for sym in SymSectors:
                 f.write(sym+'\n')
@@ -246,60 +296,15 @@ class Vibrational_Symmetry(Symmetry.Symmetry):
             self.IrrepsProjector=np.kron(molecular_symmetry.Symmetry_Generators["Id"],np.eye(3))
         self._determineSymmetrySectors()
 class VibrationalMode:
-    def __init__(self, frequency,NormalMode, symmetry_label,VibrationalStructure):
+    def __init__(self, frequency,normal_mode,displacement, symmetry_label):
         self.frequency = frequency
-        self.Normal_Mode=NormalMode
-        disp=VibrationalStructure.inverse_sqrt_MassMatrix@NormalMode
-        normfactor=np.sqrt(np.dot(disp,disp))
-        self.Normalized_Displacement = disp/normfactor
-        self.NormFactor=normfactor
+        self.normal_mode=normal_mode
+        normfactor=np.sqrt(np.dot(displacement,displacement))
+        self.normalized_carthesian_displacement = displacement/normfactor
+        self.norm_factor=normfactor
         self.symmetry_label = symmetry_label
         self.istranslation=False
         self.isrotation=False
-        self.isTranslation()
-        if VibrationalStructure.periodicity==(0,0,0):
-            self.isRotation(VibrationalStructure)
-    
-    def isTranslation(self,tolerance=0.95):
-        NumDisplacements=len(self.Normalized_Displacement)
-        projector=np.zeros((NumDisplacements,NumDisplacements))
-        for it in range(3):
-            TransEigenvector = np.zeros(NumDisplacements)
-            TransEigenvector[it::3] = 1.0/np.sqrt(NumDisplacements/3.0)
-            projector+=np.outer(TransEigenvector,TransEigenvector)
-        if np.abs(np.dot(self.Normalized_Displacement,projector@self.Normalized_Displacement))>tolerance:
-            self.istranslation=True
-
-    def isRotation(self,VibrationalStructure,tolerance=0.8):
-        centerofmasscoordinates=VibrationalStructure.Mass_UC_Centered_Coordinates
-        [v1,v2,v3]=VibrationalStructure.Geometric_UC_Principle_Axis
-        [u1,u2,u3]=VibrationalStructure.Mass_UC_Principle_Axis
-        V=np.array([v1,v2,v3])
-        U=np.array([u1,u2,u3])
-        T=V@U.T
-        masses=VibrationalStructure.masses
-        Roteigenvectors=[]
-        for it in [0,1,2]:
-            #Define the RotEigenvector
-            RotEigenvector=np.zeros(3*len(masses))
-            #generate the vector X along the principle axis
-            X=np.zeros(3)
-            X[it]=1.0
-            for s in range(len(masses)):
-                rvector=np.cross(X,centerofmasscoordinates[s])
-                #Expand rvector in basis [v1,v2,v3]
-                rvector=T@rvector
-                RotEigenvector[3*s]=rvector[0]
-                RotEigenvector[3*s+1]=rvector[1]
-                RotEigenvector[3*s+2]=rvector[2]
-            #Normalize the generated Eigenvector
-            RotEigenvector/=np.linalg.norm(RotEigenvector)
-            Roteigenvectors.append(RotEigenvector)
-        projector=np.zeros((3*len(masses),3*len(masses)))
-        for it in range(3):
-            projector+=np.outer(Roteigenvectors[it],Roteigenvectors[it])
-        if np.abs(np.dot(self.Normalized_Displacement,projector@self.Normalized_Displacement))>tolerance:
-            self.isrotation=True
     
     def getTransEigenvectors(self):
         """
