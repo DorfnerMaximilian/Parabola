@@ -1,78 +1,175 @@
-import Modules.Read as Read
-import Modules.Geometry as Geometry
-import Modules.Symmetry as Symmetry
+from . import Read
+from . import Geometry
+from . import Symmetry
+from . import Util
+from . import Electronic_Structure
+from . import Vibrational_Structure
 import numpy as np
 import pickle
 import os
 
 class MolecularStructure():
-    def __new__(cls, name=None, path="./", **kwargs):
+    # Class-level flag to manage pickling recursion
+    _is_unpickling = False
+
+    # 1. The __new__ method intercepts creation.
+    def __new__(cls, *args, **kwargs):
+        """
+        Check if a pickled instance exists. If so, return it.
+        Otherwise, create a new instance and let it be initialized.
+
+        Handles pickling by detecting when it's called internally by pickle.load().
+        """
+        # If the _is_unpickling flag is set, it means we are inside a pickle.load() call
+        # and this __new__ is being called by pickle to create a blank instance.
+        # In this case, we simply return a new, uninitialized instance.
+        if cls._is_unpickling:
+            return super().__new__(cls)
+
+        # Normal constructor call path: 'name' must be provided
+        name = kwargs.get('name')
         if name is None:
-            return super().__new__(cls)
+            # This handles cases where MolecularStructure() is called without 'name',
+            # which is not allowed for normal instantiation.
+            raise TypeError("MolecularStructure.__new__() missing 1 required keyword-only argument: 'name'")
 
-        # OPTIONAL: A more robust way to handle pickle files for different classes
-        pickle_suffix = f"{cls.__name__.lower()}.pickle"
-        filename = os.path.join(path, f"{name}.{pickle_suffix}")
-        print(f"ℹ️ : Looking for pickle file at: {filename}")
-        if os.path.isfile(filename):
-            print(f"Loading existing {cls.__name__} from: {filename}")
-            with open(filename, "rb") as f:
-                obj=pickle.load(f)
-                print(f"ℹ️ : Loaded object of class: {type(obj)} from module: {type(obj).__module__}")
-                return obj 
-        else:
-            print(f"No pickle found. Creating new {cls.__name__} for: {name}")
-            return super().__new__(cls)
-        
-        
+        path = kwargs.get('path', '.')
+        abs_path = os.path.abspath(path)
+        pickle_filename = os.path.join(abs_path, f"{name}.{cls.__name__.lower()}.pickle")
 
+        if os.path.isfile(pickle_filename):
+            print(f"🔄 : Found file. Loading from: {pickle_filename}")
+            # Set the flag to prevent recursive calls to __new__ by pickle.load()
+            cls._is_unpickling = True
+            try:
+                with open(pickle_filename, "rb") as f:
+                    # Load and return the existing instance.
+                    # __init__ will still be called on this loaded instance.
+                    instance = pickle.load(f)
+                return instance
+            finally:
+                # Always reset the flag, even if an error occurs during loading
+                cls._is_unpickling = False
+        else:
+            # Create a new, empty instance using the parent class's __new__.
+            instance = super().__new__(cls)
+            # This new instance will be passed to __init__ for setup.
+            return instance
 
-    def __init__(self, name, path="./", **kwargs):
-        # Avoid re-initializing if loaded from pickle
-        if hasattr(self, 'name'):
-            return
-        self.name=name
-        if path == "./":
-            self.path=os.getcwd()
+    # 2. The __init__ method MUST have a guard.
+    def __init__(self, *,
+                 name: str,
+                 path: str = ".",
+                 electronic_path: str | None = None,
+                 vibrational_path: str | None = None):
+        """
+        Initializes or updates the attributes of the instance.
+
+        If the instance is newly created, all core attributes are initialized.
+        If the instance is loaded from a pickle, only electronic_structure
+        and vibrational_structure are updated based on the current
+        `electronic_path` and `vibrational_path` arguments.
+        """
+        # Determine if this is a newly created instance or a loaded one.
+        # A loaded instance will already have 'name' set by pickle.
+        is_already_initialized = hasattr(self, 'name')
+        if not is_already_initialized:
+            self.name = name
+            self.path=os.path.abspath(path) if path == "." else os.path.abspath(path)
+            print(f"⌬ : Creating new Molecular Structure for {name} in:")
+            print(os.path.abspath(self.path))
+            print("▲ : Processing Geometric Structural Information")
+            xyz_filepath=Util.get_xyz_filename(path="./",verbose=True)
+            coordinates, masses, atomic_symbols = Read.read_coordinates_and_masses(xyz_filepath)
+            self.coordinates=coordinates
+            self.masses=masses
+            self.Geometric_Center_UC=np.zeros(3)
+            self.Geometric_UC_Centered_Coordinates=[]
+            self.Geometric_UC_Principle_Axis=[]
+            self.Center_of_Mass_UC=np.zeros(3)
+            self.Mass_UC_Centered_Coordinates=[]
+            self.Mass_UC_Principle_Axis=[]
+            self.atoms=atomic_symbols
+            if Read.read_periodicity(path):
+                self.periodicity=(1,1,1)
+            else:
+                self.periodicity=(0,0,0)
+            self.unitcells={}
+            self.cellvectors=Read.read_cell_vectors(path)
+            self.Molecular_Symmetry=Molecular_Symmetry(self)
+            # Initialize paths and structures to None for a new instance
+            self.electronic_structure_path = None
+            self.vibrational_structure_path = None
+            self.electronic_structure = None
+            self.vibrational_structure = None
         else:
-            self.path=path
-        coordinates, masses, atomic_symbols = Read.readCoordinatesAndMasses(self.path)
-        self.coordinates=coordinates
-        self.masses=masses
-        self.Geometric_Center_UC=np.zeros(3)
-        self.Geometric_UC_Centered_Coordinates=[]
-        self.Geometric_UC_Principle_Axis=[]
-        self.Center_of_Mass_UC=np.zeros(3)
-        self.Mass_UC_Centered_Coordinates=[]
-        self.Mass_UC_Principle_Axis=[]
-        self.atoms=atomic_symbols
-        if Read.readinPeriodicity(path):
-            self.periodicity=(1,1,1)
-        else:
-            self.periodicity=(0,0,0)
-        self.unitcells={}
-        self.cellvectors=Read.readinCellSize(path)
-        self.Molecular_Symmetry=Molecular_Symmetry(self)
-        # Save only if this is the base class, not a subclass
-        if type(self) is MolecularStructure:
-            self.save()
-    
+            print(f"✔️ : Object for '{self.name}' is already initialized. Checking for path updates.")
+            # If loaded, ensure the base path reflects the current call's path if it's different.
+            current_abs_path = os.path.abspath(path) if path == "." else os.path.abspath(path)
+            if self.path != current_abs_path:
+                print(f"🔄 : Base path updated from {self.path} to {current_abs_path}")
+                self.path = current_abs_path
+
+        # Logic for electronic structure:
+        # If electronic_path is provided in the current call, update the structure.
+        if electronic_path is not None:
+            # Recompute only if the path has changed or if the structure is currently None.
+            if self.electronic_structure_path != electronic_path or self.electronic_structure is None:
+                print(f"🔄 : Electronic Structure path provided/changed. Computing/updating electronic structure.")
+                self.electronic_structure_path = electronic_path
+                self.electronic_structure = self.determine_electronic_structure()
+            else:
+                print(f"✔️ : Electronic path is the same and structure exists. No recomputation needed.")
+
+        # Logic for vibrational structure:
+        # If vibrational_path is provided in the current call, update the structure.
+        if vibrational_path is not None:
+            # Recompute only if the path has changed or if the structure is currently None.
+            if self.vibrational_structure_path != vibrational_path or self.vibrational_structure is None:
+                print(f"🔄 : Vibrational Structure path provided/changed. Computing/updating vibrational structure.")
+                self.vibrational_structure_path = vibrational_path
+                self.vibrational_structure = self.determine_vibrational_structure()
+            else:
+                print(f"✔️ : Vibrational Structure path is the same and structure exists. No recomputation needed.")
+        self.save()
+
+    def determine_electronic_structure(self):
+        """
+        Lazy-load or compute the ElectronicStructure, only if a valid path is given.
+        If no path is provided, raise an error (required data is missing).
+        """
+        print("\n" + "="*40)
+        print("⚡ : ELECTRONIC STRUCTURE ")
+        print("="*40)
+        full_path = os.path.abspath(self.electronic_structure_path)
+        print(f"Vibrational Structure data taken from:")
+        print(full_path)
+        electronic_structure = Electronic_Structure.ElectronicStructure(self)
+        return electronic_structure
+    def determine_vibrational_structure(self):
+        """
+        Lazy-load or compute the VibrationalStructure, only if a valid path is given.
+        If no path is provided, raise an error (required data is missing).
+        """
+        # Enhanced print statement for Vibrational Analysis
+        print("\n" + "="*40)
+        print("🎜 : VIBRATIONAL ANALYSIS  ")
+        print("="*40)
+        full_path = os.path.abspath(self.vibrational_structure_path)
+        print(f"Vibrational Structure data taken from:")
+        print(full_path)
+        return Vibrational_Structure.VibrationalStructure(self)
+
     def save(self, filename=None):
-        """Save the current object to a pickle file."""
         if filename is None:
             pickle_suffix = f"{self.__class__.__name__.lower()}.pickle"
             filename = f"{self.name}.{pickle_suffix}"
         
         full_path = os.path.join(self.path, filename)
-        print(f"ℹ️ : Saving to path {full_path}")
-        
+        print(f"💾 Saving to: {full_path}")
+
         with open(full_path, "wb") as f:
             pickle.dump(self, f)
-    @classmethod
-    def load(cls, filename):
-        """Load a MyData object from a pickle file."""
-        with open(filename, "rb") as f:
-            return pickle.load(f)
     def info(self):
         print("===============================")
         print("Molecular Structure Information")
@@ -109,7 +206,12 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         primitive_indices=MolecularStructure.unitcells[(0,0,0)]
         geometry_centered_coordinates,center = Geometry.ComputeCenterOfGeometryCoordinates(np.array(MolecularStructure.coordinates)[primitive_indices])
         MolecularStructure.Geometric_Center_UC=center
-        v1, v2, v3=Geometry.getPrincipleAxis(geometry_centered_coordinates, masses=None, tol=1e-3)
+        if len(primitive_indices)>1:
+            v1, v2, v3=Geometry.getPrincipleAxis(geometry_centered_coordinates, masses=None, tol=1e-3)
+        else:
+            v1=np.array([1.,0.,0.])
+            v2=np.array([0.,1.0,0.])
+            v3=np.array([0.,0.,1.0])
         MolecularStructure.Geometric_UC_Principle_Axis=[v1,v2,v3]
         G_UC_CC=[]
         for coor in geometry_centered_coordinates:
@@ -118,20 +220,26 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             z=np.dot(v3,coor)
             G_UC_CC.append(np.array([x,y,z]))
         MolecularStructure.Geometric_UC_Centered_Coordinates=G_UC_CC
-        mass_centered_coordinates,center_of_mass = Geometry.ComputeCenterOfMassCoordinates(np.array(MolecularStructure.coordinates)[primitive_indices],np.array(MolecularStructure.masses)[primitive_indices])
-        MolecularStructure.Center_of_Mass_UC=center_of_mass
-        v1, v2, v3=Geometry.getPrincipleAxis(mass_centered_coordinates, masses=np.array(MolecularStructure.masses)[primitive_indices], tol=1e-3)
-        MolecularStructure.Mass_UC_Principle_Axis=[v1,v2,v3]
-        G_UC_CC=[]
-        for coor in geometry_centered_coordinates:
-            x=np.dot(v1,coor)
-            y=np.dot(v2,coor)
-            z=np.dot(v3,coor)
-            G_UC_CC.append(np.array([x,y,z]))
-        MolecularStructure.Mass_UC_Centered_Coordinates=G_UC_CC
-        self._test_inversion(MolecularStructure,tol_inversion=5*10**(-3))
-        self._test_rotation(MolecularStructure,tol_rotation=5*10**(-2))
-        self._test_mirror(MolecularStructure,tol_mirror=5*10**(-2))
+        if len(primitive_indices)>1:
+            mass_centered_coordinates,center_of_mass = Geometry.ComputeCenterOfMassCoordinates(np.array(MolecularStructure.coordinates)[primitive_indices],np.array(MolecularStructure.masses)[primitive_indices])
+            MolecularStructure.Center_of_Mass_UC=center_of_mass
+            v1, v2, v3=Geometry.getPrincipleAxis(mass_centered_coordinates, masses=np.array(MolecularStructure.masses)[primitive_indices], tol=1e-3)
+            MolecularStructure.Mass_UC_Principle_Axis=[v1,v2,v3]
+            G_UC_CC=[]
+            for coor in geometry_centered_coordinates:
+                x=np.dot(v1,coor)
+                y=np.dot(v2,coor)
+                z=np.dot(v3,coor)
+                G_UC_CC.append(np.array([x,y,z]))
+            MolecularStructure.Mass_UC_Centered_Coordinates=G_UC_CC
+        else:
+            MolecularStructure.Center_of_Mass_UC=center
+            MolecularStructure.Mass_UC_Principle_Axis=[v1,v2,v3]
+            MolecularStructure.Mass_UC_Centered_Coordinates=G_UC_CC
+        if len(primitive_indices)>1:
+            self._test_inversion(MolecularStructure,tol_inversion=5*10**(-3))
+            self._test_rotation(MolecularStructure,tol_rotation=5*10**(-2))
+            self._test_mirror(MolecularStructure,tol_mirror=5*10**(-2))
         if not self.Symmetry_Generators:
             self.Symmetry_Generators["Id"]=np.eye(len(MolecularStructure.masses))
     def _test_translation(self,MolecularStructure,tol_translation):
