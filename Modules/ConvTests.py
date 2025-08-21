@@ -1,8 +1,8 @@
 import os 
 import numpy as np
-import Modules.Geometry as Geometry 
-import Modules.Read as Read
-import Modules.AtomicBasis as AtomicBasis
+from . import Geometry 
+from . import Read
+from . import AtomicBasis
 import matplotlib.pyplot as plt
 #For standard Latex fonts
 plt.rc('text', usetex=True)
@@ -366,9 +366,9 @@ def CheckConvergence(quantity,path='./'):
                 SameSizeFlag=True
                 cellsize=float(strcut[:-1])
                 cellsizes.append(cellsize)
-                _,_,OLM=Read.readinMatrices(path+folder)
+                _,_,OLM=Read.read_ks_matrices(path+folder)
                 print("Reading in Overlapmatrix -> Done")
-                Atoms=Read.readinAtomicCoordinates(path+folder)
+                Atoms=Read.read_atomic_coordinates(path+folder)
                 print("Reading in Atomic Coordinates -> Done")
                 Basis=AtomicBasis.getBasis(path+folder)
                 print("Construct carthesian Basis and spherical to cartesian Transformations -> Done")
@@ -380,9 +380,9 @@ def CheckConvergence(quantity,path='./'):
             else:
                 cellsize=(float(strcut[0:2]),float(strcut[3:5]),float(strcut[6:-1]))
                 cellsizes.append(cellsize)
-                _,_,OLM=Read.readinMatrices(path+folder)
+                _,_,OLM=Read.read_ks_matrices(path+folder)
                 print("Reading in Overlapmatrix -> Done")
-                Atoms=Read.readinAtomicCoordinates(path+folder)
+                Atoms=Read.read_atomic_coordinates(path+folder)
                 print("Reading in Atomic Coordinates -> Done")
                 Basis=AtomicBasis.getBasis(path+folder)
                 print("Construct carthesian Basis and spherical to cartesian Transformations -> Done")
