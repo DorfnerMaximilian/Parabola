@@ -3,12 +3,12 @@ import numpy as np
 import scipy as sci
 from ctypes import c_char_p, cdll, POINTER, c_double, c_int
 from copy import deepcopy
-import Modules.Read as Read
-import Modules.PhysConst as PhysConst
-import Modules.Util as Util
-import Modules.AtomicBasis as AtomicBasis
+from . import Read
+from .PhysConst import ConversionFactors
+from . import Util
+from . import AtomicBasis
 
-pathtocpp_lib=os.environ["parabolapath"]+"/CPP_Extension/bin/AtomicBasis.so"
+pathtocpp_lib="./CPP_Extension/bin/AtomicBasis.so"
 #-------------------------------------------------------------------------
 def getPhaseOfMO(MO):
     ## Definition of the phase convention 
@@ -36,7 +36,7 @@ def getPhaseOfMOs_RealSpace(MOs,MOindices,parentfolder="./"):
     dim=Util.getNumberofBasisFunctions(parentfolder)
     print(dim)
     MOphases=np.zeros(dim)
-    HOMOid=Util.getHOMOId(parentfolder)
+    HOMOid=Read.read_homo_index(parentfolder)
     Nx=np.shape(MOs[0,:,:,:])[0]
     Ny=np.shape(MOs[0,:,:,:])[1]
     Nz=np.shape(MOs[0,:,:,:])[2]
@@ -58,8 +58,8 @@ def getMOsPhases(parentfolder="./"):
     ## (opt.)   filename            path to the MOs file        (string)
     ## output:  MOphases            list of integers            (list)       
     ## Example: MOphases[mo_index] is the phase (in +/- 1) defined by the function below (convention)
-    MOs,MOindices=Read.readinMos(parentfolder)
-    _,_,S=Read.readinMatrices(parentfolder)
+    MOs,MOindices=Read.read_mos(parentfolder)
+    _,_,S=Read.read_ks_matrices(parentfolder)
     S12=sci.linalg.fractional_matrix_power(S, 0.5)
     a_orth=S12@MOs
     if len(np.shape(MOs))==2:
@@ -69,49 +69,106 @@ def getMOsPhases(parentfolder="./"):
     return MOphases,MOindices
 
 
-def getUniqueExcitedStates(minweight=0.01,pathToExcitedStates="./",pathtoMO="./"):
-    ## Parses the excited states from a TDDFPT calculation done in CP2K  
-    ## determines the eta coefficients, with respect to the MO basis, which has 
-    ## all positive phases! (see getMOsPhases for the definition of the phase)
-    ## input:
-    ## (opt.)   minweight               minimum amplitude to consider
-    ##          pathToExcitedStates     path to the output file of the Cp2k 
-    ## output:  eta                     excited states represented as a NBasis x NBasis x NStates numpy array
-    ##                                  NBasis is the number of used Basis functions 
-    ##                                  NStates is the number of computed excited states
-    ##          Energies                Excited state energies as a np array unit [eV]
-	#get the output file 
+def getUniqueExcitedStates(minweight=1e-6, pathToExcitedStates="./", pathtoMO="./"):
+    """
+    Parses excited states from a TDDFPT calculation done in CP2K, determines the eta
+    coefficients with respect to the MO basis (all positive phases), and normalizes
+    each excited state.
+
+    Parameters
+    ----------
+    minweight : float, optional
+        Minimum amplitude to consider (default = 0.01).
+    pathToExcitedStates : str, optional
+        Path to the output file of the CP2K TDDFPT calculation.
+    pathtoMO : str, optional
+        Path to the molecular orbital (MO) files.
+
+    Returns
+    -------
+    eta : ndarray
+        Excited states represented as an NBasis x NBasis x NStates numpy array.
+    Energies : ndarray
+        Excited state energies (in eV).
+    """
+    eta_file = os.path.join(pathToExcitedStates, "eta.npy")
+    energies_file = os.path.join(pathToExcitedStates, "ExcitedStateEnergies.npy")
+
+    # Try to load precomputed results
+    if os.path.exists(eta_file) and os.path.exists(energies_file):
+        try:
+            eta = np.load(eta_file)
+            Energies = np.load(energies_file)
+            print(f"Loaded eta and energies from '{pathToExcitedStates}'.")
+            return eta, Energies
+        except Exception as e:
+            print(f"Warning: Failed to load precomputed data ({e}). Recomputing...")
+
+    # Compute from scratch
     try:
-        eta=np.load("eta.npy")
-        Energies=np.load("ExcitedStateEnergies.npy")
-    except:
-        states=Read.readinExcitedStatesCP2K(pathToExcitedStates,minweight)
-        dim=Util.getNumberofBasisFunctions(pathToExcitedStates)
-        eta=np.zeros((dim,dim,len(states)))
-        MOsphases,_=getMOsPhases(pathtoMO)
-        homoid=Util.getHOMOId(pathToExcitedStates)
-        Energies=[]
-        for it in range(len(states)):
-            exitedstateenergy=states[it][0]
-            Energies.append(exitedstateenergy)
-            for composition in states[it][1]:
-                holeState=composition[0]+homoid
-                particleState=composition[1]+homoid
-                unique_weight=composition[2]*MOsphases[homoid+composition[0]]*MOsphases[homoid+composition[1]]
-                eta[particleState,holeState,it]=unique_weight
-        #Choose the global phase of the excited state to be positive 
-        for it in range(len(states)):
-                index=np.argmax(np.abs(eta[:,:,it]))
-                tupel=np.unravel_index(index,(dim,dim))
-                eta[:,:,it]*=np.sign(eta[tupel[0],tupel[1],it])
-        #Normalize the State 
-        for it in range(len(states)):
-            normalization=np.trace(np.transpose(eta[:,:,it])@eta[:,:,it])
-            print("Normalization of state "+str(it)+":",normalization)
-            eta[:,:,it]/=np.sqrt(normalization)
-        np.save(pathToExcitedStates+"/"+"eta",eta)
-        np.save(pathToExcitedStates+"/"+"ExcitedStateEnergies",Energies)
-    return Energies,eta
+        states = Read.read_excited_states(pathToExcitedStates, minweight)
+    except Exception as e:
+        raise RuntimeError(f"Failed to read excited states from '{pathToExcitedStates}': {e}")
+
+    try:
+        dim = Util.getNumberofBasisFunctions(pathToExcitedStates)
+    except Exception as e:
+        raise RuntimeError(f"Failed to determine number of basis functions: {e}")
+
+    try:
+        MOsphases, _ = getMOsPhases(pathtoMO)
+    except Exception as e:
+        raise RuntimeError(f"Failed to get MO phases from '{pathtoMO}': {e}")
+
+    try:
+        homoid = Read.read_homo_index(pathToExcitedStates)
+    except Exception as e:
+        raise RuntimeError(f"Failed to get HOMO ID from '{pathToExcitedStates}': {e}")
+
+    eta = np.zeros((dim, dim, len(states)), dtype=float)
+    Energies = []
+
+    for it, state in enumerate(states):
+        try:
+            excited_state_energy = state[0]
+            Energies.append(excited_state_energy)
+
+            for composition in state[1]:
+                holeState = composition[0] + homoid
+                particleState = composition[1] + homoid
+                unique_weight = (
+                    composition[2] *
+                    MOsphases[holeState] *
+                    MOsphases[particleState]
+                )
+                eta[particleState, holeState, it] = unique_weight
+        except Exception as e:
+            print(f"Warning: Skipping state {it} due to error: {e}")
+
+    # Set global phase to be positive
+    for it in range(len(states)):
+        idx = np.argmax(np.abs(eta[:, :, it]))
+        tup = np.unravel_index(idx, (dim, dim))
+        eta[:, :, it] *= np.sign(eta[tup[0], tup[1], it])
+
+    # Normalize states
+    for it in range(len(states)):
+        normalization = np.sqrt(np.tensordot(eta[:, :, it], eta[:, :, it], axes=2))
+        if normalization == 0:
+            print(f"Warning: State {it} has zero norm — skipping normalization.")
+            continue
+        eta[:, :, it] /= normalization
+        print(f"State {it+1}/{len(states)} normalized. Norm = {normalization:.6f}")
+
+    # Save results
+    try:
+        np.save(eta_file, eta)
+        np.save(energies_file, np.array(Energies))
+        print(f"Results saved to '{pathToExcitedStates}'.")
+    except Exception as e:
+        print(f"Warning: Failed to save results: {e}")
+
+    return eta, np.array(Energies)
 def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcitedstates="./"):
     '''Function to generate a file, where the Dipolmatrixelements and the excited states are summarized
        input:   path              (string)                path to the folder, where the wavefunctions have been generated and where the .inp/outputfile of the 
@@ -119,12 +176,10 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcite
        output:                    (void)                  
     '''
     
-    # Readin the excited states 
-    conFactors=PhysConst.ConversionFactors()
     energies,eta=getUniqueExcitedStates(minweigth,pathtoExcitedstates,pathtoMO)
-    id_homo=Util.getHOMOId(pathtoExcitedstates)
+    id_homo=Read.read_homo_index(pathtoExcitedstates)
     ### Generate the Overlap Contribution 
-    KSHamiltonian,_,OLM=Read.readinMatrices(pathtoMO)
+    KSHamiltonian,_,OLM=Read.read_ks_matrices(pathtoMO)
     Sm12=Util.LoewdinTransformation(OLM)
     S12=sci.linalg.fractional_matrix_power(OLM, 0.5)
     KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
@@ -132,7 +187,7 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcite
     #Fix the Phase
     for it in range(np.shape(A)[1]):
         A[:,it]*=getPhaseOfMO(A[:,it])
-    Atoms=Read.readinAtomicCoordinates(pathtoExcitedstates)
+    Atoms=Read.read_atomic_coordinates(pathtoExcitedstates)
     Basis=AtomicBasis.getBasis(pathtoExcitedstates)
     Rx=np.zeros(np.shape(Sm12))
     Ry=np.zeros(np.shape(Sm12))
@@ -141,7 +196,7 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcite
     for itAtom in range(len(Atoms)):
         Atom_type1=Atoms[itAtom][1]
         for itBasis1 in range(len(Basis[Atom_type1])):
-            R1=np.array(Atoms[itAtom][2:])*conFactors['A->a.u.']
+            R1=np.array(Atoms[itAtom][2:])*ConversionFactors['A->a.u.']
             Rx[it][it]=R1[0]
             Ry[it][it]=R1[1]
             Rz[it][it]=R1[2]
@@ -160,7 +215,7 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcite
         Atom_type1=Atoms[itAtom1][1]
         B1=Basis[Atom_type1]
         for itBasis1 in range(len(Basis[Atom_type1])):
-            R1=np.array(Atoms[itAtom1][2:])*conFactors['A->a.u.'] #conversion from angstroem to atomic units
+            R1=np.array(Atoms[itAtom1][2:])*ConversionFactors['A->a.u.'] #conversion from angstroem to atomic units
             state1=B1[itBasis1]
             dalpha1=state1[3:]
             lm1=state1[2][1:]
@@ -169,7 +224,7 @@ def getTransitionDipoleMomentsAnalytic(minweigth=0.01,pathtoMO="./",pathtoExcite
                 B2=Basis[Atom_type2]
                 for itBasis2 in range(len(Basis[Atom_type2])):
                     #get the position of the Atoms
-                    R2=np.array(Atoms[itAtom2][2:])*conFactors['A->a.u.'] #conversion from angstroem to atomic units
+                    R2=np.array(Atoms[itAtom2][2:])*ConversionFactors['A->a.u.'] #conversion from angstroem to atomic units
                     state2=B2[itBasis2]
                     dalpha2=state2[3:]
                     lm2=state2[2][1:]
@@ -323,17 +378,17 @@ def WFNonGrid(id=0,N1=200,N2=200,N3=200,parentfolder='./'):
                 res+=a[it]*value/normfactor
                 it+=1
         return res
-    Homoid=Util.getHOMOId(parentfolder)
-    KSHamiltonian,OLM=Read.readinMatrices(parentfolder)
+    Homoid=Read.read_homo_index(parentfolder)
+    KSHamiltonian,OLM=Read.read_ks_matrices(parentfolder)
     Sm12=Util.LoewdinTransformation(OLM)
     KSHorth=np.dot(Sm12,np.dot(KSHamiltonian,Sm12))
     _,A=np.linalg.eigh(KSHorth)
     a=Sm12@A[:,id+Homoid]
     a*=getPhaseOfMO(A[:,id+Homoid])
     
-    Atoms=Read.readinAtomicCoordinates(parentfolder)
+    Atoms=Read.read_atomic_coordinates(parentfolder)
     Basis=AtomicBasis.getBasis(parentfolder)
-    Cellvectors=Read.readinCellSize(parentfolder)
+    Cellvectors=Read.read_cell_vectors(parentfolder)
     #Convert to atomic units
     cellvector1=Cellvectors[0]*1.88972613288564
     cellvector2=Cellvectors[1]*1.88972613288564
@@ -365,15 +420,15 @@ def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,cell_vectors=[0.0, 0.0, 0.0],savefla
                 Nx,Ny,Nz:         (int)                   Number of grid points in each direction                        
        output:  f                 (Nx x Ny x Nz np.array) Wavefunction coefficients, where first index is x, second y and third z
     '''
-    Homoid=Util.getHOMOId(parentfolder)
+    Homoid=Read.read_homo_index(parentfolder)
     _,A,Sm12=Util.Diagonalize_KS_Hamiltonian(parentfolder)
     data=[]
     for id in ids:
         a=Sm12@A[:,id+Homoid]
         a*=getPhaseOfMO(A[:,id+Homoid])
-        Atoms=Read.readinAtomicCoordinates(parentfolder)
+        Atoms=Read.read_atomic_coordinates(parentfolder)
         Basis=AtomicBasis.getBasis(parentfolder)
-        Cellvectors=Read.readinCellSize(parentfolder)
+        Cellvectors=Read.read_cell_vectors(parentfolder)
         #Convert to atomic units
         cellvector1=Cellvectors[0]*1.88972613288564
         cellvector2=Cellvectors[1]*1.88972613288564
@@ -402,7 +457,7 @@ def LocalPotentialOnGrid(gridpoints,MatrixElements,cell_vectors=[0.0, 0.0, 0.0],
                 Nx,Ny,Nz:         (int)                   Number of grid points in each direction                        
        output:  f                 (Nx x Ny x Nz np.array) Wavefunction coefficients, where first index is x, second y and third z
     '''
-    Atoms=Read.readinAtomicCoordinates(parentfolder)
+    Atoms=Read.read_atomic_coordinates(parentfolder)
     Basis=AtomicBasis.getBasis(parentfolder)
     data=AtomicBasis.LocalPotentialonxyzGrid(gridpoints,MatrixElements,Atoms, Basis,cell_vectors)
     return np.array(data)
@@ -410,7 +465,7 @@ def getOverlapOnGrids(WFN1,WFN2,parentfolder="./"):
     N1=np.shape(WFN1)[0]
     N2=np.shape(WFN1)[1]
     N3=np.shape(WFN1)[2]
-    Cellvectors=Read.readinCellSize(parentfolder)
+    Cellvectors=Read.read_cell_vectors(parentfolder)
     #Convert to atomic units
     cellvector1=Cellvectors[0]*1.88972613288564
     cellvector2=Cellvectors[1]*1.88972613288564
@@ -426,10 +481,9 @@ def getTransitionDipoleMomentsNumerical(minweigth=0.05,Nx=100,Ny=100,Nz=100,path
        output:                    (void)                  
     '''
     # Readin the excited states 
-    conFactors=PhysConst.ConversionFactors()
     energies=[]
     energies,eta=getUniqueExcitedStates(minweigth,pathtoExcitedstates,pathtoMO)
-    id_homo=Util.getHOMOId(pathtoExcitedstates)
+    id_homo=Read.read_homo_index(pathtoExcitedstates)
     TransitionDipolevectors=[]
     with open("ExcitedStatesAndDipoles.dat","a") as file:
         file.write("Python Convention of state labeling!\n")
@@ -466,7 +520,7 @@ def getTransitionDipoleMomentsNumerical(minweigth=0.05,Nx=100,Ny=100,Nz=100,path
             file.write("Energy [eV]:"+format(Energy,'12.6f')+"\n")
             file.write("Dipolematrixelements (x,y,z) [eBohr]:"+format(dx,'12.6f')+format(dy,'12.6f')+format(dz,'12.6f')+"\n")
             file.write("Dipole strength**2:"+format((dx**2+dy**2+dz**2),'12.6f')+"\n")
-            file.write("Oszillator strength: "+format(Energy/(3*conFactors["a.u.->eV"]/2)*(dx**2+dy**2+dz**2),'12.6f')+"\n")
+            file.write("Oszillator strength: "+format(Energy/(3*ConversionFactors["a.u.->eV"]/2)*(dx**2+dy**2+dz**2),'12.6f')+"\n")
     np.save("Transitiondipolevectors",TransitionDipolevectors)
     return TransitionDipolevectors
 
