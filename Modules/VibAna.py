@@ -1,16 +1,15 @@
-import Modules.Geometry as Geometry
+from . import Geometry
 import numpy as np
-import Modules.PhysConst as PhysConst
-import Modules.Read as Read
-import Modules.Write as Write
-import Modules.Util as Util
-import Modules.Symmetry as Symmetry
+from .PhysConst import ConversionFactors,StandardAtomicWeights
+from . import Read
+from . import Write
+from . import Util
+from . import Symmetry
 import os
 #get the environmental variable 
 pathtocp2k=os.environ["cp2kpath"]
 pathtobinaries=pathtocp2k+"/exe/local/"
 def Vib_Ana_inputs(deltas=[],vectors=[],parentpath="./",linktobinary=True,binary="cp2k.popt",binaryloc=pathtobinaries):
-    ConFactors=PhysConst.ConversionFactors()
     deltasflag=False
     if len(deltas)==0:
         deltasflag=True
@@ -108,7 +107,7 @@ def Vib_Ana_inputs(deltas=[],vectors=[],parentpath="./",linktobinary=True,binary
                 delta=deltas[0]
             else:
                 delta=deltas[it]
-            Geometry.changeConfiguration(folderlabel=folderlabel,vector=vec,delta=delta*ConFactors['a.u.->A'],sign=sign,path_xyz=parentpath,path_to=parentpath)
+            Geometry.changeConfiguration(folderlabel=folderlabel,vector=vec,delta=delta*ConversionFactors['a.u.->A'],sign=sign,path_xyz=parentpath,path_to=parentpath)
             os.system("cp "+parentpath+inpfilename+" "+parentpath+work_dir)
             if RestartfileFlag:
                 os.system("cp "+parentpath+Restart_filename+" "+parentpath+work_dir)
@@ -204,7 +203,7 @@ def deflectAlongModes(parentfolder="./"):
     deltas=[]
     vectors.append(trans_vec[0,:]);vectors.append(trans_vec[1,:]);vectors.append(trans_vec[2,:])
     deltas.append(0.1);deltas.append(0.1);deltas.append(0.1)
-    if not Read.readinPeriodicity(parentfolder):
+    if not Read.read_periodicity(parentfolder):
         vectors.append(rot_vec[0,:]);vectors.append(rot_vec[1,:]);vectors.append(rot_vec[2,:])
         deltas.append(0.1);deltas.append(0.1);deltas.append(0.1)
     for it in range(np.shape(nCD)[0]):
@@ -219,7 +218,7 @@ def deflectAlongModes(parentfolder="./"):
 
 
 
-def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",rescale=True):
+def getTransAndRotEigenvectors(coordinates,masses):
     """
     Computes the translational and rotational eigenvectors according to "Vibrational Analysis in Gaussian,"
     Joseph W. Ochterski (1999).
@@ -243,7 +242,6 @@ def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",re
     - All generated eigenvectors are normalized.
     """
 
-    coordinates,masses,_=Read.readCoordinatesAndMasses(pathtoEquilibriumxyz)
     #Compute the Intertia Tensor
     I=Geometry.getInertiaTensor(coordinates,masses)
     centerofmasscoordinates,_=Geometry.ComputeCenterOfMassCoordinates(coordinates,masses)
@@ -252,7 +250,7 @@ def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",re
     _,principleAxis=np.linalg.eigh(I)
     numofatoms=int(len(masses))
     Roteigenvectors=[]
-    factor=1.0
+    
     for it in [0,1,2]:
         #Define the RotEigenvector
         RotEigenvector=np.zeros(3*numofatoms)
@@ -260,13 +258,9 @@ def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",re
         X=principleAxis[:,it]
         for s in range(numofatoms):
             rvector=np.cross(X,centerofmasscoordinates[s])
-            if rescale:
-                factor=np.sqrt(masses[s])
-            else:
-                factor=1.0
-            RotEigenvector[3*s]=rvector[0]*factor
-            RotEigenvector[3*s+1]=rvector[1]*factor
-            RotEigenvector[3*s+2]=rvector[2]*factor
+            RotEigenvector[3*s]=rvector[0]
+            RotEigenvector[3*s+1]=rvector[1]
+            RotEigenvector[3*s+2]=rvector[2]
         #Normalize the generated Eigenvector
         RotEigenvector/=np.linalg.norm(RotEigenvector)
         Roteigenvectors.append(RotEigenvector)
@@ -275,11 +269,7 @@ def getTransAndRotEigenvectors(pathtoEquilibriumxyz="./Equilibrium_Geometry/",re
         #Define the TransEigenvector
         TransEigenvector=np.zeros(3*numofatoms)
         for s in range(numofatoms):
-            if rescale:
-                factor=np.sqrt(masses[s])
-            else:
-                factor=1.0
-            TransEigenvector[3*s+it]=factor
+            TransEigenvector[3*s+it]=1
         #Normalize the generated Eigenvector
         TransEigenvector/=np.linalg.norm(TransEigenvector)
         Transeigenvectors.append(TransEigenvector)
@@ -322,7 +312,7 @@ def getHessian(parentfolder="./",writeMolFile=True):
     #Reading in nessicary Data
     ##########################################
     #get Conversionfactors & atomic masses
-    atomicmasses=PhysConst.StandardAtomicWeights()
+    atomicmasses=StandardAtomicWeights
     #Get the number of atoms & the order from the xyz file
     xyz_files = [f for f in os.listdir(parentfolder) if f.endswith('.xyz')]
     if len(xyz_files) != 1:
@@ -343,7 +333,7 @@ def getHessian(parentfolder="./",writeMolFile=True):
         atomnum=int(np.floor((it/3)))
         sqrtMm1[it][it]=1./(np.sqrt(atomicmasses[atomorder[atomnum]]))
     #Read in the basis vectors of the finite displacements:
-    BasisVectors,deltas=Read.readinBasisVectors(parentfolder+"/")
+    BasisVectors,deltas=Read.read_basis_vectors(parentfolder+"/")
     print(deltas)
     #Built the T matrix from b basis 
     T=np.zeros((3*numofatoms,3*numofatoms))
@@ -400,7 +390,7 @@ def getHessian(parentfolder="./",writeMolFile=True):
     else:
         print("Continuing with Standard values. [0.99]")
         threshhold_trans=0.99
-    is_periodic=bool(Read.readinPeriodicity(parentfolder))
+    is_periodic=bool(Read.read_periodicity(parentfolder))
     Rotations_Projector_Flag=False
     if not is_periodic:
         print("Having detected non-periodic calculation") 
@@ -498,7 +488,7 @@ def getHessian(parentfolder="./",writeMolFile=True):
     np.save(parentfolder+"/Translation_Eigenvectors",Transeigenvectors_unscaled)
     np.save(parentfolder+"/Rotational_Eigenvectors",Roteigenvectors_unscaled)
     if writeMolFile:
-        Write.writemolFile(normalmodeenergies,carthesianDisplacements,normfactors,parentfolder)
+        Write.write_mol_file(normalmodeenergies,carthesianDisplacements,normfactors,parentfolder)
 def CorrectNormalModeEnergies_Input(delta=0.1,parentfolder="./"):
     '''
     Perform corrections on normal mode energies and generate input files for each correction.
@@ -521,8 +511,7 @@ def CorrectNormalModeEnergies_Input(delta=0.1,parentfolder="./"):
         CorrectNormalModeEnergies_Input(delta=0.1, parentfolder="./")
     '''
     os.mkdir(parentfolder+"/"+"Correction_Calc/")
-    ConFactors=PhysConst.ConversionFactors()
-    normalmodeenergies,normalizedcarthesiandisplacements,_=Read.readinVibrations(parentfolder)
+    normalmodeenergies,normalizedcarthesiandisplacements,_=Read.read_vibrations(parentfolder)
     vectorsToCorrect=[]
     for it,modeenergy in enumerate(normalmodeenergies):
         if modeenergy<0.0:
@@ -564,7 +553,7 @@ def CorrectNormalModeEnergies_Input(delta=0.1,parentfolder="./"):
                 name=str(displacementnumber)+"sign="+symbolsign
                 fo = [f for f in os.listdir(folderpath) if f==name]
                 if len(fo)==0:
-                    Geometry.changeConfiguration(str(displacementnumber),normalizedCartesianDisplacement,displacementnumber*delta*ConFactors['a.u.->A'],sign,parentfolder,folderpath)
+                    Geometry.changeConfiguration(str(displacementnumber),normalizedCartesianDisplacement,displacementnumber*delta*ConversionFactors['a.u.->A'],sign,parentfolder,folderpath)
                     work_dir=parentfolder+"/"+"Correction_Calc"+"/"+foldername+"/"+name+"/"
                     os.system("cp "+parentfolder+inpfilename+" "+work_dir)
                     os.system("cp "+parentfolder+Restart_filename+" "+work_dir)
@@ -589,7 +578,7 @@ def CorrectNormalModeEnergies_Output(delta=0.1,path_to_original_data="./",path_t
     Usage:
         CorrectNormalModeEnergies_Output(delta=0.1, path_to_original_data="./", path_to_correctiondata="./Correction_Calc/")
     '''
-    VibrationalFrequencies,NormCarthesianDisplacements,normfactors=Read.readinVibrations(path_to_original_data)
+    VibrationalFrequencies,NormCarthesianDisplacements,normfactors=Read.read_vibrations(path_to_original_data)
 
     # Iterate over correction directories
     for overdir in os.listdir(path_to_correctiondata):
@@ -675,12 +664,11 @@ def CorrectNormalModeEnergies_Output(delta=0.1,path_to_original_data="./",path_t
     np.save("normalized-Carthesian-Displacements",NormCarthesianDisplacements[sortedIndices])
     np.save("Norm-Factors",normfactors[sortedIndices])
     # Write a Mole file with corrected data
-    Write.writemolFile(VibrationalFrequencies[sortedIndices],NormCarthesianDisplacements[sortedIndices],normfactors[sortedIndices],path_to_original_data)
+    Write.write_mol_file(VibrationalFrequencies[sortedIndices],NormCarthesianDisplacements[sortedIndices],normfactors[sortedIndices],path_to_original_data)
 def get_ir_transition_dipole_moments(parentfolder="./"):
-    ConFactors=PhysConst.ConversionFactors()
     #get the normal modes from the cartesian displacements
-    VibrationalFrequencies,_,normfactors=Read.readinVibrations(parentfolder)
-    _,deltas=Read.readinBasisVectors(parentfolder+"/")
+    VibrationalFrequencies,_,normfactors=Read.read_vibrations(parentfolder)
+    _,deltas=Read.read_basis_vectors(parentfolder+"/")
     subdirectories=[f for f in os.listdir(parentfolder) if f.startswith('vector=')]
     if len(subdirectories)!=2*len(normfactors):
         raise ValueError('InputError: Number of subdirectories does not match the number of needed Ones!')
@@ -699,7 +687,7 @@ def get_ir_transition_dipole_moments(parentfolder="./"):
         except:
             print("Error in folder: "+parentfolder+"/"+folderminus)
             exit()
-        ir_TDM=(GS_DPM_Plus-GS_DPM_Minus)/(2*deltas[lambd])/normfactors[lambd]/np.sqrt((2*ConFactors["u->a.u."]*ConFactors["1/cm->a.u."]*VibrationalFrequencies[lambd]))
+        ir_TDM=(GS_DPM_Plus-GS_DPM_Minus)/(2*deltas[lambd])/normfactors[lambd]/np.sqrt((2*ConversionFactors["u->a.u."]*ConversionFactors["1/cm->a.u."]*VibrationalFrequencies[lambd]))
         IR_TDMs.append(ir_TDM)
     np.save(parentfolder+"/"+"IR-Transition-Dipolemoments",np.array(IR_TDMs))
     with open(parentfolder+"/"+"IR-Transition-Dipolemoments.dat","w") as file:
