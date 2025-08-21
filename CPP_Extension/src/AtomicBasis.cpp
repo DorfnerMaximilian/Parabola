@@ -2,6 +2,7 @@
 #include <cmath>
 #include <vector>
 #include <array>
+#include <complex>
 #include <unordered_map>
 
 
@@ -38,6 +39,21 @@ if (n%2==0){
         value=(doublefactorial(n-1)*sqrt(M_PI))/(pow(2, 0.5 * static_cast<double>(n)) * pow(alpha, 0.5 * static_cast<double>(n) + 0.5));
 }
     return value;
+}
+std::complex<double> gq_func(double alpha,double qk,int n)
+{
+std::complex<double> sum(0.0, 0.0);
+std::complex<double> factor(0.0, 0.5*qk/alpha);
+double exponential_factor=exp(-1.0*qk*qk/4/alpha);
+for (int k = 0; k <= n; ++k) {
+        if (k == n) {
+                sum += gamma_func(alpha, n);
+            } else {
+                sum += gamma_func(alpha, k) * binom(n, k) * pow(factor, n-k) ;
+            }
+        }
+    sum*=exponential_factor;
+    return sum;
 }
 
 //#########################################################################
@@ -183,7 +199,7 @@ double Kcomponent(double Y1k, double Y2k, int ik, int jk, double alpha){
                 if (ik == o && jk == p) {
                     sum += gamma_func(alpha, o + p);
                 } else {
-                    sum += gamma_func(alpha, o + p) * binom(ik, o) * binom(jk, p) * pow(-Y1k, ik - o) * pow(-Y2k, jk - p);
+                    sum += gamma_func(alpha, o + p) * binom(ik, o) * binom(jk, p) * std::pow(-Y1k, ik - o) * std::pow(-Y2k, jk - p);
                 }
             }
         }
@@ -202,8 +218,65 @@ double KFunction(const std::array<double,3>& Y1, const std::array<double,3>& Y2,
 
     return output;
 }
+std::complex<double> Kqcomponent(double Y1k, double Y2k, int ik, int jk, double alpha,double qk){
+    std::complex<double> sum(0.0, 0.0);
 
+    if (Y1k == 0.0 || Y2k == 0.0) {
+        sum = gq_func(alpha,qk,ik+jk);
+    } else {
+        for (int o = 0; o <= ik; ++o) {
+            for (int p = 0; p <= jk; ++p) {
+                if (ik == o && jk == p) {
+                    sum += gq_func(alpha,qk,o+p);
+                } else {
+                    sum += gq_func(alpha,qk,o+p) * binom(ik, o) * binom(jk, p) * std::pow(-Y1k, ik - o) * std::pow(-Y2k, jk - p);
+                }
+            }
+        }
+    }
 
+    return sum;
+}
+ std::complex<double> KqFunction(const std::array<double,3>& Y1, const std::array<double,3>& Y2,
+                 const std::array<int,3>& iis, const std::array<int,3>& jjs, double alpha,const std::array<double,3>& q) {
+
+    std::complex<double> output(1.0, 0.0);
+
+    for (size_t it = 0; it < Y1.size(); ++it) {
+        output *= Kqcomponent(Y1[it], Y2[it], iis[it], jjs[it],alpha,q[it]);
+    }
+
+    return output;
+}
+std::complex<double> IJ_q_Int(const std::array<double, 3>& R1,const std::array<double, 3>& R2, const std::vector<Monomial>& lm1,const std::vector<Monomial>& lm2, double A1, double A2,const std::array<double,3>& q) {
+    // computes the IJ integral using the monomial decomposition of the 
+    // solid harmonics.
+    //Input: X of the difference vector R1-R2
+    //A1: positive numerical
+    //A2: positive numerical
+    
+    //Initialize all constants
+    std::array<double, 3> X={R1[0] - R2[0], R1[1] - R2[1], R1[2] - R2[2]};
+    std::array<double,3> Rbar={A1*R1[0]/(A1+A2)+A2*R2[0]/(A1+A2),A1*R1[1]/(A1+A2)+A2*R2[1]/(A1+A2),A1*R1[2]/(A1+A2)+A2*R2[2]/(A1+A2)};
+    std::complex<double> Jintegral(0.0, 0.0);
+    std::array<double,3> Y1={A2*X[0]/(A1+A2),A2*X[1]/(A1+A2),A2*X[2]/(A1+A2)};
+    std::array<double,3> Y2={-1.0*A1*X[0]/(A1+A2),-1.0*A1*X[1]/(A1+A2),-1.0*A1*X[2]/(A1+A2)};
+    
+    double alpha=A1+A2;
+    //Perform the sum 
+    for (const auto& Z1 : lm1) {
+        for (const auto& Z2 : lm2) {
+            Jintegral += Z1.prefactor * Z2.prefactor * KqFunction(Y1, Y2, Z1.indices, Z2.indices, alpha,q);
+        }
+    }
+    double A12red = -1.0*A1 * A2 / (A1 + A2);
+    double Exponent = A12red * (X[0]*X[0]+X[1]*X[1]+X[2]*X[2]);
+    double gaussianPrefactor = std::exp(Exponent);
+    double dot = q[0]*Rbar[0] + q[1]*Rbar[1] + q[2]*Rbar[2];
+    std::complex<double> exponent_q = std::exp(std::complex<double>(0.0, dot));
+    std::complex<double> integral = gaussianPrefactor * exponent_q*Jintegral;
+    return integral;
+}
 double IJ_Int(const std::array<double, 3>& X, const std::vector<Monomial>& lm1,const std::vector<Monomial>& lm2, double A1, double A2,int modus) {
     // computes the IJ integral using the monomial decomposition of the 
     // solid harmonics.
@@ -362,7 +435,7 @@ for (size_t it1 = 0; it1 < alphas1.size(); ++it1) {
 for (size_t it2 = 0; it2 < alphas2.size(); ++it2) {
   matrix_element += contr_coeff1[it1] * contr_coeff2[it2] *
              IJ_Int({R1[0] - R2_shifted[0], R1[1] - R2_shifted[1], R1[2] - R2_shifted[2]},
-                  lm1, lm2, alphas1[it1], alphas2[it2],direction)+contr_coeff1[it1] * contr_coeff2[it2] *(R1[direction-1]-0.5*cell_vector[direction-1])*IJ_Int({R1[0] - R2_shifted[0], R1[1] - R2_shifted[1], R1[2] - R2_shifted[2]},
+                  lm1, lm2, alphas1[it1], alphas2[it2],direction)+contr_coeff1[it1] * contr_coeff2[it2] *(R1[direction-1])*IJ_Int({R1[0] - R2_shifted[0], R1[1] - R2_shifted[1], R1[2] - R2_shifted[2]},
                     lm1, lm2, alphas1[it1], alphas2[it2],0);
 }
 }
@@ -406,7 +479,43 @@ for (size_t it2 = 0; it2 < alphas2.size(); ++it2) {
 }
 return matrix_element;
   }
+// Function to compute the overlap of two basis functions
+std::complex<double> get_phase_Matrix_Element(const std::array<double,3>& R1,
+                  const std::vector<double>& contr_coeff1,
+                  const std::vector<double>& alphas1,
+                  const std::vector<Monomial>& lm1,
+                  const std::array<double,3>& R2,
+                  const std::vector<double>& contr_coeff2,
+                  const std::vector<double>& alphas2,
+                  const std::vector<Monomial>& lm2,
+                  const std::vector<double>& cell_vectors,
+                  const std::array<double,3>& q
+                ) {
 
+    std::complex<double>  matrix_element(0.0,0.0);
+    // Loop over cell vectors
+    for (size_t cell_index = 0; cell_index < cell_vectors.size(); cell_index += 3) {
+        std::array<double, 3> cell_vector = {cell_vectors[cell_index],
+                                            cell_vectors[cell_index + 1],
+                                            cell_vectors[cell_index + 2]};
+
+        // Compute the shifted positions
+        std::array<double, 3> R2_shifted = {R2[0] + cell_vector[0],
+                                           R2[1] + cell_vector[1],
+                                           R2[2] + cell_vector[2]};
+
+        // Compute the overlap for the shifted positions
+        for (size_t it1 = 0; it1 < alphas1.size(); ++it1) {
+            for (size_t it2 = 0; it2 < alphas2.size(); ++it2) {
+                matrix_element += contr_coeff1[it1] * contr_coeff2[it2] *
+                           IJ_q_Int(R1,R2_shifted,
+                                lm1, lm2, alphas1[it1], alphas2[it2],q);
+            }
+        }
+    }
+
+    return matrix_element;
+}
 double* get_T_Matrix(const char* atoms_set1[],
                                 const double positions_set1[],
                                 const double alphas_set1[],
@@ -515,6 +624,10 @@ double* get_T_Matrix(const char* atoms_set1[],
     return OLPasArray_ptr;
 }
 void free_ptr(double* array) {
+    // Free the memory allocated for the array
+    delete[] array;
+}
+void free_ptr_complex(std::complex<double>* array) {
     // Free the memory allocated for the array
     delete[] array;
 }
@@ -914,6 +1027,115 @@ double overlap = get_p_Matrix_Element(basisfunctions_set1[i].position,
 
 // Assign result to the appropriate index in the output array
 OLPasArray_ptr[i * size_set2 + j] = overlap;
+}
+}
+return OLPasArray_ptr;
+}
+std::complex<double>* get_Phase_Operators(const char* atoms_set1[],
+    const double positions_set1[],
+    const double alphas_set1[],
+    const int alphasLengths_set1[],
+    const double contr_coef_set1[],
+    const int contr_coefLengths_set1[],
+    const char* lms_set1[],
+    int size_set1,
+    const char* atoms_set2[],
+    const double positions_set2[],
+    const double alphas_set2[],
+    const int alphasLengths_set2[],
+    const double contr_coef_set2[],
+    const int contr_coefLengths_set2[],
+    const char* lms_set2[],
+    int size_set2,
+    const double cell_vectors[],
+    int size_cell_vectors,
+    const double q[]
+    ) {
+
+// Initialize the map of monomials
+std::unordered_map<std::string, std::vector<Monomial>> solidHarmonics = getSolidHarmonics();
+//Process the cell_vectors
+std::vector<double> cell_vectors_vec(cell_vectors, cell_vectors + size_cell_vectors);
+
+std::array<double, 3> q_vector = {q[0],q[1],q[2]};
+// Process the input arrays - construct Basisfunction instances for set 1
+std::vector<Basisfunction> basisfunctions_set1;
+int arrayIndex_set1 = 0;
+int alphasIndex_set1 = 0;
+int contrCoefIndex_set1 = 0;
+
+for (int i = 0; i < size_set1; ++i) {
+std::string atom(atoms_set1[i]);
+std::array<double, 3> position = {positions_set1[arrayIndex_set1],
+              positions_set1[arrayIndex_set1 + 1],
+              positions_set1[arrayIndex_set1 + 2]};
+
+// Extract alphas for the current basis function in set 1
+int alphasLength_set1 = alphasLengths_set1[i];
+std::vector<double> alphas_list_set1(alphas_set1 + alphasIndex_set1, alphas_set1 + alphasIndex_set1 + alphasLength_set1);
+alphasIndex_set1 += alphasLength_set1;
+
+// Extract contr_coef for the current basis function in set 1
+int contrCoefLength_set1 = contr_coefLengths_set1[i];
+std::vector<double> contr_coef_list_set1(contr_coef_set1 + contrCoefIndex_set1, contr_coef_set1 + contrCoefIndex_set1 + contrCoefLength_set1);
+contrCoefIndex_set1 += contrCoefLength_set1;
+
+std::string lm(lms_set1[i]);
+
+Basisfunction basisfunction(atom, position, alphas_list_set1, contr_coef_list_set1, lm);
+basisfunctions_set1.push_back(basisfunction);
+
+arrayIndex_set1 += 3;  // Increment by 3 for positions (3 elements per position)
+}
+
+// Process the input arrays - construct Basisfunction instances for set 2
+std::vector<Basisfunction> basisfunctions_set2;
+int arrayIndex_set2 = 0;
+int alphasIndex_set2 = 0;
+int contrCoefIndex_set2 = 0;
+
+for (int i = 0; i < size_set2; ++i) {
+std::string atom(atoms_set2[i]);
+std::array<double, 3> position = {positions_set2[arrayIndex_set2],
+              positions_set2[arrayIndex_set2 + 1],
+              positions_set2[arrayIndex_set2 + 2]};
+
+// Extract alphas for the current basis function in set 2
+int alphasLength_set2 = alphasLengths_set2[i];
+std::vector<double> alphas_list_set2(alphas_set2 + alphasIndex_set2, alphas_set2 + alphasIndex_set2 + alphasLength_set2);
+alphasIndex_set2 += alphasLength_set2;
+
+// Extract contr_coef for the current basis function in set 2
+int contrCoefLength_set2 = contr_coefLengths_set2[i];
+std::vector<double> contr_coef_list_set2(contr_coef_set2 + contrCoefIndex_set2, contr_coef_set2 + contrCoefIndex_set2 + contrCoefLength_set2);
+contrCoefIndex_set2 += contrCoefLength_set2;
+
+std::string lm(lms_set2[i]);
+
+Basisfunction basisfunction(atom, position, alphas_list_set2, contr_coef_list_set2, lm);
+basisfunctions_set2.push_back(basisfunction);
+
+arrayIndex_set2 += 3;  // Increment by 3 for positions (3 elements per position)
+}
+std::complex<double>* OLPasArray_ptr = new std::complex<double>[size_set1 * size_set2];
+// Now, loop over both sets and compute overlaps
+#pragma omp parallel for collapse(2)
+for (int i = 0; i < size_set1; ++i) {
+for (int j = 0; j < size_set2; ++j) {
+std::complex<double> matrix_element = get_phase_Matrix_Element(basisfunctions_set1[i].position,
+            basisfunctions_set1[i].contr_coef,
+            basisfunctions_set1[i].alphas,
+            solidHarmonics[basisfunctions_set1[i].lm],
+            basisfunctions_set2[j].position,
+            basisfunctions_set2[j].contr_coef,
+            basisfunctions_set2[j].alphas,
+            solidHarmonics[basisfunctions_set2[j].lm],
+            cell_vectors_vec,
+            q_vector
+        );
+
+// Assign result to the appropriate index in the output array
+OLPasArray_ptr[i * size_set2 + j] = matrix_element;
 }
 }
 return OLPasArray_ptr;
