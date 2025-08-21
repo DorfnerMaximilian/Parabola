@@ -1,16 +1,16 @@
 import numpy as np
 import os
-import copy
-import Modules.Util as Util
-import Modules.PhysConst as PhysConst
-import Modules.Read as Read
-import Modules.AtomicBasis as AtomicBasis
-import Modules.TDDFT as TDDFT
-import Modules.VibAna as VibAna
+import time
+from . import Util
+from .PhysConst import ConversionFactors
+from . import Read
+from . import AtomicBasis
+from . import TDDFT
+from . import VibAna
 pathtocp2k=os.environ["cp2kpath"]
 pathtobinaries=pathtocp2k+"/exe/local/"
 def LCC_inputs(deltas,parentfolder="./",linktobinary=True,binaryloc=pathtobinaries):
-    _,normCD,_=Read.readinVibrations(parentfolder)
+    _,normCD,_=Read.read_vibrations(parentfolder)
     nCD=[]
     for it in range(np.shape(normCD)[0]):
         nCD.append(normCD[it,:])
@@ -35,12 +35,18 @@ def getManyBodyCouplings(eta, LCC, id_homo):
                               Shape: (num_modes, num_excited_states).
     """
     # --- Setup: No changes needed here, these are fast operations ---
-    Num_OfModes = LCC.shape[0]
-    Num_OfExciteStates = eta.shape[-1]
     
     # Slicing assumes the first (id_homo + 1) orbitals are holes
     # and the remaining are electrons (particles).
+    print("🚀 Starting Many-Body Coupling Calculation...")
+    start_time = time.time()
+
+    # --- Setup: No changes needed here, these are fast operations ---
     num_holes = id_homo + 1
+    num_modes = LCC.shape[0]
+    num_excited_states = eta.shape[2]
+    
+    print(f"   - System Info: {num_modes} modes, {num_excited_states} excited states, HOMO index {id_homo}.")
     
     g = LCC[:, num_holes:, num_holes:]        # Particle-particle block
     h = LCC[:, :num_holes, :num_holes] * -1   # Hole-hole block
@@ -71,12 +77,18 @@ def getManyBodyCouplings(eta, LCC, id_homo):
     # einsum: H_lqp = sum_{e,i,j} eta_eiq * h_lij * eta_ejp
     term2 = np.einsum('eiq,lij,ejp->lqp', eta_sub, h, eta_sub, optimize=True)
     H = term1 + term2
+    print(f"   - H matrix calculated. Shape: {H.shape}")
     # The original code copied H[l,q,p] to H[l,p,q]. The einsum calculation
     # computes the full, symmetric matrix at once, making this unnecessary.
 
     # --- 4. Save and Return ---
+    print("   - Saving coupling constant matrices...")
     np.save("H_CouplingConstants", H)
     np.save("K_CouplingConstants", K)
+    print("   - Files 'H_CouplingConstants.npy' and 'K_CouplingConstants.npy' saved successfully.")
+
+    end_time = time.time()
+    print(f"✅ Calculation complete! Total time: {end_time - start_time:.2f} seconds.")
     return H, K
 
 #######################################################################################################
@@ -144,8 +156,6 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
        Output:
         Saves coupling constants in a numpy .npy file named "Linear_Coupling_Constants.npy" in the parentfolder.
     '''
-    
-    ConFactors=PhysConst.ConversionFactors()
     #Get the .xyz file
     xyz_files = [f for f in os.listdir(parentfolder+"/"+'Equilibrium_Geometry') if f.endswith('.xyz')]
     if len(xyz_files) != 1:
@@ -156,7 +166,7 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
     #----------------------------------------------------------------------
 
     #get the Equilibrium Configuration 
-    Atoms_Eq=Read.readinAtomicCoordinates(parentfolder+"/Equilibrium_Geometry/")
+    Atoms_Eq=Read.read_atomic_coordinates(parentfolder+"/Equilibrium_Geometry/")
     #Construct Basis of the Equilibrium configuration
     Basis_Eq=AtomicBasis.getBasis(parentfolder+"/Equilibrium_Geometry/")
     #Diagonalize to the KS Hamiltonian in the ortonormal Basis
@@ -166,7 +176,7 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
     # Precompute phases
     phases = np.array([TDDFT.getPhaseOfMO(a_orth_Eq[:, it]) for it in range(len(E_Eq))])
     #parsing the input
-    Homoid=Util.getHOMOId(parentfolder+"/Equilibrium_Geometry/")
+    Homoid=Read.read_homo_index(parentfolder+"/Equilibrium_Geometry/")
     #parsing for occupied orbitals
     index_low=0
     if idmin==0:
@@ -201,9 +211,9 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
             included_orbitals.append(it)
             orthorgonalEigenstates_Eq.append(orth_eigenstate)
         
-    _,deltas=Read.readinBasisVectors(parentfolder)
+    _,deltas=Read.read_basis_vectors(parentfolder)
     #get the normal modes from the cartesian displacements
-    VibrationalFrequencies,_,normfactors=Read.readinVibrations(parentfolder)
+    VibrationalFrequencies,_,normfactors=Read.read_vibrations(parentfolder)
     #This has index convention lambda,mu
     couplingConstants=np.zeros((len(normfactors),np.shape(E_Eq)[0],np.shape(E_Eq)[0]))
     for mu in Util.progressbar(range(len(normfactors)),"Coupling Constants:",40):
@@ -212,7 +222,7 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
         #----------------------------------------------------------------------
         folderplus='vector='+str(mu+1)+'sign=+'
         #Get the stompositions for the positively displaced atoms
-        Atoms_Plus=Read.readinAtomicCoordinates(parentfolder+"/"+folderplus)
+        Atoms_Plus=Read.read_atomic_coordinates(parentfolder+"/"+folderplus)
         EPlus,a_orth_Plus,Sm12_Plus=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/"+folderplus+"/")
         T_Eq_Plus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq,cell_vectors)
         T_matrix_Plus=Sm12_Eq@T_Eq_Plus@Sm12_Plus
@@ -222,7 +232,7 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
         #----------------------------------------------------------------------
         folderminus='vector='+str(mu+1)+'sign=-'
         #Get the atom positions for the negatively displaced atoms
-        Atoms_Minus=Read.readinAtomicCoordinates(parentfolder+"/"+folderminus)
+        Atoms_Minus=Read.read_atomic_coordinates(parentfolder+"/"+folderminus)
         EMinus,a_orth_Minus,Sm12_Minus=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/"+folderminus+"/")
         #obtain the Basis Transformation Matrix 
         T_Eq_Minus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq,cell_vectors)
@@ -259,12 +269,12 @@ def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
             for it1 in range(len(included_orbitals)):
                 if it0==it1:
                     deltaE=(EPlus[included_orbitals[adibaticallyConnectediters_Plus[it0]]]-EMinus[included_orbitals[adibaticallyConnectediters_Minus[it1]]])/(2*deltas[mu])*normfactors[mu]
-                    couplingConstants[mu,included_orbitals[it0],included_orbitals[it1]]=ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*deltaE
+                    couplingConstants[mu,included_orbitals[it0],included_orbitals[it1]]=ConversionFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*deltaE
                 else:
                     overlap1=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus_dot_states_Plus[:,adibaticallyConnectediters_Plus[it1]])
                     overlap2=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus_dot_states_Minus[:,adibaticallyConnectediters_Minus[it1]])
                     deltaE=(overlap1-overlap2)/(2*deltas[mu])*normfactors[mu]*(E_Eq[included_orbitals[it1]]-E_Eq[included_orbitals[it0]])
-                    couplingConstants[mu,included_orbitals[it0],included_orbitals[it1]]=ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*deltaE
+                    couplingConstants[mu,included_orbitals[it0],included_orbitals[it1]]=ConversionFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*deltaE
     np.save(parentfolder+"/Linear_Coupling_Constants",couplingConstants)
 def getLCC_STATES(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
     '''Compute linear coupling constants from finitly displaced geometries.
@@ -278,7 +288,6 @@ def getLCC_STATES(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0
         Saves coupling constants in a numpy .npy file named "Linear_Coupling_Constants.npy" in the parentfolder.
     '''
     
-    ConFactors=PhysConst.ConversionFactors()
     #Get the .xyz file
     xyz_files = [f for f in os.listdir(parentfolder+"/"+'Equilibrium_Geometry') if f.endswith('.xyz')]
     if len(xyz_files) != 1:
@@ -287,19 +296,28 @@ def getLCC_STATES(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0
     #----------------------------------------------------------------------
     # Equilibrium configuration
     #----------------------------------------------------------------------
-
+    xyz_filepath=Util.get_xyz_filename(path=parentfolder+"/Equilibrium_Geometry/")
      #get the Equilibrium Configuration 
-    Atoms_Eq=Read.readinAtomicCoordinates(parentfolder+"/Equilibrium_Geometry/")
+    Atoms_Eq=Read.read_atomic_coordinates(xyz_filepath)
     #Construct Basis of the Equilibrium configuration
     Basis_Eq=AtomicBasis.getBasis(parentfolder+"/Equilibrium_Geometry/")
     #Diagonalize to the KS Hamiltonian in the ortonormal Basis
     E_Eq,a_orth_Eq,Sm12_Eq=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/Equilibrium_Geometry/")
+    if len(np.shape(a_orth_Eq))==2:
+        a_orth_Eq=a_orth_Eq[:,:,np.newaxis]
+    UKS=False
+    if np.shape(a_orth_Eq)[-1]==2:
+        UKS=True
     #get the normalized Eigenstates in the non-orthorgonal Basis & fix Phase
     orthorgonalEigenstates_Eq = []
+    if UKS:
+        orthorgonalEigenstates_Eq_beta = []
     # Precompute phases
-    phases = np.array([TDDFT.getPhaseOfMO(a_orth_Eq[:, it]) for it in range(len(E_Eq))])
+    phases = np.array([TDDFT.getPhaseOfMO(a_orth_Eq[:, it,0]) for it in range(len(E_Eq))])
+    if UKS:
+        phases_beta = np.array([TDDFT.getPhaseOfMO(a_orth_Eq[:, it,1]) for it in range(len(E_Eq))])
     #parsing the input
-    Homoid=Util.getHOMOId(parentfolder+"/Equilibrium_Geometry/")
+    Homoid=Read.read_homo_index(parentfolder+"/Equilibrium_Geometry/")
     #parsing for occupied orbitals
     index_low=0
     if idmin==0:
@@ -327,45 +345,71 @@ def getLCC_STATES(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0
     # Compute and append normalized eigenstates
     included_orbitals=[]
     for it in range(len(E_Eq)):
-        orth_eigenstate = a_orth_Eq[:, it]  # Make a copy to avoid modifying the original data
+        orth_eigenstate = a_orth_Eq[:, it,0]  # Make a copy to avoid modifying the original data
         phase = phases[it]
         orth_eigenstate *= phase
         if it>=index_low and it<=index_up:
             included_orbitals.append(it)
             orthorgonalEigenstates_Eq.append(orth_eigenstate)
     print(np.shape(orthorgonalEigenstates_Eq))
+    if UKS:
+        included_orbitals_beta=[]
+        for it in range(len(E_Eq)):
+            orth_eigenstate = a_orth_Eq[:, it,1]  # Make a copy to avoid modifying the original data
+            phase = phases_beta[it]
+            orth_eigenstate *= phase
+            if it>=index_low and it<=index_up:
+                included_orbitals_beta.append(it)
+                orthorgonalEigenstates_Eq_beta.append(orth_eigenstate)
+        print(np.shape(orthorgonalEigenstates_Eq_beta))
+
     States=np.transpose(np.array(orthorgonalEigenstates_Eq))
-    _,deltas=Read.readinBasisVectors(parentfolder)
+    if UKS:
+        States_beta=np.transpose(np.array(orthorgonalEigenstates_Eq_beta))
+    _,deltas=Read.read_basis_vectors(parentfolder)
     #get the normal modes from the cartesian displacements
-    VibrationalFrequencies,_,normfactors=Read.readinVibrations(parentfolder)
+    VibrationalFrequencies,_,normfactors=Read.read_vibrations(parentfolder)
     #This has index convention lambda,mu
-    couplingConstants=np.zeros((len(normfactors),np.shape(States)[0],np.shape(States)[0]))
+    if not UKS:
+        couplingConstants=np.zeros((len(normfactors),np.shape(States)[0],np.shape(States)[0],1))
+    else:
+        couplingConstants=np.zeros((len(normfactors),np.shape(States)[0],np.shape(States)[0],2))
     for mu in Util.progressbar(range(len(normfactors)),"Coupling Constants:",40):
         #----------------------------------------------------------------------
         # Positively displaced 
         #----------------------------------------------------------------------
         folderplus='vector='+str(mu+1)+'sign=+'
         #Get the stompositions for the positively displaced atoms
-        Atoms_Plus=Read.readinAtomicCoordinates(parentfolder+"/"+folderplus)
-        KSH_alpha_Plus,KSH_beta_Plus,OLM_Plus=Read.readinMatrices(parentfolder+"/"+folderplus)
+        xyz_filepath=Util.get_xyz_filename(path=parentfolder+"/"+folderplus)
+        Atoms_Plus=Read.read_atomic_coordinates(xyz_filepath)
+        KSH_alpha_Plus,KSH_beta_Plus,OLM_Plus=Read.read_ks_matrices(parentfolder+"/"+folderplus)
         T_Eq_Plus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq,cell_vectors)
         Sm1_Plus=Util.getSm1(OLM_Plus)
         T_Plus=Sm12_Eq@T_Eq_Plus@Sm1_Plus
         #Do Basis Transform
         KS_Plus=T_Plus@KSH_alpha_Plus@np.transpose(T_Plus)
+        if UKS:
+            KS_Plus_beta=T_Plus@KSH_beta_Plus@np.transpose(T_Plus)
         #----------------------------------------------------------------------
         # Negatively displaced 
         #----------------------------------------------------------------------
         folderminus='vector='+str(mu+1)+'sign=-'
         #Get the atom positions for the negatively displaced atoms
-        Atoms_Minus=Read.readinAtomicCoordinates(parentfolder+"/"+folderminus)
-        KSH_alpha_Minus,KSH_beta_Minus,OLM_Minus=Read.readinMatrices(parentfolder+"/"+folderminus)
+        xyz_filepath=Util.get_xyz_filename(path=parentfolder+"/"+folderminus)
+        Atoms_Minus=Read.read_atomic_coordinates(xyz_filepath)
+        KSH_alpha_Minus,KSH_beta_Minus,OLM_Minus=Read.read_ks_matrices(parentfolder+"/"+folderminus)
         T_Eq_Minus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq,cell_vectors)
         Sm1_Minus=Util.getSm1(OLM_Minus)
         T_Minus=Sm12_Eq@T_Eq_Minus@Sm1_Minus
         #Do Basis Transform
         KS_minus=T_Minus@KSH_alpha_Minus@np.transpose(T_Minus)
+        if UKS:
+            KS_minus_beta=T_Minus@KSH_beta_Minus@np.transpose(T_Minus)
         #Compute derivative
         derivativeKS=(KS_Plus-KS_minus)/(2*deltas[mu])*normfactors[mu]
-        couplingConstants[mu,:,:]=ConFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*np.transpose(States)@derivativeKS@States
+        if UKS:
+            derivativeKS_beta=(KS_Plus_beta-KS_minus_beta)/(2*deltas[mu])*normfactors[mu]
+        couplingConstants[mu,:,:,0]=ConversionFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*np.transpose(States)@derivativeKS@States
+        if UKS:
+            couplingConstants[mu,:,:,1]=ConversionFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*np.transpose(States_beta)@derivativeKS_beta@States_beta
     np.save(parentfolder+"/LCC_STATES",couplingConstants)
