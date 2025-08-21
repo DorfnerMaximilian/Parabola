@@ -1,11 +1,8 @@
-import Modules.Util as util
-import Modules.PhysConst as PhysConst
-import Modules.Read as Read
-import Modules.Write as Write
+from .PhysConst import ConversionFactors
+from . import Read
+from . import Write
 import numpy as np
 import os
-pathtocp2k=os.environ["cp2kpath"]
-pathtobinaries=pathtocp2k+"/exe/local/"
 def ComputeCenterOfMassCoordinates(coordinates,masses):
     """
     Computes the center of mass of a molecule with respect to the basis of the coordinate file.
@@ -291,12 +288,12 @@ def getPrincipleAxisCoordinates(xyzcoordinates,masses=None,axis=None):
     
     return principleaxiscoordinates
 def get_Geometric_Principle_Axis_Coordinates(path="./"):
-    xyzfilename=util.get_xyz_filename(path,verbose=False)
-    coordinates,_,atomic_symbols=Read.readCoordinatesAndMasses(path)
+    xyzfilename=Read.get_xyz_filename(path,verbose=False)
+    coordinates,_,atomic_symbols=Read.read_coordinates_and_masses(path)
     principleaxiscoordinates=getPrincipleAxisCoordinates(coordinates)
     Write.write_xyz_file(atomic_symbols=atomic_symbols, coordinates=principleaxiscoordinates, filename=xyzfilename, path=path, cell_coordinates=None, overwrite=True)
     centerMolecule(path)
-def getNeibouringCellVectors(path,m=1,n=1,l=1):
+def getNeibouringCellVectors(cell,m=1,n=1,l=1):
     """
     Computes the vectors connecting the central cell to its neighboring cells 
     in a periodic system.
@@ -337,18 +334,16 @@ def getNeibouringCellVectors(path,m=1,n=1,l=1):
     [0.0, 0.0, 0.0, 5.29, 0.0, 0.0, 0.0, 5.29, 0.0]
 
     """
-    ConFactors=PhysConst.ConversionFactors()
     cellvectors=[]
-    cell=Read.readinCellSize(path)
     for itx in range(-m,m+1,1):
         for ity in range(-n,n+1,1):
             for itz in range(-l,l+1,1):
-                vectortoappend=(itx*cell[0]+ity*cell[1]+itz*cell[2])*ConFactors["A->a.u."]
+                vectortoappend=(itx*cell[0]+ity*cell[1]+itz*cell[2])*ConversionFactors["A->a.u."]
                 cellvectors.append(vectortoappend[0])
                 cellvectors.append(vectortoappend[1])
                 cellvectors.append(vectortoappend[2])
     return cellvectors
-def centerMolecule(path=None, overwrite=False):
+def centerMolecule(path=None):
     """
     Centers a molecule or collection of atoms within the unit cell.
 
@@ -380,7 +375,28 @@ def centerMolecule(path=None, overwrite=False):
     """
     if path is None:
         path=os.getcwd()
-    cellcoordinates = Read.readinCellSize(path)
+    xyz_file_path=Read.get_xyz_filename(path=path,verbose=True)
+    with open(xyz_file_path,"r") as f:
+        lines=f.readlines()
+        comment=lines[1][:-1]
+    xyzcoordinates, _, atomicsym = Read.read_coordinates_and_masses(xyz_file_path)
+
+
+    try:
+        cellcoordinates = Read.read_cell_vectors(path)
+    except:
+        centerofgeometry, center = ComputeCenterOfGeometryCoordinates(xyzcoordinates)
+        xvalue=2*np.max(np.abs(np.array(xyzcoordinates)[:, 0] - center[0])) + 15
+        yvalue=2*np.max(np.abs(np.array(xyzcoordinates)[:, 1] - center[1])) + 15
+        zvalue=2*np.max(np.abs(np.array(xyzcoordinates)[:, 2] - center[2])) + 15
+        cellcoordinates=[
+            np.array([xvalue, 0, 0]),
+            np.array([0, yvalue , 0]),
+            np.array([0, 0, zvalue])
+        ]
+        comment+=f";cell=(({xvalue},0,0)(0,{yvalue},0)(0,0,{zvalue}))"
+
+    
 
     # Check if the cell is orthorhombic, otherwise throw error:
     for cellvector1 in cellcoordinates:
@@ -393,15 +409,9 @@ def centerMolecule(path=None, overwrite=False):
     # Compute center of cell (assuming orthogonal basis vectors)
     cellcenter = 0.5 * cellcoordinates[0] + 0.5 * cellcoordinates[1] + 0.5 * cellcoordinates[2]
     centerofcellCoordinates = []
-    geometric_mean = np.array([0.0, 0.0, 0.0])
 
-    xyzcoordinates, _, atomicsym = Read.readCoordinatesAndMasses(path)
-    for coordinate in xyzcoordinates:
-        geometric_mean += coordinate
-    geometric_mean /= len(xyzcoordinates)
-
-    for coordinate in xyzcoordinates:
-        centerofcellCoordinates.append(coordinate + cellcenter - geometric_mean)
+    for coordinate in centerofgeometry:
+        centerofcellCoordinates.append(coordinate + cellcenter)
 
     # Compute maximum distance of atom from coordinate center
     maxdistx = max(np.abs(coord[0]) for coord in xyzcoordinates)
@@ -419,8 +429,7 @@ def centerMolecule(path=None, overwrite=False):
         raise ValueError(f"Increase cell size in y direction to at least {2 * mincellsizey}")
     if mincellsizez <= 0.5 * maxdistz:
         raise ValueError(f"Increase cell size in z direction to at least {2 * mincellsizez}")
-    filename=util.get_xyz_filename(path=path,verbose=False)
-    Write.write_xyz_file(atomicsym, centerofcellCoordinates,filename, path, cellcoordinates, overwrite=True,success_comment="Successfully centered coordinates in path")
+    Write.write_xyz_file(atomicsym, centerofcellCoordinates,xyz_file_path, comment=comment, overwrite=True,success_comment="Successfully centered coordinates in path")
 
 def changeConfiguration(folderlabel,vector,delta,sign,path_xyz='./',path_to="./"):
     """
@@ -628,59 +637,6 @@ def changeConfiguration2(folderlabel,vector1,delta1,sign1,vector2,delta2,sign2,p
         f.write("\n")
     f.close()
     return
-def PES_inputs(deltas1,deltas2,vector1,vector2,linktobinary=True,binary="cp2k.popt",parentpath="./",binaryloc=pathtobinaries):
-    ConFactors=PhysConst.ConversionFactors()
-    #get the Projectname: 
-    inp_files = [f for f in os.listdir(parentpath) if f.endswith('.inp')]
-    if len(inp_files) != 1:
-        raise ValueError('InputError: There should be only one .inp file in the current directory')
-    inpfilename = inp_files[0]
-    Projectname='emptyString'
-    with open(inpfilename,'r') as f:
-        for lines in f:
-            if len(lines.split())>0:
-                if lines.split()[0]=="PROJECT":
-                    Projectname=lines.split()[1]
-    if Projectname=='emptyString':
-        raise ValueError('InputError: Projectname not found!')
-    #get xyzfile
-    xyz_files = [f for f in os.listdir(parentpath) if f.endswith('.xyz')]
-    if len(xyz_files) != 1:
-        raise ValueError('InputError: There should be only one .xyz file in the current directory')
-    xyzfilename = xyz_files[0]
-    Restart_files = [f for f in os.listdir(parentpath) if f.endswith('-RESTART.wfn')]
-    if len(Restart_files) != 1:
-        raise ValueError('InputError: There should be only one Restart file in the current directory')
-    Restart_filename = Restart_files[0]
-    if Restart_filename!=Projectname+'-RESTART.wfn':
-        raise ValueError('InputError: Project- and Restartfilename differ! Reconsider your input.')
-    os.mkdir(parentpath+"Equilibrium_Geometry")
-    os.system("cp "+parentpath+inpfilename+" "+parentpath+"Equilibrium_Geometry")
-    os.system("cp "+parentpath+xyzfilename+" "+parentpath+"Equilibrium_Geometry")
-    os.system("cp "+parentpath+Restart_filename+" "+parentpath+"Equilibrium_Geometry")
-    if linktobinary:
-        os.system("ln -s "+binaryloc+"/"+binary+" "+parentpath+"Equilibrium_Geometry"+"/")
-    for it1 in range(len(deltas1)):
-        for it2 in range(len(deltas2)):
-            folderlabel='delta1='+str(int(np.abs(deltas1[it1])*100))+'delta2='+str(int(np.abs(deltas2[it2])*100))
-            sign1=0.5*(1-np.sign(deltas1[it1]))
-            sign2=0.5*(1-np.sign(deltas2[it2]))
-            if sign1==0:
-                symbolsign1='+'
-            if sign1==1:
-                symbolsign1='-'
-            if sign2==0:
-                symbolsign2='+'
-            if sign2==1:
-                symbolsign2='-'
-            work_dir=folderlabel+"sign1="+symbolsign1+"sign2="+symbolsign2
-            changeConfiguration2(folderlabel,vector1,np.abs(deltas1[it1])*ConFactors['a.u.->A'],sign1,vector2,np.abs(deltas2[it2])*ConFactors['a.u.->A'],sign2)
-            os.system("cp "+parentpath+inpfilename+" "+parentpath+work_dir)
-            os.system("cp "+parentpath+Restart_filename+" "+parentpath+work_dir)
-            if linktobinary:
-                os.system("ln -s "+binaryloc+"/"+binary+" "+parentpath+work_dir+"/")
-    np.save("vector1",vector1)
-    np.save("vector2",vector2)
 def getNewXYZ(path='.'):
     """
     Extracts the atomic coordinates from the last iteration of a geometry 
