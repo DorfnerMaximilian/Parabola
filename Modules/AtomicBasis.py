@@ -1,13 +1,13 @@
 #Import all Packages used by this module
 import numpy as np
-import Modules.PhysConst as PhysConst
+from .PhysConst import ConversionFactors
 import os 
-from ctypes import c_char_p, cdll, POINTER, c_double, c_int
+from ctypes import c_char_p, cdll, POINTER, c_double, c_int,Structure
 from copy import deepcopy
 
 #get the environmental variable 
 pathtocp2k=os.environ["cp2kpath"]
-pathtocpp_lib=os.environ["parabolapath"]+"/CPP_Extension/bin/AtomicBasis.so"
+pathtocpp_lib="./CPP_Extension/bin/AtomicBasis.so"
 #Python Implementation of the Overlap for Normalization of the Basis
 def gamma(alpha,n):
     ## computes the analytical value of the integral int_{-\inf}^{inf}x^ne^{-alphax^2}
@@ -494,8 +494,6 @@ def getTransformationmatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0],
     # Load the shared library
     lib = cdll.LoadLibrary(pathtolib)
     
-    # Conversion factors and other initialization
-    ConFactors = PhysConst.ConversionFactors()
 
     # Initialize the python lists for Basis Set 1
     atoms_set1 = []
@@ -511,7 +509,7 @@ def getTransformationmatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0],
         B1 = Basis[Atom_type1]
         for itBasis1 in range(len(Basis[Atom_type1])):
             atoms_set1.append(Atom_type1)
-            R1 = np.array(Atoms1[itAtom1][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            R1 = np.array(Atoms1[itAtom1][2:]) * ConversionFactors['A->a.u.']  # conversion from angstroem to atomic units
             for it1 in range(len(R1)):
                 positions_set1.append(R1[it1])
             state1 = B1[itBasis1]
@@ -539,7 +537,7 @@ def getTransformationmatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0],
         B2 = Basis[Atom_type2]
         for itBasis2 in range(len(Basis[Atom_type2])):
             atoms_set2.append(Atom_type2)
-            R2 = np.array(Atoms2[itAtom2][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            R2 = np.array(Atoms2[itAtom2][2:]) * ConversionFactors['A->a.u.']  # conversion from angstroem to atomic units
             for it1 in range(len(R2)):
                 positions_set2.append(R2[it1])
             state2 = B2[itBasis2]
@@ -643,8 +641,6 @@ def WFNonxyzGrid(grid1,grid2,grid3,Coefficients,Atoms, Basis, cell_vectors=[0.0,
     # Load the shared library
     lib = cdll.LoadLibrary(pathtolib)
     
-    # Conversion factors and other initialization
-    ConFactors = PhysConst.ConversionFactors()
     #Make the grid 
     xyz_grid=np.array(np.meshgrid(grid1,grid2,grid3,indexing="ij")).flatten("F").tolist()
     # Initialize the python lists for Basis Set 1
@@ -661,7 +657,7 @@ def WFNonxyzGrid(grid1,grid2,grid3,Coefficients,Atoms, Basis, cell_vectors=[0.0,
         B = Basis[Atom_type]
         for itBasis in range(len(Basis[Atom_type])):
             atoms_set.append(Atom_type)
-            R = np.array(Atoms[itAtom][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            R = np.array(Atoms[itAtom][2:]) * ConversionFactors['A->a.u.']  # conversion from angstroem to atomic units
             for it1 in range(len(R)):
                 positions_set.append(R[it1])
             state = B[itBasis]
@@ -751,8 +747,6 @@ def LocalPotentialonxyzGrid(gridpoints,MatrixElements,Atoms, Basis, cell_vectors
     # Load the shared library
     lib = cdll.LoadLibrary(pathtolib)
     
-    # Conversion factors and other initialization
-    ConFactors = PhysConst.ConversionFactors()
     #Make the grid 
     xyz_grid=gridpoints
     # Initialize the python lists for Basis Set 1
@@ -769,7 +763,7 @@ def LocalPotentialonxyzGrid(gridpoints,MatrixElements,Atoms, Basis, cell_vectors
         B = Basis[Atom_type]
         for itBasis in range(len(Basis[Atom_type])):
             atoms_set.append(Atom_type)
-            R = np.array(Atoms[itAtom][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            R = np.array(Atoms[itAtom][2:]) * ConversionFactors['A->a.u.']  # conversion from angstroem to atomic units
             for it1 in range(len(R)):
                 positions_set.append(R[it1])
             state = B[itBasis]
@@ -899,8 +893,6 @@ def get_Position_Operators(Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib
     # Load the shared library
     lib = cdll.LoadLibrary(pathtolib)
     
-    # Conversion factors and other initialization
-    ConFactors = PhysConst.ConversionFactors()
 
     # Initialize the python lists for Basis Set 1
     atoms_set1 = []
@@ -916,7 +908,7 @@ def get_Position_Operators(Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib
         B1 = Basis[Atom_type1]
         for itBasis1 in range(len(Basis[Atom_type1])):
             atoms_set1.append(Atom_type1)
-            R1 = np.array(Atoms[itAtom1][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            R1 = np.array(Atoms[itAtom1][2:]) * ConversionFactors['A->a.u.']  # conversion from angstroem to atomic units
             for it1 in range(len(R1)):
                 positions_set1.append(R1[it1])
             state1 = B1[itBasis1]
@@ -944,7 +936,7 @@ def get_Position_Operators(Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib
         B2 = Basis[Atom_type2]
         for itBasis2 in range(len(Basis[Atom_type2])):
             atoms_set2.append(Atom_type2)
-            R2 = np.array(Atoms[itAtom2][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            R2 = np.array(Atoms[itAtom2][2:]) * ConversionFactors['A->a.u.']  # conversion from angstroem to atomic units
             for it1 in range(len(R2)):
                 positions_set2.append(R2[it1])
             state2 = B2[itBasis2]
@@ -1039,7 +1031,7 @@ def get_Position_Operators(Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib
     freeArray(OLP_array_ptr)
     z_operator = np.array(array_list).reshape((len(atoms_set1), len(atoms_set2)))
 
-    return x_operator/ConFactors['A->a.u.'],y_operator/ConFactors['A->a.u.'],z_operator/ConFactors['A->a.u.']
+    return x_operator/ConversionFactors['A->a.u.'],y_operator/ConversionFactors['A->a.u.'],z_operator/ConversionFactors['A->a.u.']
 
 def get_momentum_operators(Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib=pathtocpp_lib):
     
@@ -1047,8 +1039,6 @@ def get_momentum_operators(Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib
     # Load the shared library
     lib = cdll.LoadLibrary(pathtolib)
     
-    # Conversion factors and other initialization
-    ConFactors = PhysConst.ConversionFactors()
 
     # Initialize the python lists for Basis Set 1
     atoms_set1 = []
@@ -1064,7 +1054,7 @@ def get_momentum_operators(Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib
         B1 = Basis[Atom_type1]
         for itBasis1 in range(len(Basis[Atom_type1])):
             atoms_set1.append(Atom_type1)
-            R1 = np.array(Atoms[itAtom1][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            R1 = np.array(Atoms[itAtom1][2:]) * ConversionFactors['A->a.u.']  # conversion from angstroem to atomic units
             for it1 in range(len(R1)):
                 positions_set1.append(R1[it1])
             state1 = B1[itBasis1]
@@ -1092,7 +1082,7 @@ def get_momentum_operators(Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib
         B2 = Basis[Atom_type2]
         for itBasis2 in range(len(Basis[Atom_type2])):
             atoms_set2.append(Atom_type2)
-            R2 = np.array(Atoms[itAtom2][2:]) * ConFactors['A->a.u.']  # conversion from angstroem to atomic units
+            R2 = np.array(Atoms[itAtom2][2:]) * ConversionFactors['A->a.u.']  # conversion from angstroem to atomic units
             for it1 in range(len(R2)):
                 positions_set2.append(R2[it1])
             state2 = B2[itBasis2]
@@ -1188,3 +1178,138 @@ def get_momentum_operators(Atoms, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib
     p_z = np.array(array_list).reshape((len(atoms_set1), len(atoms_set2)))
 
     return -1.0j*p_x,-1.0j*p_y,-1.0j*p_z
+# Define a struct matching std::complex<double>
+class ComplexDouble(Structure):
+    _fields_ = [
+        ("real", c_double),
+        ("imag", c_double)
+    ]
+    def __repr__(self):
+        return f"ComplexDouble(real={self.real}, imag={self.imag})"
+def get_phase_operators(Atoms, Basis,q_vector=[0.0,0.0,0.0], cell_vectors=[0.0, 0.0, 0.0], pathtolib=pathtocpp_lib):
+    
+    
+    # Load the shared library
+    lib = cdll.LoadLibrary(pathtolib)
+    # Initialize the python lists for Basis Set 1
+    atoms_set1 = []
+    positions_set1 = []
+    alphas_lengths_set1 = []
+    alphas_set1 = []
+    contr_coef_set1 = []
+    lms_set1 = []
+
+    # Create Python lists for input (Set 1)
+    for itAtom1 in range(len(Atoms)):
+        Atom_type1 = Atoms[itAtom1][1]
+        B1 = Basis[Atom_type1]
+        for itBasis1 in range(len(Basis[Atom_type1])):
+            atoms_set1.append(Atom_type1)
+            R1 = np.array(Atoms[itAtom1][2:]) * ConversionFactors['A->a.u.']  # conversion from angstroem to atomic units
+            for it1 in range(len(R1)):
+                positions_set1.append(R1[it1])
+            state1 = B1[itBasis1]
+            dalpha1 = state1[3:]
+            alphas_lengths_set1.append(len(dalpha1))
+            for it2 in range(len(dalpha1)):
+                alphas_set1.append(dalpha1[it2][0])
+                contr_coef_set1.append(dalpha1[it2][1])
+            lm1 = state1[2][:]
+            lms_set1.append(lm1)
+
+    contr_coef_lengths_set1 = alphas_lengths_set1  # Lengths of contr_coef for each basis function in Set 1
+
+    # Initialize the python lists for Basis Set 2
+    atoms_set2 = []
+    positions_set2 = []
+    alphas_lengths_set2 = []
+    alphas_set2 = []
+    contr_coef_set2 = []
+    lms_set2 = []
+
+    # Fill Python lists for input (Set 2)
+    for itAtom2 in range(len(Atoms)):
+        Atom_type2 = Atoms[itAtom2][1]
+        B2 = Basis[Atom_type2]
+        for itBasis2 in range(len(Basis[Atom_type2])):
+            atoms_set2.append(Atom_type2)
+            R2 = np.array(Atoms[itAtom2][2:]) * ConversionFactors['A->a.u.']  # conversion from angstroem to atomic units
+            for it1 in range(len(R2)):
+                positions_set2.append(R2[it1])
+            state2 = B2[itBasis2]
+            dalpha2 = state2[3:]
+            alphas_lengths_set2.append(len(dalpha2))
+            for it2 in range(len(dalpha2)):
+                alphas_set2.append(dalpha2[it2][0])
+                contr_coef_set2.append(dalpha2[it2][1])
+            lm2 = state2[2][:]
+            lms_set2.append(lm2)
+
+    contr_coef_lengths_set2 = alphas_lengths_set2  # Lengths of contr_coef for each basis function in Set 1
+
+    # Define the function signature
+    get_Phase_Operators = lib.get_Phase_Operators
+    get_Phase_Operators.restype = POINTER(ComplexDouble)
+    get_Phase_Operators.argtypes = [POINTER(c_char_p),
+                             POINTER(c_double),
+                             POINTER(c_double),
+                             POINTER(c_int),
+                             POINTER(c_double),
+                             POINTER(c_int),
+                             POINTER(c_char_p),
+                             c_int,
+                             POINTER(c_char_p),
+                             POINTER(c_double),
+                             POINTER(c_double),
+                             POINTER(c_int),
+                             POINTER(c_double),
+                             POINTER(c_int),
+                             POINTER(c_char_p),
+                             c_int,
+                             POINTER(c_double),
+                             c_int,
+                             POINTER(c_double)
+                             ]
+
+    freeArray = lib.free_ptr_complex
+    freeArray.argtypes = [POINTER(ComplexDouble)]
+
+    # Convert Python lists to pointers
+    atoms_set1_ptr = (c_char_p * len(atoms_set1))(*[s.encode("utf-8") for s in atoms_set1])
+    positions_set1_ptr = (c_double * len(positions_set1))(*positions_set1)
+    alphas_set1_ptr = (c_double * len(alphas_set1))(*alphas_set1)
+    alphas_lengths_set1_ptr = (c_int * len(alphas_lengths_set1))(*alphas_lengths_set1)
+    contr_coef_set1_ptr = (c_double * len(contr_coef_set1))(*contr_coef_set1)
+    contr_coef_lengths_set1_ptr = (c_int * len(contr_coef_lengths_set1))(*contr_coef_lengths_set1)
+    lms_set1_ptr = (c_char_p * len(lms_set1))(*[s.encode("utf-8") for s in lms_set1])
+
+    atoms_set2_ptr = (c_char_p * len(atoms_set2))(*[s.encode("utf-8") for s in atoms_set2])
+    positions_set2_ptr = (c_double * len(positions_set2))(*positions_set2)
+    alphas_set2_ptr = (c_double * len(alphas_set2))(*alphas_set2)
+    alphas_lengths_set2_ptr = (c_int * len(alphas_lengths_set2))(*alphas_lengths_set2)
+    contr_coef_set2_ptr = (c_double * len(contr_coef_set2))(*contr_coef_set2)
+    contr_coef_lengths_set2_ptr = (c_int * len(contr_coef_lengths_set2))(*contr_coef_lengths_set2)
+    lms_set2_ptr = (c_char_p * len(lms_set2))(*[s.encode("utf-8") for s in lms_set2])
+
+    cell_vectors_ptr = (c_double * len(cell_vectors))(*cell_vectors)
+
+    q_vector_ptr = (c_double * len(q_vector))(*q_vector)
+
+    # Call the C++ function
+    OLP_array_ptr = get_Phase_Operators(atoms_set1_ptr, positions_set1_ptr, alphas_set1_ptr, alphas_lengths_set1_ptr,
+                                  contr_coef_set1_ptr, contr_coef_lengths_set1_ptr, lms_set1_ptr, len(atoms_set1),
+                                  atoms_set2_ptr, positions_set2_ptr, alphas_set2_ptr, alphas_lengths_set2_ptr,
+                                  contr_coef_set2_ptr, contr_coef_lengths_set2_ptr, lms_set2_ptr, len(atoms_set2),
+                                  cell_vectors_ptr, len(cell_vectors),q_vector_ptr)
+
+    n_elements = len(atoms_set1) * len(atoms_set2)
+
+    # Convert to NumPy array of complex128
+    raw_array = np.ctypeslib.as_array(OLP_array_ptr, shape=(n_elements,))
+    complex_array = np.array([complex(raw_array[i][0], raw_array[i][1]) for i in range(n_elements)], dtype=np.complex128)
+
+    # Free the memory allocated in C++
+    freeArray(OLP_array_ptr)
+
+    phi_q = complex_array.reshape((len(atoms_set1), len(atoms_set2)))
+    return phi_q
