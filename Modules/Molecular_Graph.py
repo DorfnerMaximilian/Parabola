@@ -1,4 +1,4 @@
-import Modules.Read as Read
+from . import Read
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
 from copy import deepcopy
@@ -66,7 +66,7 @@ def get_adjacency_matrix(coordinates,atomicsymbols,tol=0.4):
                 adj[j, i] = 1  # symmetric
     return adj
 def determine_atoms(self):
-    coordinates, _, atomic_symbols = Read.readCoordinatesAndMasses(self.path)
+    coordinates, _, atomic_symbols = Read.read_coordinates_and_masses(self.path)
     self.adjacency_matrix=get_adjacency_matrix(coordinates,atomic_symbols)
     for it,atom_sym in enumerate(atomic_symbols):
         self.atoms.append(atom(atom_sym,index=it,coordinates=coordinates[it]))
