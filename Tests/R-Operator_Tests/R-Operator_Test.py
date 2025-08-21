@@ -1,5 +1,5 @@
 import unittest
-import Parabola as p
+import parabola as p
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy as sci
@@ -51,12 +51,12 @@ def determine_phases_from_Gamma_eigenstates(O,Es,T,tolerance=10**(-8)):
 class TestBand_Unfolding(unittest.TestCase):
     def test_Linear_Chain(self):
         print("Started Linear_Chain")
-        Conversion=p.PhysConst.ConversionFactors()
+        Conversion=p.PhysConst.ConversionFactors
         V=-0.025*Conversion["eV->a.u."]
         epsilon=0.05*Conversion["eV->a.u."]
         print("Transferintegral [a.u.]: V=",V)
         print("On-Site Energies [a.u.]: epsilon=",epsilon)
-        cellvectors=p.Read.readinCellSize()
+        cellvectors=p.Read.read_cell_vectors()
         cv=[0.0,0.0,0.0,cellvectors[0][0],0.0,0.0,-1*cellvectors[0][0],0.0,0.0]
         for it in range(len(cv)):
             cv[it] *= Conversion["A->a.u."]
@@ -65,7 +65,7 @@ class TestBand_Unfolding(unittest.TestCase):
         symmetry_structure = p.Symmetry.determineSymmetry("/media/max/SSD1/PHD/Data/CP2K/CP2K_Python_Modules/parabola/Tests/BandUnfolding_Tests/Linear_Chain/")
         generators = symmetry_structure.TranslationSymmetry_Generators
         print(len(generators))
-        Atoms=p.Read.readinAtomicCoordinates("/media/max/SSD1/PHD/Data/CP2K/CP2K_Python_Modules/parabola/Tests/BandUnfolding_Tests/Linear_Chain/")
+        Atoms=p.Read.read_atomic_coordinates("/media/max/SSD1/PHD/Data/CP2K/CP2K_Python_Modules/parabola/Tests/BandUnfolding_Tests/Linear_Chain/")
         HKS=np.diag(V*np.ones(len(Atoms)-1),1)+np.diag(V*np.ones(len(Atoms)-1),-1)+np.diag(epsilon*np.ones(len(Atoms)))
         HKS[-1,0]=V
         HKS[0,-1]=V

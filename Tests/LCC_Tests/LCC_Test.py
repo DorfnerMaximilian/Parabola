@@ -1,5 +1,5 @@
 import unittest
-import Parabola as p
+import parabola as p
 import numpy as np
 import time 
 import os
@@ -27,9 +27,9 @@ def getadibaticallyConnectedEigenstates_original(orthorgonalEigenstates_Eq,ortho
 class TestLCC(unittest.TestCase):
     def test_getadibaticallyConnectedEigenstates(self):
         print("Started getadibaticallyConnectedEigenstates Test")
-        Atoms_Eq=p.Read.readinAtomicCoordinates("./getadibaticallyConnectedEigenstates/Pyrazine_Test/Eq_Geo/")
+        Atoms_Eq=p.Read.read_atomic_coordinates("./getadibaticallyConnectedEigenstates/Pyrazine_Test/Eq_Geo/")
         Basis_Eq=p.AtomicBasis.getBasis("./getadibaticallyConnectedEigenstates/Pyrazine_Test/Eq_Geo/")
-        KSHamiltonian_Eq,S_Eq=p.Read.readinMatrices("./getadibaticallyConnectedEigenstates/Pyrazine_Test/Eq_Geo/")
+        KSHamiltonian_Eq,S_Eq=p.Read.read_ks_matrices("./getadibaticallyConnectedEigenstates/Pyrazine_Test/Eq_Geo/")
         Sm12_Eq=p.Util.LoewdinTransformation(S_Eq)
         KSHorth_Eq=np.transpose(Sm12_Eq)@KSHamiltonian_Eq@Sm12_Eq
         E_Eq,a_orth_Eq=np.linalg.eigh(KSHorth_Eq)
@@ -46,9 +46,9 @@ class TestLCC(unittest.TestCase):
             orth_eigenstate *= phase
             orthorgonalEigenstates_Eq.append(orth_eigenstate)
 
-        KSHamiltonian_Plus,OLM_Plus=p.Read.readinMatrices('./getadibaticallyConnectedEigenstates/Pyrazine_Test/deflected_Geo/')
+        KSHamiltonian_Plus,OLM_Plus=p.Read.read_ks_matrices('./getadibaticallyConnectedEigenstates/Pyrazine_Test/deflected_Geo/')
         #Get the stompositions for the positively displaced atoms
-        Atoms_Plus=p.Read.readinAtomicCoordinates('./getadibaticallyConnectedEigenstates/Pyrazine_Test/deflected_Geo/')
+        Atoms_Plus=p.Read.read_atomic_coordinates('./getadibaticallyConnectedEigenstates/Pyrazine_Test/deflected_Geo/')
         Sm12_Plus=p.Util.LoewdinTransformation(OLM_Plus)
         KSHorth_P=np.dot(Sm12_Plus,np.dot(KSHamiltonian_Plus,Sm12_Plus))
         EPlus,a_orth_Plus=np.linalg.eigh(KSHorth_P)

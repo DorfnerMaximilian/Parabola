@@ -1,5 +1,5 @@
 import unittest
-import Parabola as p
+import parabola as p
 import numpy as np
 import os
 class Test_Vib_Ana(unittest.TestCase):
