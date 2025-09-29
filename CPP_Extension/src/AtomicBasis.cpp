@@ -433,10 +433,12 @@ std::array<double, 3> R2_shifted = {R2[0] + cell_vector[0],
 // Compute the overlap for the shifted positions
 for (size_t it1 = 0; it1 < alphas1.size(); ++it1) {
 for (size_t it2 = 0; it2 < alphas2.size(); ++it2) {
-  matrix_element += contr_coeff1[it1] * contr_coeff2[it2] *
-             IJ_Int({R1[0] - R2_shifted[0], R1[1] - R2_shifted[1], R1[2] - R2_shifted[2]},
-                  lm1, lm2, alphas1[it1], alphas2[it2],direction)+contr_coeff1[it1] * contr_coeff2[it2] *(R1[direction-1])*IJ_Int({R1[0] - R2_shifted[0], R1[1] - R2_shifted[1], R1[2] - R2_shifted[2]},
-                    lm1, lm2, alphas1[it1], alphas2[it2],0);
+            matrix_element += contr_coeff1[it1] * contr_coeff2[it2] *
+            IJ_Int({R1[0] - R2_shifted[0], R1[1] - R2_shifted[1], R1[2] - R2_shifted[2]},
+                lm1, lm2, alphas1[it1], alphas2[it2],direction)
+            +contr_coeff1[it1] * contr_coeff2[it2] *(R1[direction-1]-0.5*cell_vector[direction-1])
+            *IJ_Int({R1[0] - R2_shifted[0], R1[1] - R2_shifted[1], R1[2] - R2_shifted[2]},lm1, lm2, alphas1[it1], alphas2[it2],0);
+
 }
 }
 }
