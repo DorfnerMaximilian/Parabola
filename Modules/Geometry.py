@@ -382,19 +382,17 @@ def centerMolecule(path=None):
     xyzcoordinates, _, atomicsym = Read.read_coordinates_and_masses(xyz_file_path)
 
 
-    try:
-        cellcoordinates = Read.read_cell_vectors(path)
-    except:
-        centerofgeometry, center = ComputeCenterOfGeometryCoordinates(xyzcoordinates)
-        xvalue=2*np.max(np.abs(np.array(xyzcoordinates)[:, 0] - center[0])) + 15
-        yvalue=2*np.max(np.abs(np.array(xyzcoordinates)[:, 1] - center[1])) + 15
-        zvalue=2*np.max(np.abs(np.array(xyzcoordinates)[:, 2] - center[2])) + 15
-        cellcoordinates=[
-            np.array([xvalue, 0, 0]),
-            np.array([0, yvalue , 0]),
-            np.array([0, 0, zvalue])
-        ]
-        comment+=f";cell=(({xvalue},0,0)(0,{yvalue},0)(0,0,{zvalue}))"
+    cellcoordinates = Read.read_cell_vectors(path)
+    centerofgeometry, center = ComputeCenterOfGeometryCoordinates(xyzcoordinates)
+    xvalue=2*np.max(np.abs(np.array(xyzcoordinates)[:, 0] - center[0])) + 15
+    yvalue=2*np.max(np.abs(np.array(xyzcoordinates)[:, 1] - center[1])) + 15
+    zvalue=2*np.max(np.abs(np.array(xyzcoordinates)[:, 2] - center[2])) + 15
+    cellcoordinates=[
+        np.array([xvalue, 0, 0]),
+        np.array([0, yvalue , 0]),
+        np.array([0, 0, zvalue])
+    ]
+    comment+=f";cell=(({xvalue},0,0)(0,{yvalue},0)(0,0,{zvalue}))"
 
     
 
