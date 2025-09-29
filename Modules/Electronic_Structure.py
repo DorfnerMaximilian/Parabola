@@ -6,8 +6,6 @@ from . import Geometry
 from .PhysConst import ConversionFactors
 import numpy as np
 from scipy.linalg import schur
-from scipy.linalg import expm
-from scipy.linalg import logm
 from itertools import permutations
 import matplotlib.pyplot as plt
 import os
@@ -214,7 +212,7 @@ class ElectronicStructure:
         if hasattr(mol, 'KS_Hamiltonian_alpha'):
             return
         self.mol_path=mol.path
-        self.Basis=AtomicBasis.getBasis(mol.electronic_structure_path)
+        self.basis=AtomicBasis.getBasis(mol.electronic_structure_path)
         num_e,charge=Read.get_number_of_electrons(parentfolder=mol.electronic_structure_path)
         self.num_e=num_e
         self.charge=charge
@@ -228,24 +226,30 @@ class ElectronicStructure:
         if cond_number>10**(6):
             Warning("Large Condition number of the Overlap Matrix! Cond(OLM)="+str(cond_number))
         self.inverse_sqrt_OLM=Util.LoewdinTransformation(OLM,algorithm='Schur-Pade')
-        self.ElectronicEigenstates={}
+        self.real_eigenstates={}
+        self.energies={}
         self.indexmap={}
         self.indexmap["alpha"]={}
-        self.ElectronicEigenstates["alpha"]={}
+        self.real_eigenstates["alpha"]={}
+        self.energies["alpha"]={}
         if self.UKS:
             self.indexmap["beta"]={}
-            self.ElectronicEigenstates["beta"]={}
+            self.real_eigenstates["beta"]={}
+            self.energies["beta"]={}
         # Attach method dynamically
         atoms=mol.atoms
-        self.Electronic_Symmetry = Electronic_Symmetry(mol.Molecular_Symmetry,atoms,self.Basis)
+        self.electronic_symmetry = electronic_symmetry(mol.Molecular_Symmetry,atoms,self.basis)
         name=mol.name
         axes=mol.Geometric_UC_Principle_Axis
-        self.getElectronicEigenstates(name,atoms,axes)
+        self.get_real_electronic_eigenstates(name,atoms,axes)
+        symmetry_labels=self.electronic_symmetry.Symmetry_Generators.keys()
+        if "t1" in symmetry_labels or "t2" in symmetry_labels or "t3" in symmetry_labels:
+            self.bloch_states={}
 
         
-    def getElectronicEigenstates(self,name,atoms,axes):
+    def get_real_electronic_eigenstates(self,name,atoms,axes):
         def TransformHamiltonian(self,atoms,axes):
-            U=get_basis_transformation(np.array(axes).T,np.eye(len(atoms)),atoms,self.Basis)
+            U=get_basis_transformation(np.array(axes).T,np.eye(len(atoms)),atoms,self.basis)
             if self.UKS:
                 KS_Hamiltonian_alpha=self.KS_Hamiltonian_alpha
                 KS_Hamiltonian_beta=self.KS_Hamiltonian_beta
@@ -280,8 +284,8 @@ class ElectronicStructure:
             plt.close()
         
         # --- CONSISTENT SYMMETRY ORDERING ---
-        SymSectors = self.Electronic_Symmetry.SymSectors
-        VIrr = self.Electronic_Symmetry.IrrepsProjector
+        SymSectors = self.electronic_symmetry.SymSectors
+        VIrr = self.electronic_symmetry.IrrepsProjector
         
         # 1. Sort symmetry labels alphabetically to ensure a consistent order.
         sorted_sym_labels = sorted(SymSectors.keys())
@@ -313,11 +317,6 @@ class ElectronicStructure:
         print(f"ℹ️ : Symmetry Sectors and Electronic Energies")
         current_index = 0
         # 5. Iterate through the sorted labels to process each block.
-        label_alpha=[]
-        energy_alpha=[]
-        if self.UKS:
-            label_beta=[]
-            energy_beta=[]
         for sym in sorted_sym_labels:
             block_size = len(SymSectors[sym])
             
@@ -330,8 +329,9 @@ class ElectronicStructure:
             
             # Diagonalize the block to get eigenvalues and eigenvectors for this symmetry
             eigenvalues_alpha, eigenvectors_alpha = np.linalg.eigh(Block_Hamiltonian_alpha)
+
             
-            # Frequencies (cm^-1) are the signed square roots of the eigenvalues
+            # energies in eV
             energies_alpha_eV = eigenvalues_alpha*27.211
             print(f"Symmetry Sector for Spin Species ↑: {sym}, Energies (eV): \n {energies_alpha_eV}")
             
@@ -341,76 +341,190 @@ class ElectronicStructure:
                  # Diagonalize the block to get eigenvalues and eigenvectors for this symmetry
                 eigenvalues_beta, eigenvectors_beta = np.linalg.eigh(Block_Hamiltonian_beta)
                 
-                # Frequencies (cm^-1) are the signed square roots of the eigenvalues
+                # energies (eV) 
                 energies_beta_eV = eigenvalues_beta*27.211
                 print(f"Symmetry Sector for Spin Species ↓: {sym}, Energies (eV): \n {energies_beta_eV}")
                 
-                # Transform eigenvectors from the symmetry basis back to the mass-weighted basis
+                # Transform eigenvectors from the symmetry basis back 
                 V_mwh_beta = U@VIrr_reordered[:, current_index : current_index + block_size] @ eigenvectors_beta
             
-            # Store the calculated vibrational modes
-            if sym not in self.ElectronicEigenstates["alpha"]:
-                self.ElectronicEigenstates["alpha"][sym] = []
-                if self.UKS:
-                    self.ElectronicEigenstates["beta"][sym] = []
-
-
-            for i in range(block_size):
-                state = ElectronicState(A=V_mwh_alpha[:, i],a=self.inverse_sqrt_OLM@V_mwh_alpha[:, i],energy=eigenvalues_alpha[i],symmetry_label=sym,statelabel=(sym,i))
-                self.ElectronicEigenstates["alpha"][sym].append(state)
-                label_alpha.append((sym,i))
-                energy_alpha.append(eigenvalues_alpha[i])
-                if self.UKS:
-                    state = ElectronicState(A=V_mwh_beta[:, i],a=self.inverse_sqrt_OLM@V_mwh_beta[:, i],energy=eigenvalues_beta[i],symmetry_label=sym,statelabel=(sym,i))
-                    self.ElectronicEigenstates["beta"][sym].append(state)
-                    label_beta.append((sym,i))
-                    energy_beta.append(eigenvalues_beta[i])
+            V_mwh_alpha=fix_phases_states(V_mwh_alpha, threshold=1e-10)
+            self.real_eigenstates["alpha"][sym]=V_mwh_alpha
+            self.energies["alpha"]=energies_alpha_eV
+            if self.UKS:
+                V_mwh_beta=fix_phases_states(V_mwh_beta, threshold=1e-10)
+                self.real_eigenstates["beta"][sym].append(V_mwh_beta)
+                self.energies["beta"]=energies_alpha_eV
+        
             # Advance the index to the start of the next block
             current_index += block_size
 
-        if not self.UKS:
-            label_alpha.append((sym,i))
-            energy_alpha.append(eigenvalues_alpha[i])
-            sorted_indices=np.argsort(energy_alpha)
-            label_alpha=np.array(label_alpha)[sorted_indices]
-            Homoindex=self.num_e/2
-            for id,element in enumerate(label_alpha):
-                self.indexmap["alpha"][id+1-Homoindex]=element
 
 def test_phase_op(mol):
-    basis=mol.electronic_structure.Basis
+    # Initialize dictionary to track periodicity
+    periodic = {'x': False, 'y': False, 'z': False}
+
+    # Loop through unit cells and mark directions as periodic if any nonzero value found
+    for uc in mol.unitcells.keys():
+        periodic['x'] |= uc[0] != 0
+        periodic['y'] |= uc[1] != 0
+        periodic['z'] |= uc[2] != 0
+
+    # Get list of periodic directions
+    periodic_dirs = [axis for axis, is_periodic in periodic.items() if is_periodic]
+    print(periodic_dirs)
+    # Count how many directions are periodic
+    num_periodic = len(periodic_dirs)
+    
+    # get reciprocal lattice vectors
+    if num_periodic==1:
+        q_points=get_q_points(mol.cellvectors,mol.periodicity)
+        delta_q=np.array(q_points[1])-np.array(q_points[0])
+        if periodic_dirs[0]=="x":
+            m=2;n=0;l=0
+        elif periodic_dirs[0]=="y":
+            m=0;n=2;l=0
+        else:
+            m=0;n=0;l=2
+        cellvectors=Geometry.getNeibouringCellVectors(cell=mol.cellvectors,m=m,n=n,l=l)
+        atoms=Read.read_atomic_coordinates(mol.xyz_path)
+        basis=mol.electronic_structure.basis
+        phi_q=AtomicBasis.get_phase_operators(atoms,basis,q_vector=list(delta_q),cell_vectors=cellvectors)
+        Sm12=mol.electronic_structure.inverse_sqrt_OLM
+        phase_1 = np.linalg.multi_dot([Sm12, phi_q, Sm12])
+        
+        #get gamma point symmetry sectors
+        if periodic_dirs[0]=="x":
+            gamma_label="Id=1|t1=1|"
+        elif periodic_dirs[1]=="y":
+            gamma_label="Id=1|t2=1|"
+        else:
+            gamma_label="Id=1|t3=1|"
+        gamma_sym_sectors={}
+        other_sym_sectors={}
+        #Closed Shell case
+        if len(mol.electronic_structure.real_eigenstates.keys())==1:
+            for sym_sector in mol.electronic_structure.real_eigenstates["alpha"].keys():
+                if len(sym_sector.split(gamma_label))==2:
+                    gamma_sym_sectors[sym_sector]=np.array([mol.electronic_structure.real_eigenstates["alpha"][sym_sector][it].A for it in range(len(mol.electronic_structure.real_eigenstates["alpha"][sym_sector]))]).T
+                else:
+                    other_sym_sectors[sym_sector]=np.array([mol.electronic_structure.real_eigenstates["alpha"][sym_sector][it].A for it in range(len(mol.electronic_structure.real_eigenstates["alpha"][sym_sector]))]).T
+            #compute overlaps
+            for sym_sector1 in other_sym_sectors.keys():
+                for sym_sector2 in gamma_sym_sectors.keys():
+                    OLP=np.dot(other_sym_sectors[sym_sector1].T,np.dot(phase_1,gamma_sym_sectors[sym_sector2]))
+                    print(sym_sector1,sym_sector2,np.max(np.abs(OLP)))
+
+    '''
+    basis=mol.electronic_structure.basis
     xyz_filepath=Read.get_xyz_filename("./")
     atoms=Read.read_atomic_coordinates(xyz_filepath)
-    q_points=get_q_points(mol)
+    
     print(q_points)
-    cellvectors=Geometry.getNeibouringCellVectors(cell=mol.cellvectors,m=1,n=0,l=0)
-    s0=mol.electronic_structure.ElectronicEigenstates["alpha"]["Id=2|t1=-2|Sz=2"][0]
+    
+    s0=mol.electronic_structure.real_eigenstates["alpha"]["Id=1|t1=1|Sz=2"][0]
     Sm12=mol.electronic_structure.inverse_sqrt_OLM
       # Adjust this line as needed
-    conversion_factor = ConversionFactors["a.u.->A"]
-    cell_vectors = mol.cellvectors
-    b1,b2,b3=get_reciprocal_lattice_vectors(cell_vectors[0], cell_vectors[1], cell_vectors[2])
-    phi_q=AtomicBasis.get_phase_operators(atoms,basis,q_vector=list(b1*conversion_factor),cell_vectors=cellvectors)
+    
+    
     phase_1 = np.linalg.multi_dot([Sm12, phi_q, Sm12])
-    lnp=logm(phase_1)
-    r_toothsaw=(lnp-np.conj(lnp.T))/(2.0j)/np.linalg.norm(b1*conversion_factor)
-    #print(phase_1@np.conj(phase_1).T)
-    eigval,_=np.linalg.eig(r_toothsaw)
-    eigval/=np.linalg.norm(b1*conversion_factor)
-    for e in eigval:
-        print(e)
+    '''
     """
     for q_point in q_points:
         phi_q=AtomicBasis.get_phase_operators(atoms,basis,q_vector=q_point,cell_vectors=cellvectors)
         phase_1 = np.linalg.multi_dot([Sm12, phi_q, Sm12])
         s0_transformed = phase_1 @ s0.A
         print(q_point)
-        for sym_sector in mol.electronic_structure.ElectronicEigenstates["alpha"]:
-            for it,state in enumerate(mol.electronic_structure.ElectronicEigenstates["alpha"][sym_sector]):
+        for sym_sector in mol.electronic_structure.real_eigenstates["alpha"]:
+            for it,state in enumerate(mol.electronic_structure.real_eigenstates["alpha"][sym_sector]):
                 value=np.dot(state.A,s0_transformed)
                 if np.abs(value)>0.01:
                     print(sym_sector,it,value,np.abs(value)*np.sqrt(2))
     """
+def band_index(mol,nh,nl,path='./',threshold=0.25):
+
+    # Figuring out the translational symmetries in the structure:
+    p_gamma_ind = []
+    periodic = np.array(mol.periodicity) > 1
+    periodic = periodic.astype(int)
+
+    translate = []
+    for dir in range(periodic.shape[0]):
+        if periodic[dir] == 1:
+            translate.append('t' + str(dir + 1) + '=1')
+
+    # Isolating Symmetry sectors that correspond to the primitive gamma point
+    symsecs = list(mol.electronic_structure.Electronic_Symmetry.SymSectors.keys())
+    prim_gam_sym = symsecs.copy()
+    for sym in symsecs:
+        if 'Id=1' in sym:
+            for t in translate:
+                if not t in sym:
+                    prim_gam_sym.remove(sym)
+        elif 'Id=1' not in sym:
+            prim_gam_sym.remove(str(sym))
+
+    non_prim_gam_sym = list(set(symsecs) - set(prim_gam_sym))
+
+    # Isolating the states that correspond to the primitive gamma point
+
+    estate_dict = mol.electronic_structure.indexmap['alpha']
+    finalind = next(iter(estate_dict))
+    occ_ind = -1 * np.arange(0, -1 * finalind + 1)
+    occ_prim_gam_states = []
+    if nh > 0:
+        for ind in occ_ind:
+            if estate_dict[ind][0] in prim_gam_sym:
+                occ_prim_gam_states.append(estate_dict[ind])
+                if len(occ_prim_gam_states) == nh:
+                    break
+
+    unocc_prim_gam_states = []
+    if nl > 0:
+        for ind in range(0, int(len(estate_dict) - np.shape(occ_ind)[0])):
+            if estate_dict[ind][0] in prim_gam_sym:
+                unocc_prim_gam_states.append(estate_dict[ind])
+                if len(unocc_prim_gam_states) == nl:
+                    break
+
+    prim_gam_states = unocc_prim_gam_states + occ_prim_gam_states
+
+    basis=mol.electronic_structure.Basis
+    xyz_filepath=Read.get_xyz_filename(path)
+    atoms=Read.read_atomic_coordinates(xyz_filepath)
+    q_points=get_q_points(mol.cellvectors,mol.periodicity)
+
+    cellvectors = Geometry.getNeibouringCellVectors(cell=mol.cellvectors, m=periodic[0], n=periodic[1], l=periodic[2])
+    # assuming the supercell is large enough so that just the first neighbouring cells are enough; otherwise a convergence check would be needed!
+
+    all_connected_bands = []
+    g_point = q_points.index([0.0,0.0,0.0])
+
+    for state in prim_gam_states:
+        print(state,mol.electronic_structure.ElectronicEigenstates["alpha"][state[0]][int(state[1])].energy)
+        band = {}
+        band[tuple(q_points[g_point])] = state
+        s0 = mol.electronic_structure.ElectronicEigenstates["alpha"][state[0]][int(state[1])]
+        Sm12 = mol.electronic_structure.inverse_sqrt_OLM
+        for q_point in q_points:
+            print(q_point)
+            phi_q = AtomicBasis.get_phase_operators(atoms, basis, q_vector=q_point, cell_vectors=cellvectors)
+            phase_1 = np.linalg.multi_dot([Sm12, phi_q, Sm12])
+            s0_transformed = phase_1 @ s0.A
+            q_state_list = []
+            for sym_sector in non_prim_gam_sym:
+                for it, state in enumerate(mol.electronic_structure.ElectronicEigenstates["alpha"][sym_sector]):
+                    value = np.dot(state.A, s0_transformed)
+                    if np.abs(value) > 0.25:
+                        print(np.array([str(sym_sector), str(it)]), value, np.abs(value) * np.sqrt(2), state.energy-s0.energy)
+                        q_state_list.append(np.array([str(sym_sector), str(it)]))
+
+            band[tuple(q_point)] = q_state_list
+        print(len(band))
+        all_connected_bands.append(band)
+
+
+    return all_connected_bands #states#band_indices
 def get_reciprocal_lattice_vectors(a1, a2, a3):
         """
         Calculate reciprocal lattice vectors from direct lattice vectors.
@@ -451,33 +565,14 @@ def get_reciprocal_lattice_vectors(a1, a2, a3):
         b3 = 2 * np.pi * np.cross(a1, a2) / volume
         
         return b1, b2, b3
-def symmetric_points(N, spacing=1.0):
-        """
-        Arrange N points symmetrically around 0 in 1D.
-        
-        Parameters:
-        -----------
-        N : int
-            Number of points
-        spacing : float
-            Spacing between adjacent points
-            
-        Returns:
-        --------
-        points : numpy.ndarray
-            1D array of symmetric points
-        """
-        if N % 2 == 1:
-            # Odd N: include point at 0
-            half_range = (N - 1) // 2
-            points = np.arange(-half_range, half_range + 1) * spacing/N
-        else:
-            # Even N: exclude point at 0
-            half_range = N // 2
-            points = (np.arange(-half_range, half_range) + 0.5) * spacing/N
-        
-        return points
-def get_q_points(mol,return_format="combined"):
+def incl_kpoints(N):
+    klist = []
+    for kx in range(-int(np.floor(N/2)),int(np.ceil(N/2))):
+        k = (kx/N)
+        klist.append(k)
+    return klist
+    
+def get_q_points(cellvectors,periodicity,return_format="combined"):
     """
     Generate k-point grid in reciprocal space for periodic systems.
     
@@ -497,23 +592,24 @@ def get_q_points(mol,return_format="combined"):
     """
     
     
-    
-    cell_vectors = mol.cellvectors
-    periodicity = mol.periodicity
-    
     # Calculate primitive cell vectors
-    primitive_cell_vectors = [cell_vectors[i] / periodicity[i] for i in range(3)]
+    primitive_cell_vectors = [cellvectors[i] / periodicity[i] for i in range(3)]
     
     # Get reciprocal lattice vectors
     b1, b2, b3 = get_reciprocal_lattice_vectors(*primitive_cell_vectors)
     
     # Generate symmetric points for each direction
-    k1s = symmetric_points(periodicity[0])
-    k2s = symmetric_points(periodicity[1])
-    k3s = symmetric_points(periodicity[2])
-    
+    #k1s = symmetric_points(periodicity[0])
+    #k2s = symmetric_points(periodicity[1])
+    #k3s = symmetric_points(periodicity[2])
+    #print('old',k1s,k2s,k3s)
+    # Generate q_points in fractional coordinates (more general alternative)
+    k1s = incl_kpoints(periodicity[0])
+    k2s = incl_kpoints(periodicity[1])
+    k3s = incl_kpoints(periodicity[2])
     # Convert to reciprocal space coordinates with proper units
     conversion_factor = ConversionFactors["a.u.->A"]
+    
     
     # Individual direction k-points
     qs1 = [list(k1s[i] * b1 * conversion_factor) for i in range(len(k1s))]
@@ -535,29 +631,52 @@ def get_q_points(mol,return_format="combined"):
     
     else:
         raise ValueError(f"Unknown return_format: {return_format}. "
-                        "Choose from 'combined', 'separate', 'grid', or 'mesh'.")   
+                        "Choose from 'combined', 'separate', 'grid', or 'mesh'.")     
     
 
-class ElectronicState:
-    def __init__(self,A=None,a=None,energy=None,symmetry_label=None,statelabel=None):
-        self.A=A
-        self.a=a
-        self.energy=energy
-        self.symmetry_label=symmetry_label
-        self.state_label=None
-        self.fix_phase_state()
-    def fix_phase_state(self,threshold=1e-10):
-        sumofvalues=np.sum(self.A)
-        if sumofvalues<-threshold:
-            self.A*=-1.0
-            self.a*=-1.0
-        elif abs(sumofvalues) <= threshold:
-            # Sum is close to zero: choose a consistent phase
-            # Example: align sign of max absolute value component
-            max_index = np.argmax(np.abs(self.A))
-            if self.A[max_index] < 0:
-                self.A *= -1.0
-                self.a *= -1.0
+def fix_phases_states(V, threshold=1e-10):
+    """
+    A vectorized function to fix the phase of state vectors.
+
+    Args:
+        V (np.ndarray): A 2D array where each column is a state vector.
+        threshold (float): A small value to check if the sum is close to zero.
+
+    Returns:
+        np.ndarray: The array V with phases of columns adjusted in-place.
+    """
+    # 1. Calculate the sum of each column all at once
+    column_sums = np.sum(V, axis=0)
+
+    # 2. Condition 1: Find columns where sum is strongly negative
+    mask1 = column_sums < -threshold
+
+    # 3. Condition 2: Find columns where sum is close to zero
+    mask_zero_sum = np.abs(column_sums) <= threshold
+    
+    # For columns with a near-zero sum, check the sign of the largest component
+    if np.any(mask_zero_sum):
+        # Get row indices of the max absolute value for each column
+        max_abs_indices = np.argmax(np.abs(V), axis=0)
+        
+        # Get the actual values at those indices
+        # V[max_abs_indices, np.arange(V.shape[1])] creates a 1D array of these values
+        dominant_values = V[max_abs_indices, np.arange(V.shape[1])]
+        
+        # Create a mask for columns where the dominant value is negative
+        # and the sum is near-zero.
+        mask2 = mask_zero_sum & (dominant_values < 0)
+    else:
+        # Avoid unnecessary calculations if no columns have a near-zero sum
+        mask2 = False
+
+    # 4. Combine masks: flip a column if either condition is met
+    final_mask_to_flip = mask1 | mask2
+
+    # 5. Apply the flip to all selected columns in one operation
+    V[:, final_mask_to_flip] *= -1.0
+    
+    return V
         
         
 
@@ -571,7 +690,7 @@ class ElectronicState:
 
     
     
-class Electronic_Symmetry(Symmetry.Symmetry):
+class electronic_symmetry(Symmetry.Symmetry):
     def __init__(self,molecular_symmetry,atoms,basis):
         super().__init__()  # Initialize parent class
         if "Id" not in molecular_symmetry.Symmetry_Generators.keys():
@@ -772,8 +891,8 @@ def get_xyz_representation(symmetrylabel):
         return np.eye(3)
 def test_IrrepsProjector(name):
     el=ElectronicStructure(name)
-    SymSectors = el.Electronic_Symmetry.SymSectors
-    VIrr = el.Electronic_Symmetry.IrrepsProjector
+    SymSectors = el.electronic_symmetry.SymSectors
+    VIrr = el.electronic_symmetry.IrrepsProjector
     
     # 1. Sort symmetry labels alphabetically to ensure a consistent order.
     sorted_sym_labels = sorted(SymSectors.keys())
@@ -784,8 +903,8 @@ def test_IrrepsProjector(name):
     
     # 3. Reorder the projector matrix columns based on the sorted symmetry order.
     VIrr_reordered = VIrr[:, reordering]
-    for sym in el.Electronic_Symmetry.Symmetry_Generators:
-        symm=VIrr_reordered.T@el.Electronic_Symmetry.Symmetry_Generators[sym]@VIrr_reordered
+    for sym in el.electronic_symmetry.Symmetry_Generators:
+        symm=VIrr_reordered.T@el.electronic_symmetry.Symmetry_Generators[sym]@VIrr_reordered
         plt.imshow(symm, cmap='viridis', interpolation='nearest')
         plt.colorbar()
         plt.title(sym)
