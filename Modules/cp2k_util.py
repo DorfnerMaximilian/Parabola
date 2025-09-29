@@ -1,6 +1,7 @@
 
 from . import Read 
-from .coordinate_tools import compute_center_of_geometry_coordinates,get_principle_axis_coordinates
+from .PhysConst import StandardAtomicWeights,ConversionFactors
+from .coordinate_tools import backtransform_iterative_refinement,getTransAndRotEigenvectors,get_principle_axis_coordinates,cartesian_to_internal_coordinates,generate_internal_representation,get_B_non_redundant_internal,assign_bond_orders
 import numpy as np
 import os
 import shutil
@@ -40,7 +41,80 @@ def get_cp2k_exec(cluster="local"):
             raise RuntimeError("Environment variable cp2kpath not set for local execution")
         return os.path.join(pathtocp2k, "exe/local/cp2k.popt")
     
-def write_pos_file(name, atoms, coordinates, cell, energy, forces, step, path):
+def write_pos_file(
+    name,
+    atoms,
+    coordinates_bohr,
+    cell_bohr,
+    energy_Ha,
+    forces_Ha_bohr,
+    step,
+    path,
+    stress_Ha_bohr_3=None,
+):
+    """
+    Write atomic structure, cell, energy, forces (and optionally stress) to a file.
+    Appends if file exists.
+
+    Parameters
+    ----------
+    name : str
+        Name of the system
+    atoms : list
+        List of atom symbols
+    coordinates_bohr : list
+        List of (x, y, z) tuples/lists in Bohr
+    cell_bohr : numpy.ndarray
+        3x3 numpy array representing the unit cell (Bohr)
+    energy_Ha : float
+        Energy of the system (Hartree)
+    forces_Ha_bohr : list
+        List of force vectors in Ha/Bohr
+    step : int
+        Optimization step number
+    path : str
+        Path to the file
+    stress_Ha_bohr_3 : numpy.ndarray, optional
+        3x3 stress tensor in Ha/Bohr^3
+    """
+    with open(path, "a") as f:
+        f.write(f"Optimization Step: {step}\n")
+        
+        # Write cell information
+        f.write("Cell\n")
+        for i in range(3):
+            f.write(f"{cell_bohr[i,0]:.12f} {cell_bohr[i,1]:.12f} {cell_bohr[i,2]:.12f}\n")
+        f.write("End Cell\n")
+        
+        # Write coordinates
+        f.write("Coordinates\n")
+        f.write(f"{len(atoms)}\n")
+        f.write(f"{name}\n")
+        for it, coord in enumerate(coordinates_bohr):
+            f.write(f"{atoms[it]} {coord[0]:.12f} {coord[1]:.12f} {coord[2]:.12f}\n")
+        f.write("End Coordinates\n")
+        
+        # Write energy
+        f.write("Energy\n")
+        f.write(f"E={energy_Ha:.12f}\n")
+        f.write("End Energy\n")
+        
+        # Write forces
+        f.write("Forces\n")
+        for it, force in enumerate(forces_Ha_bohr):
+            f.write(f"{atoms[it]} {force[0]:.12f} {force[1]:.12f} {force[2]:.12f}\n")
+        f.write("End Forces\n")
+        
+        # Write stress if provided
+        if stress_Ha_bohr_3 is not None and len(stress_Ha_bohr_3) == 3:
+            f.write("Stress\n")
+            for i in range(3):
+                f.write(f"{stress_Ha_bohr_3[i,0]:.12f} {stress_Ha_bohr_3[i,1]:.12f} {stress_Ha_bohr_3[i,2]:.12f}\n")
+            f.write("End Stress\n")
+        
+        f.write("\n")  # Blank line between steps
+
+def write_geo_log_file(name, atoms, coordinates_bohr, energy_Ha, step, path):
     """
     Write a list of XYZ coordinates to a file with cell information.
     If the file exists, append the coordinates; otherwise, create it.
@@ -56,47 +130,30 @@ def write_pos_file(name, atoms, coordinates, cell, energy, forces, step, path):
     path (str): Path to the file
     """
     with open(path, "a") as f:
-        f.write(f"Optimization Step: {step}\n")
-        
-        # Write cell information
-        f.write(f"Cell\n")
-        for i in range(3):
-            f.write(f"{cell[i, 0]:.12f} {cell[i, 1]:.12f} {cell[i, 2]:.12f}\n")
-        f.write(f"End Cell\n")
-        
-        # Write coordinates
-        f.write(f"Coordinates\n")
-        f.write(f"{len(atoms)}\n")
-        f.write(f"{name}\n")
-        for it, coord in enumerate(coordinates):
+        f.write(f"{len(atoms):.0f}\n")
+        f.write(f"Optimization of {name} | Step: {step} | Energy[Ha]={energy_Ha:.12f}\n")
+        for it, coord in enumerate(coordinates_bohr):
+            coord=np.array(coord)*ConversionFactors["a.u.->A"]
             f.write(f"{atoms[it]} {coord[0]:.12f} {coord[1]:.12f} {coord[2]:.12f}\n")
-        f.write(f"End Coordinates\n")
-        
-        # Write energy
-        f.write(f"Energy\n")
-        f.write(f"E={energy}\n")
-        f.write(f"End Energy\n")
-        
-        # Write forces
-        f.write(f"Forces\n")
-        for it, force in enumerate(forces):
-            f.write(f"{atoms[it]} {force[0]:.12f} {force[1]:.12f} {force[2]:.12f}\n")
-        f.write(f"End Forces\n")
         f.write("\n")  # Add blank line between steps for readability
 def parse_last_optimization_step(path):
     """
     Parse the last optimization step from the file written by `write_pos_file`.
-    Returns:
+
+    Returns
+    -------
     dict with keys:
-    - step (int)
-    - atoms (list of str)
-    - coordinates (list of [x,y,z])
-    - cell (numpy.ndarray): 3x3 array representing the unit cell
-    - energy (float)
-    - forces (list of [fx,fy,fz])
+    - name (str): System name
+    - step (int): Optimization step number
+    - atoms (list of str): Atom symbols
+    - coordinates_bohr (list of [x,y,z]): Atomic positions in Bohr
+    - cell_bohr (numpy.ndarray): 3x3 unit cell in Bohr
+    - energy_Ha (float): Energy in Hartree
+    - forces_Ha_bohr (list of [fx,fy,fz]): Forces in Ha/Bohr
+    - stress_Ha_bohr_3 (numpy.ndarray or None): 3x3 stress tensor in Ha/Bohr^3, if present
     """
     import numpy as np
-    
+
     last_block = []
     # Read all lines
     with open(path, "r") as f:
@@ -105,7 +162,7 @@ def parse_last_optimization_step(path):
     # Find the last "Optimization Step"
     for i, line in enumerate(lines):
         if line.startswith("Optimization Step:"):
-            last_block = lines[i:] # from here to the end
+            last_block = lines[i:]  # from here to the end
     
     if not last_block:
         raise ValueError("No optimization step found in file.")
@@ -120,6 +177,7 @@ def parse_last_optimization_step(path):
     energy = None
     cell = None
     name = None
+    stress = None
     
     i = 0
     while i < len(last_block):
@@ -132,11 +190,11 @@ def parse_last_optimization_step(path):
                 parts = last_block[i+1+j].split()
                 cell.append([float(parts[0]), float(parts[1]), float(parts[2])])
             cell = np.array(cell)
-            i += 4  # Skip "Cell" + 3 lines + "End Cell" will be handled by the loop
+            i += 4  # move past "Cell" block
             
         elif line == "Coordinates":
             n_atoms = int(last_block[i+1].strip())
-            name = last_block[i+2].strip() # molecule/system name
+            name = last_block[i+2].strip()
             atoms = []
             coordinates = []
             for j in range(n_atoms):
@@ -159,45 +217,42 @@ def parse_last_optimization_step(path):
                 atoms_forces.append(parts[0])
                 forces.append([float(parts[1]), float(parts[2]), float(parts[3])])
                 j += 1
-            i = j # move index to "End Forces"
-            
+            i = j  # move index to "End Forces"
+        
+        elif line == "Stress":
+            stress = []
+            for j in range(3):
+                parts = last_block[i+1+j].split()
+                stress.append([float(parts[0]), float(parts[1]), float(parts[2])])
+            stress = np.array(stress)
+            i += 4  # move past "Stress" block
+        
         i += 1
     
     return {
         "name": name,
         "step": step,
         "atoms": atoms,
-        "coordinates": coordinates,
-        "cell": cell,
-        "energy": energy,
-        "forces": forces
+        "coordinates_bohr": coordinates,
+        "cell_bohr": cell,
+        "energy_Ha": energy,
+        "forces_Ha_bohr": forces,
+        "stress_Ha_bohr_3": stress
     }
 
 def geo_opt(
-    cluster="local", 
-    path="./", 
-    tol_max=5e-4, 
-    tol_drm=1e-4, 
-    optimizer="bfgs_step"
+    cluster="local",
+    path="./",
+    tol_max=5e-4,
+    tol_drm=5e-4,
+    max_iter=200,  #Add a maximum iteration limit
+    stall_patience=4, # Number of steps with no progress before declaring a stall
+    stall_energy_thresh=1e-7, #Energy change threshold for stalling
 ):
     """
-    Geometry optimization wrapper.
-
-    Parameters
-    ----------
-    cluster : str
-        Cluster type ("local", "slurm", etc.).
-    path : str
-        Base path containing input files.
-    tol_max : float
-        Maximum force convergence threshold.
-    tol_drm : float
-        RMS force convergence threshold.
-    optimizer : str or callable
-        Optimizer step function name or function. 
-        Defaults to "bfgs_step", but can be swapped out.
+    Geometry optimization wrapper with robust stall handling.
     """
-
+    # ... (Your existing setup code remains the same) ...
     # -------------------------------
     # 1. Input & setup
     # -------------------------------
@@ -207,113 +262,182 @@ def geo_opt(
     with open(xyz_filepath, "r") as f:
         input_data = f.readlines()
 
-    # Parse CP2K config & execution setup
     config = parse_cp2k_config(input_data)
-
-
     cp2k_exec = get_cp2k_exec(cluster=cluster)
-
-    # Resolve optimizer function if passed as string
-    if isinstance(optimizer, str):
-        optimizer_func = globals()[optimizer]
-    else:
-        optimizer_func = optimizer
 
     # -------------------------------
     # 2. Initialization / Restart
     # -------------------------------
     if not os.path.exists(geo_opt_path):
         os.makedirs(geo_opt_path, exist_ok=True)
-
-        # Prepare CP2K input and run first force evaluation
-        config=prepare_force_eval(
-            path=geo_opt_path, config=config
-        )
-        energy, forces = run_force_eval(
+        config=prepare_force_eval(path=geo_opt_path, config=config)
+        energy_Ha, forces_Ha_bohr = run_energy_force_eval(
             path=geo_opt_path,
             cp2k_exec=cp2k_exec,
             runner="slurm" if cluster == "slurm" else "local"
         )
         name=config["name"]
         atoms=config["atoms"]
-        coordinates=config["coordinates"]
-        cell=config["cell"]
+        masses=config["masses"]
+        coordinates_A=config["coordinates_A"]
+        coordinates_bohr=ConversionFactors["A->a.u."]*coordinates_A
+        cell_A=config["cell_A"]
+        cell_bohr=ConversionFactors["A->a.u."]*cell_A
         it = 0
-        Hm1 =  np.eye(3 * len(atoms))  # Initial Hessian guess
+        hessian = []
         write_pos_file(
-            name, atoms, coordinates,cell, energy, forces, 
+            name, atoms, coordinates_bohr,cell_bohr, energy_Ha, forces_Ha_bohr,
             step=it, path=os.path.join(geo_opt_path, f"{name}.pos")
         )
+        write_geo_log_file(name, atoms, coordinates_bohr, energy_Ha, step=it, path=os.path.join(geo_opt_path, f"{name}-pos.xyz"))
         print(f"Starting fresh optimization for {name}\n", flush=True)
 
     else:
-        # Continue from previous optimization
-        results = parse_last_optimization_step(
-            path=os.path.join(geo_opt_path, f"{name}.pos")
-        )
-
+        name=config["name"]
+        atoms=config["atoms"]
+        results = parse_last_optimization_step(path=os.path.join(geo_opt_path, f"{name}.pos"))
         if results["name"] == name:
             it = results["step"]
-            forces = results["forces"]
-            energy = results["energy"]
-            coordinates = results["coordinates"]
-            #cell0=results["cell"]
-
+            forces_Ha_bohr = results["forces_Ha_bohr"]
+            energy_Ha = results["energy_Ha"]
+            coordinates_bohr = results["coordinates_bohr"]
+            cell_bohr=results["cell_bohr"]
             print(f"Continuing optimization from step {it}\n", flush=True)
-
             try:
-                Hm1 = np.load(os.path.join(geo_opt_path, "Hm1.npy"))
-                print("Loaded inverse Hessian from checkpoint\n", flush=True)
+                hessian = np.load(os.path.join(geo_opt_path, "Hessian.npy"))
+                print("Loaded Hessian from checkpoint\n", flush=True)
             except:
-                Hm1 =  np.eye(3 * len(atoms))
+                hessian = []
                 print("No Hessian found, using initial guess.\n", flush=True)
 
-    # Print header for optimization progress
-    print("-" * 52, flush=True)
-    print(f"{'Iter':>4} | {'Energy':>10} | {'RMS Force':>8} | {'Max Force':>8}", flush=True)
-    print("-" * 52, flush=True)
+    _,rot_subspace=getTransAndRotEigenvectors(coordinates=coordinates_bohr,masses=masses)
+    rot_projector=np.eye(len(rot_subspace[0]))
+    for rotation in rot_subspace:
+        rot_projector-=np.outer(rotation,rotation)
+    force_history=[]
 
+    # ... (Your printing header remains the same) ...
+    print("=" * 135, flush=True)
+    print(
+        f"{'iter':>4} | {'E_tot':>12} | {'ΔE_tot':>12} | {'ΔE_pred':>12} | "
+        f"{'rms force':>10} | {'max force':>10} | {'step size':>10} | "
+        f"{'p_e [%]':>8} | {'rho':>10} | {'tru.rad.':>10} | {'acc?':>5} |",
+        flush=True
+    )
+    print("=" * 135, flush=True)
     # -------------------------------
     # 3. Optimization loop
     # -------------------------------
     def forces_summary(forces):
-        """Return max and RMS force norms."""
         fmax = np.max(np.abs(forces))
-        frms = np.sum(np.abs(forces)) / (3 * np.shape(coordinates)[0])
+        frms = np.sqrt(np.sum(np.array(forces)**2) / len(forces))
         return fmax, frms
 
-    force_max, drm_force = forces_summary(forces)
-    print(f"{it:4d} | {energy:10.8f} | {drm_force:8.6f} | {force_max:8.6f}", flush=True)
+    forces_Ha_bohr=rot_projector@np.array(forces_Ha_bohr).flatten()
+    forces_Ha_bohr=forces_Ha_bohr.reshape((len(atoms), 3))
+    force_max, drm_force = forces_summary(forces_Ha_bohr)
+    delta = 0.25
+    stall_counter = 0 # NEW: Centralized stall counter
+    hessian_reset_active = False # NEW: Flag to track if we've already tried resetting H
 
-    while force_max > tol_max or drm_force > tol_drm:
+    bonds, angles, dihedrals = generate_internal_representation(
+        atomic_symbols=atoms, coordinates_bohr=coordinates_bohr,
+        cell_bohr=cell_bohr
+    )
+    internals=(bonds,angles,dihedrals)
+    
+    print(f"{it:4d} | {energy_Ha:12.8f} | {'--------':>12} | {'--------':>12} | "
+        f"{drm_force:10.6f} | {force_max:10.6f} | {'--------':>10} | {0.0:8.1f} | "
+        f"{'--------':>10} | {delta:10.6f} | {'Y':>5} |", flush=True)
+
+    # MODIFIED: Added max_iter check to the loop condition
+    while (force_max > tol_max or drm_force > tol_drm) and it < max_iter:
         it += 1
+        energy_Ha_prev = energy_Ha
 
-        # Single optimizer step (BFGS or user-provided)
-        coordinates, forces, energy, Hm1 = optimizer_func(
-            path=geo_opt_path,
-            name=name,
-            atoms=atoms,
-            coordinates=coordinates,
-            forces=forces,
-            energy=energy,
-            Hm1=Hm1,
-            cp2k_exec=cp2k_exec,
-            runner="slurm" if cluster == "slurm" else "local",
-        )
+        # Always try the BFGS step first unless forces are extremely small
+        if drm_force > 1e-5:
+            # MODIFIED: Call the updated bfgs_step function
+            coordinates_bohr, forces_Ha_bohr, energy_Ha, hessian, delta, accepted, info = bfgs_step_coord_internal(
+                path=geo_opt_path,
+                name=name,
+                atoms=atoms,
+                coordinates_bohr=coordinates_bohr,
+                internals=internals,
+                forces_Ha_bohr=forces_Ha_bohr,
+                energy_Ha=energy_Ha,
+                hessian=hessian,
+                delta=delta,
+                cp2k_exec=cp2k_exec,
+                runner="slurm" if cluster == "slurm" else "local",
+            )
+            forces_Ha_bohr = rot_projector @ np.array(forces_Ha_bohr).flatten()
+            forces_Ha_bohr = forces_Ha_bohr.reshape((len(atoms), 3))
 
-        # Save checkpoint (Hessian, positions)
-        np.save(os.path.join(geo_opt_path, "Hm1.npy"), Hm1)
-        write_pos_file(
-            name, atoms, coordinates,cell, energy, forces, 
-            step=it, path=os.path.join(geo_opt_path, f"{name}.pos")
-        )
+            # NEW: Stall detection logic is now here
+            energy_change = abs(energy_Ha - energy_Ha_prev)
 
-        # Update convergence metrics
-        force_max, drm_force = forces_summary(forces)
-        print(f"{it:4d} | {energy:10.8f} | {drm_force:8.6f} | {force_max:8.6f}", flush=True)
+            if energy_change < stall_energy_thresh:
+                stall_counter += 1
+            else:
+                # If we make progress, reset stall counters
+                stall_counter = 0
+                hessian_reset_active = False
 
-    print("-" * 52, flush=True)
+            # NEW: Tiered stall recovery logic
+            if stall_counter >= stall_patience:
+                print(f"\nWarning: Stalled for {stall_counter} steps. Taking corrective action.", flush=True)
+                if not hessian_reset_active:
+                    print(" -> Action: Resetting Hessian matrix.", flush=True)
+                    hessian = [] # Reset Hessian, it will be re-initialized in the next step
+                    hessian_reset_active = True
+                else:
+                    print(" -> Action: Hessian already reset. Forcing a DIIS step to escape.", flush=True)
+                    # Force a DIIS step as a more drastic measure
+                    coordinates_bohr, forces_Ha_bohr, energy_Ha = diis_step_coord_cart(
+                         path=geo_opt_path, name=name, atoms=atoms, force_history=force_history,
+                         cp2k_exec=cp2k_exec, runner="slurm" if cluster == "slurm" else "local"
+                    )
+                    hessian_reset_active = False # Allow Hessian reset again after DIIS
+                stall_counter = 0 # Reset counter after taking action
 
+        else: # Switch to DIIS for final convergence
+            coordinates_bohr, forces_Ha_bohr, energy_Ha = diis_step_coord_cart(
+                path=geo_opt_path, name=name, atoms=atoms, force_history=force_history,
+                cp2k_exec=cp2k_exec, runner="slurm" if cluster == "slurm" else "local"
+            )
+
+        if accepted:
+            np.save(os.path.join(geo_opt_path, "Hessian.npy"), hessian)
+            force_history.append((np.array(coordinates_bohr).flatten(),np.array(forces_Ha_bohr).flatten()))
+            write_pos_file(
+                name=name, atoms=atoms, coordinates_bohr=coordinates_bohr, cell_bohr=cell_bohr,
+                energy_Ha=energy_Ha, forces_Ha_bohr=forces_Ha_bohr,
+                step=it, path=os.path.join(geo_opt_path, f"{name}.pos")
+            )
+            write_geo_log_file(name=name, atoms=atoms, coordinates_bohr=coordinates_bohr,
+                                energy_Ha=energy_Ha, step=it, path=os.path.join(geo_opt_path, f"{name}-pos.xyz"))
+
+        force_max, drm_force = forces_summary(forces_Ha_bohr)
+        # ... (Your print statement for the log remains the same) ...
+        print(f"{it:4d} | {energy_Ha:12.8f} | {energy_Ha - energy_Ha_prev:12.8f} | {info.get('pred', '--------'):12.8f} | "
+            f"{drm_force:10.6f} | {force_max:10.6f} | {info.get('step_size', '--------'):10.6f} | "
+            f"{np.round(info.get('projection_error', 0)/max(force_max,1e-12)*100,0):8.1f} | "
+            f"{info.get('rho', '--------'):10.6f} | {delta:10.6f} | "
+            f"{'Y' if accepted else 'N':>5} |", flush=True)
+
+    print("=" * 135, flush=True)
+    
+    # NEW: Final status message
+    if force_max <= tol_max and drm_force <= tol_drm:
+        print(f"Geometry optimization converged successfully in {it} steps.")
+    elif it >= max_iter:
+        print(f"Optimization stopped after reaching the maximum of {max_iter} iterations.")
+    else:
+        print("Optimization finished for other reasons.")
+
+
+    # ... (Your finalization code remains the same) ...
     # -------------------------------
     # 4. Finalize optimized structure
     # -------------------------------
@@ -321,155 +445,1099 @@ def geo_opt(
         os.path.join(geo_opt_path, f"{name}_tmp.xyz"),
         os.path.join(geo_opt_path, f"{name}_opt.xyz")
     )
-    
-def bfgs_step(
+
+
+
+
+
+def bfgs_step_coord_internal(
     path,
     name,
     atoms,
-    coordinates,
-    forces,
-    energy,
-    Hm1,
+    coordinates_bohr,
+    internals,
+    forces_Ha_bohr,
+    energy_Ha,
+    hessian,
+    delta,
+    # MODIFIED: stall_counter and related parameters are removed
     cp2k_exec="./cp2k.popt",
     runner="local",
-    max_line_search_steps=5
+    delta_min=0.005,
+    delta_max=1.0,
 ):
     """
-    Perform one BFGS optimization step with line search.
+    Perform one Trust-Radius BFGS optimization step.
+    (Stall detection is now handled by the parent geo_opt function).
     """
-
+    # ... (Most of your existing code in this function remains identical) ...
     # ---------------------------------
-    # 1. Flatten inputs for vector math
+    # 1. Define coordinate system at current point (k)
     # ---------------------------------
-    forces_vec = np.array(forces).flatten()
-    x0 = np.array(coordinates).flatten()
-
-    # Sanity check: valid forces
-    if np.any(np.isnan(forces_vec)) or np.any(np.isinf(forces_vec)):
+    forces_vec_cart_k = np.array(forces_Ha_bohr).flatten()
+    x_k_cart = np.array(coordinates_bohr).flatten()
+    if np.any(np.isnan(forces_vec_cart_k)) or np.any(np.isinf(forces_vec_cart_k)):
         raise ValueError("Invalid forces encountered at starting point.")
 
-    # ---------------------------------
-    # 2. Compute search direction
-    # ---------------------------------
-    try:
-        p = np.dot(Hm1, forces_vec)
+    bonds=internals[0]
+    angles=internals[1]
+    dihedrals=internals[2]
+    
+    q_k, B_prim = cartesian_to_internal_coordinates(np.array(coordinates_bohr), bonds, angles, dihedrals)
+    B, U = get_B_non_redundant_internal(B_prim)
+    B_plus_T = np.linalg.pinv(B,rcond=1e-5).T
+    projection_error=np.max(np.abs(forces_vec_cart_k-(B.T @ B_plus_T)@forces_vec_cart_k))
+    forces_q_k =B_plus_T @ forces_vec_cart_k
+    grad_q_k = -forces_q_k
+    
+    if len(hessian) == 0:
+        hessian=np.eye(len(grad_q_k))
+    
 
-        # Step length control (avoid huge displacements)
-        max_step = 0.2  # Å
-        p_reshaped = p.reshape(-1, 3)
-        max_p_norm = np.max(np.linalg.norm(p_reshaped, axis=1))
-        if max_p_norm > max_step:
-            p *= (max_step / max_p_norm)
+    # ... (The rest of the function for taking the step, evaluating, and updating Hessian is the same) ...
+    dx=solve_tr_subproblem_internal_coords(grad_q_k, hessian, B, delta, verbose=False)
+    s_q=B@dx
+    step_type = "Trust"
+    
+    x_new_cart=x_k_cart+dx
+    coordinates_new_bohr = np.real(x_new_cart.reshape((len(atoms), 3)))
+    
+    file_to_update = os.path.join(path, f"{name}_tmp.xyz")
+    with open(file_to_update, "w") as f:
+        f.write(str(len(atoms)) + "\n\n")
+        for atom, coord in zip(atoms, coordinates_new_bohr):
+            f.write(f"{atom:2s} {coord[0]*ConversionFactors['a.u.->A']:20.12f} {coord[1]*ConversionFactors['a.u.->A']:20.12f} {coord[2]*ConversionFactors['a.u.->A']:20.12f}\n")
+    
+    energy_new_Ha, forces_new_Ha_bohr = run_energy_force_eval(path=path, cp2k_exec=cp2k_exec, runner=runner)
 
-    except Exception as e:
-        raise RuntimeError(f"Hessian multiplication failed: {e}")
+    ared = energy_new_Ha-energy_Ha
+    pred = (grad_q_k.T @ s_q + 0.5 * s_q.T @ hessian @ s_q)
+    rho = ared / pred
+    delta_new, accepted = update_trust_rad(rho=rho, delta=delta,delta_min=delta_min,delta_max=delta_max)
+    step_size = np.linalg.norm(dx)
 
-    if np.linalg.norm(p) < 1e-10:
-        raise RuntimeError("Search direction too small (likely converged or singular Hessian).")
-
-    if np.linalg.norm(p) > 1.0:
-        print("||p||=", np.linalg.norm(p))
-        p = p / np.linalg.norm(p) * 1.0
-
-    # ---------------------------------
-    # 3. Line search (Armijo backtracking)
-    # ---------------------------------
-    alpha = 1.0
-    c1 = 1e-4
-    phi_0 = energy
-    phi_prime_0 = -forces_vec @ p
-
-    for ls_step in range(max_line_search_steps):
-        # Candidate new position
-        x_new = x0 + alpha * p
-        n_atoms = len(coordinates)
-        coordinates_new = x_new.reshape((n_atoms, 3)).tolist()
-
-        # update the xyz file in the path 
-        file_to_update = os.path.join(path, f"{name}_tmp.xyz")
-        with open(file_to_update, "w") as f:
-            f.write(str(len(atoms)) + "\n")
-            f.write(str(ls_step) + "\n")
-            for atom, coord in zip(atoms, coordinates_new):
-                f.write(f"{atom:2s} {coord[0]:20.12f} {coord[1]:20.12f} {coord[2]:20.12f}\n")
-
-        try:
-            # Re-run CP2K evaluation at new coordinates
-            energy_new, forces_new = run_force_eval(
-                path=path, cp2k_exec=cp2k_exec, runner=runner
-            )
-            forces_new_vec = np.array(forces_new).flatten()
-
-            # Reject if forces/energy are invalid
-            if np.any(np.isnan([energy_new])) or np.any(np.isnan(forces_new_vec)):
-                alpha *= 0.5
-                continue
-
-        except Exception as e:
-            alpha *= 0.5
-            if alpha < 1e-6:
-                raise RuntimeError(f"Line search failed: {e}")
-            continue
-
-        # Armijo condition check
-        phi = energy_new
-        if phi <= phi_0 + c1 * alpha * phi_prime_0:
-            break  # Accept step
-
-        alpha *= 0.5
-        if alpha < 1e-6:
-            raise RuntimeError("Line search failed - step too small.")
-
+    if accepted:
+        coordinates_out = coordinates_new_bohr.tolist()
+        q_k_plus_1, B_prim_new = cartesian_to_internal_coordinates(coordinates_new_bohr, bonds, angles, dihedrals)
+        B_new, U_new = get_B_non_redundant_internal(B_prim_new)
+        B_plus_new_T = np.linalg.pinv(B_new, rcond=1e-5).T
+        forces_out = np.array(forces_new_Ha_bohr).flatten()
+        forces_out=forces_out.reshape((len(atoms), 3))
+        energy_out = energy_new_Ha
+        
+        s_k_actual_redundant = q_k_plus_1 - q_k
+        dihedral_angle_start_index = len(bonds)+len(angles)
+        for i in range(dihedral_angle_start_index, len(s_k_actual_redundant)):
+            if abs(s_k_actual_redundant[i]) > np.pi:
+                s_k_actual_redundant[i] -= np.sign(s_k_actual_redundant[i]) * 2*np.pi
+        s_update = U_new.T @ s_k_actual_redundant
+        if np.shape(U_new)==np.shape(U):
+            dg_new = -B_plus_new_T@(np.array(forces_new_Ha_bohr).flatten()-np.array(forces_Ha_bohr).flatten())
+        else:
+            H_cart = B.T @ np.linalg.inv(hessian) @ B
+            hessian = B_plus_new_T @ H_cart @ B_plus_new_T.T
+            dg_new = -B_plus_new_T@(np.array(forces_new_Ha_bohr).flatten()-np.array(forces_Ha_bohr).flatten())
+        hessian=bfgs_update(s_update,dg_new, hessian)
     else:
-        # <== This triggers if the for-loop finishes WITHOUT a `break`
-        raise RuntimeError("Line search failed - no acceptable step found.")
+        coordinates_out = coordinates_bohr
+        forces_out = forces_Ha_bohr
+        energy_out = energy_Ha
 
-    # ---------------------------------
-    # 4. BFGS Hessian update
-    # ---------------------------------
-    s = alpha * p
-    y = forces_vec - forces_new_vec
-    Hm1_new = update_hessian_bfgs(Hm1, s, y, damping=True)
-
-    # ---------------------------------
-    # 5. Return updated state
-    # ---------------------------------
-    return coordinates_new, forces_new, energy_new, Hm1_new
-
-def update_hessian_bfgs(H, s, y, damping=True):
+    info = { "step_type":step_type, "rho": rho, "ared": ared, "pred":pred, "projection_error":projection_error, "step_size":step_size }
+    
+    # MODIFIED: Removed stall_counter from the return statement
+    return coordinates_out, forces_out, energy_out, hessian, delta_new, accepted, info
+def diis_step_coord_cart(
+    path,
+    name,
+    atoms,
+    force_history,
+    N=5,
+    cp2k_exec="./cp2k.popt",
+    runner="local"
+):
     """
-    Perform a (damped) BFGS inverse Hessian update.
+    Perform one geometric DIIS step using force history in cart. coordinates.
+    """
+
+    if len(force_history) > N:
+        force_history.pop(0)  # keep last N points
+
+
+    # ---------------------------------
+    # 3. Build DIIS matrix B_ij = <f_i|f_j>
+    # ---------------------------------
+    m = len(force_history)
+    F = [f for _, f in force_history]
+    Bmat = np.empty((m+1, m+1))
+    Bmat[-1, :] = -1
+    Bmat[:, -1] = -1
+    Bmat[-1, -1] = 0
+    for i in range(m):
+        for j in range(m):
+            Bmat[i, j] = np.dot(F[i], F[j])
+
+    # ---------------------------------
+    # 4. Solve for coefficients
+    # ---------------------------------
+    rhs = np.zeros(m+1)
+    rhs[-1] = -1
+    coeffs = np.linalg.solve(Bmat, rhs)[:-1]  # last element is Lagrange multiplier
+
+    # ---------------------------------
+    # 5. Extrapolate geometry
+    # ---------------------------------
+    Q = [q for q, _ in force_history]
+    coords_new = sum(c * q for c, q in zip(coeffs, Q))
+    coords_current = Q[-1]
+    disp = coords_new - coords_current
+    norm_disp = np.linalg.norm(disp)
+    '''
+    if norm_disp > max_step:
+        disp *= max_step / norm_disp  # rescale displacement
+        coords_new = coords_current + disp
+    '''
+    # Write temporary geometry for evaluation
+    file_to_update = os.path.join(path, f"{name}_tmp.xyz")
+    with open(file_to_update, "w") as f:
+        f.write(str(len(atoms)) + "\n\n")
+        for it,atom in enumerate(atoms):
+            f.write(f"{atom:2s} {coords_new[3*it]*ConversionFactors['a.u.->A']:20.12f} "
+                    f"{coords_new[3*it+1]*ConversionFactors['a.u.->A']:20.12f} "
+                    f"{coords_new[3*it+2]*ConversionFactors['a.u.->A']:20.12f}\n")
+
+    # ---------------------------------
+    # 7. Evaluate new energy & forces
+    # ---------------------------------
+    energy_new, forces_new = run_energy_force_eval(path=path, cp2k_exec=cp2k_exec, runner=runner)
+    coordinates_new_bohr = np.real(coords_new.reshape((len(atoms), 3)))
+    return coordinates_new_bohr, forces_new, energy_new
+# --- New Wrapper Function ---
+def solve_tr_subproblem_internal_coords(g_q, H_q, B, delta, verbose=False):
+    """
+    Solves the TR subproblem in internal coordinates with a physically
+    meaningful (Cartesian) metric and returns the Cartesian step.
+
+    Parameters:
+    - g_q: Gradient in internal coordinates.
+    - H_q: Hessian in internal coordinates.
+    - B: The Wilson B-matrix (your Bq).
+    - delta: Trust radius, defined as the RMS norm in Cartesian space.
+    - verbose: Verbosity flag.
+
+    Returns:
+    - p_x: The optimal step in Cartesian coordinates.
+    """
+    # 1. Calculate the G matrix and its Cholesky factor L
+    # We use pinv for stability in case of redundant coordinates
+    G = B @ B.T
+    try:
+        # Use Cholesky if G is positive definite
+        L = np.linalg.cholesky(G)
+    except np.linalg.LinAlgError:
+        # Fallback for semi-definite G (due to redundancies)
+        # Use eigendecomposition: G = Q Lmbda Q.T => G^1/2 = Q sqrt(Lmbda) Q.T
+        eigvals, eigvecs = np.linalg.eigh(G)
+        eigvals[eigvals < 1e-9] = 0 # Clamp small/negative eigenvalues
+        L = eigvecs @ np.diag(np.sqrt(eigvals)) @ eigvecs.T
+
+
+    # 2. Transform gradient and Hessian to the scaled system 's'
+    g_s = L.T @ g_q
+    H_s = L.T @ H_q @ L
+    
+    if verbose:
+        print("Solving TR subproblem in scaled internal coordinates.")
+
+    # 3. Solve the standard TR subproblem in the 's' coordinate system
+    # The norm of p_s corresponds to the Cartesian norm of the step.
+    p_s = more_sorensen_secular(g_s, H_s, delta, verbose=verbose)
+
+    # 4. Back-transform the step to get the Cartesian step p_x
+    # p_s -> p_q -> p_x
+    p_q = L @ p_s
+    
+    # Use the pseudoinverse of B to get the Cartesian step
+    B_inv = np.linalg.pinv(B)
+    p_x = B_inv @ p_q
+
+    if verbose:
+        print(f"Final ||p_x|| = {np.linalg.norm(p_x):.6f} (target δ={delta})")
+
+    return p_x
+def more_sorensen_secular(g_q, H_q, delta, tol=1e-12, max_iter=50, verbose=False):
+    """
+    Solve the trust-region subproblem using the More–Sorensen algorithm
+    with the secular equation for guaranteed convergence.
 
     Parameters
     ----------
-    H : ndarray
-        Current inverse Hessian approximation.
-    s : ndarray
-        Step vector (x_{k+1} - x_k).
-    y : ndarray
-        Gradient difference (∇E_{k+1} - ∇E_k).
-    damping : bool
-        Whether to apply Powell's damping modification for stability.
+    g : ndarray
+        Gradient vector (n,).
+    B : ndarray
+        Symmetric positive definite Hessian approximation (n x n).
+    delta : float
+        Trust-region radius.
+    tol : float
+        Tolerance for norm convergence.
+    max_iter : int
+        Maximum number of Newton iterations on the secular equation.
+    verbose : bool
+        If True, prints convergence messages.
 
     Returns
     -------
-    H_new : ndarray
-        Updated inverse Hessian.
+    p : ndarray
+        Optimal step solving min g^T p + 0.5 p^T B p with ||p|| <= delta.
     """
-    y_dot_s = np.dot(y, s)
-    sHs = np.dot(s, np.dot(H, s))
 
-    # Apply Powell damping if curvature condition not met
-    if damping and y_dot_s < 0.2 * sHs:
-        theta = (0.8 * sHs) / (sHs - y_dot_s)
-        y = theta * y + (1 - theta) * np.dot(H, s)
-        y_dot_s = np.dot(y, s)
+    # Try unconstrained minimizer first
+    try:
+        p_star = -np.linalg.solve(H_q, g_q)
+        if np.linalg.norm(p_star) <= delta:
+            if verbose:
+                print("Unconstrained minimizer inside trust region.")
+            return p_star
+    except np.linalg.LinAlgError:
+        pass
 
-    rho = 1.0 / y_dot_s
-    I = np.eye(len(H))
-    V = I - rho * np.outer(s, y)
+    # Eigen decomposition for secular equation
+    # B = Q Λ Q^T, transform problem to diagonal coordinates
+    eigvals, Q = np.linalg.eigh(H_q)
+    g_hat = Q.T @ g_q
 
-    return V @ H @ V.T + rho * np.outer(s, s)
+
+    # Newton iteration on secular equation φ(λ)=0, λ >= 0
+    # initial guess: shift away from negative eigvals
+    lmbda = max(0, -np.min(eigvals) + 1e-12)
+
+    for k in range(max_iter):
+        denom = eigvals + lmbda
+        phi_val = np.sum((g_hat / denom)**2) - delta**2
+        if abs(phi_val) < tol:
+            break
+        # derivative φ'(λ) = -2 Σ (g_i/(λ_i+λ)^3 g_i)
+        phi_prime = -2 * np.sum((g_hat**2) / (denom**3))
+        lmbda -= phi_val / phi_prime
+        lmbda = max(lmbda, 0)  # stay feasible
+
+    # Compute final p(λ)
+    denom = eigvals + lmbda
+    p_hat = -(g_hat / denom)
+    p = Q @ p_hat
+
+    if verbose:
+        print(f"More–Sorensen (secular) converged in {k+1} iterations, λ={lmbda:.3e}")
+        print(f"||p|| = {np.linalg.norm(p):.6f} (target δ={delta})")
+
+    return p
+
+def bfgs_update(dx: np.ndarray, 
+                dg: np.ndarray, 
+                hess_mat: np.ndarray,
+                min_curv: float = 0.2
+               ) -> np.ndarray:
+    """
+    Perform BFGS Hessian update with Powell-style damping.
+    
+    H_new = H_old + (theta*dg⊗dg)/(dx·dg) - (H*dx⊗H*dx)/(dx·H*dx)
+    where theta adjusts dg to enforce sufficient curvature.
+
+    Parameters
+    ----------
+    dx : np.ndarray
+        Step vector (change in positions)
+    dg : np.ndarray
+        Gradient difference vector (change in gradients)
+    hess_mat : np.ndarray
+        Current Hessian approximation
+    min_curv : float
+        Minimum curvature ratio to enforce
+
+    Returns
+    -------
+    np.ndarray
+        Updated Hessian matrix
+    """
+    
+    work = hess_mat @ dx
+    dxw = np.dot(dx, work)
+    gdx = np.dot(dg, dx)
+    
+    if abs(gdx) < 1e-8 or abs(dxw) < 1e-8:
+        print("Warning: Small curvature, skipping BFGS update")
+        return hess_mat
+
+    # ---------------------
+    # Damping condition (Powell)
+    # ---------------------
+    if gdx < min_curv * dxw:
+        # Compute theta
+        theta = (1 - min_curv) * dxw / (dxw - gdx)
+        dg_damped = theta * dg + (1 - theta) * work
+    else:
+        dg_damped = dg
+
+    
+    # Outer products for BFGS update
+    hess_mat += (np.outer(dg_damped, dg_damped) / np.dot(dg_damped, dx) \
+                - np.outer(work, work) / dxw)
+    hess_mat=0.5*(hess_mat+hess_mat.T)
+
+    return hess_mat
+
+
+
+def update_trust_rad(rho: float, delta: float, delta_min: float,delta_max: float) -> float:
+    """
+    Update trust-region radius based on the ratio of actual vs. predicted reduction (rho).
+
+    This implementation follows a more standard algorithm (e.g., Nocedal & Wright, 
+    "Numerical Optimization", Ch. 4).
+
+    Parameters
+    ----------
+    rho : float
+        Ratio of actual vs. predicted reduction (ρ = ΔE_actual / ΔE_pred).
+    delta : float
+        Current trust-region radius in Bohr.
+    ediff : float
+        Energy difference (negative if energy decreased).
+
+    Returns
+    -------
+    float
+        Updated trust-region radius in Bohr.
+    """
+    # Define boundaries and thresholds
+    max_trust = delta_max
+    min_trust = delta_min
+    eta1 = 0.15  # Threshold for shrinking
+    eta2 = 0.75  # Threshold for expansion
+    
+    gamma_shrink = 0.75  # Factor to shrink radius
+    gamma_shrink_large = 0.25  # Factor to shrink radius
+    gamma_expand = 1.5   # Factor to expand radius
+
+
+    # Update radius based on model accuracy (rho)
+    if rho<0:
+        delta_new = delta * gamma_shrink_large
+        return max(delta_new,min_trust),False
+    elif rho < eta1:
+        # Poor agreement: model is unreliable. Shrink the trust region.
+        delta_new = delta * gamma_shrink
+        return max(delta_new,min_trust),False
+    elif rho > eta2 and rho < 1.5:
+        # Excellent agreement: model is reliable. Expand the trust region.
+        delta_new = min(delta * gamma_expand, max_trust)
+    elif rho >2:
+        delta_new=gamma_shrink*delta
+    else:
+        # Good agreement: leave the trust region as is.
+        delta_new = delta
+
+    # Ensure the new radius is not smaller than the minimum
+    return max(delta_new, min_trust),True
+
+
+# Reference single-bond force constants (k_ref) in Hartree/Bohr^2.
+# Updated reference force constants 
+REFERENCE_lnK_BOND = {
+    frozenset({'H', 'H'}): 4.661,  
+    frozenset({'C', 'C'}): 7.643,  
+    frozenset({'N', 'N'}): 7.634,  
+    frozenset({'O', 'O'}): 7.561,  
+    frozenset({'F', 'F'}): 7.358,  
+    frozenset({'Cl', 'Cl'}): 8.648,  
+    frozenset({'Br', 'Br'}): 9.012,  
+    frozenset({'I', 'I'}): 9.511,  
+    frozenset({'P', 'P'}): 8.805,  
+    frozenset({'S', 'S'}): 8.316,  
+    frozenset({'H', 'C'}): 6.217,  
+    frozenset({'H', 'N'}): 6.057,  
+    frozenset({'H', 'O'}): 5.794,  
+    frozenset({'H', 'F'}): 5.600,  
+    frozenset({'H', 'Cl'}): 6.937,  
+    frozenset({'H', 'Br'}): 7.301,  
+    frozenset({'H', 'I'}): 7.802,  
+    frozenset({'H', 'P'}): 7.257,  
+    frozenset({'H', 'S'}): 7.018,  
+    frozenset({'C', 'N'}): 7.504,  
+    frozenset({'C', 'O'}): 7.347,  
+    frozenset({'C', 'F'}): 7.227,  
+    frozenset({'C', 'Cl'}): 8.241,  
+    frozenset({'C', 'Br'}): 8.478,  
+    frozenset({'C', 'I'}): 8.859,  
+    frozenset({'C', 'P'}): 8.237,  
+    frozenset({'C', 'S'}): 8.117,  
+    frozenset({'N', 'O'}): 7.526,  
+    frozenset({'N', 'F'}): 7.475,  
+    frozenset({'N', 'Cl'}): 8.266,  
+    frozenset({'N', 'Br'}): 8.593,  
+    frozenset({'N', 'I'}): 8.963,  
+    frozenset({'N', 'P'}): 8.212,  
+    frozenset({'N', 'S'}): 8.073,  
+    frozenset({'O', 'F'}): 7.375,  
+    frozenset({'O', 'Cl'}): 8.097,  
+    frozenset({'O', 'Br'}): 8.276,  
+    frozenset({'O', 'I'}): 8.854,  
+    frozenset({'O', 'P'}): 7.957,  
+    frozenset({'O', 'S'}): 7.922,  
+    frozenset({'F', 'Cl'}): 7.947,  
+    frozenset({'Cl', 'I'}): 9.309,  
+    frozenset({'Br', 'I'}): 9.380,  
+    frozenset({'F', 'P'}): 7.592,  
+    frozenset({'F', 'S'}): 7.733,  
+    frozenset({'Cl', 'P'}): 8.656,  
+    frozenset({'Cl', 'S'}): 8.619,  
+    frozenset({'Br', 'P'}): 8.729,  
+    frozenset({'Br', 'S'}): 8.728,  
+    frozenset({'I', 'P'}): 9.058,  
+    frozenset({'I', 'S'}): 9.161,  
+    frozenset({'P', 'S'}): 8.465,
+}
+DEFAULT_lnK_BOND = 7.0  
+def get_K_bond(atom1,atom2,r1_bohr,r2_bohr,m=4.5):
+    r1_A=r1_bohr*ConversionFactors["a.u.->A"]
+    r2_A=r2_bohr*ConversionFactors["a.u.->A"]
+    conversion_factor_kcal_mol_A2_Ha_bohr2=0.00044626155
+    ln_Kij = REFERENCE_lnK_BOND[frozenset({atom1, atom2})]
+    Kr_Ha_bohr2=conversion_factor_kcal_mol_A2_Ha_bohr2*np.exp(ln_Kij)/(np.linalg.norm(r1_A-r2_A))**(m)
+    return Kr_Ha_bohr2
+
+REFERENCE_R0_BOND_A = {
+    frozenset({'H', 'H'}): 0.738,  
+    frozenset({'C', 'C'}): 1.526,  
+    frozenset({'N', 'N'}): 1.441,  
+    frozenset({'O', 'O'}): 1.460,  
+    frozenset({'F', 'F'}): 1.406,  
+    frozenset({'Cl', 'Cl'}): 2.031,  
+    frozenset({'Br', 'Br'}): 2.337,  
+    frozenset({'I', 'I'}): 2.836,  
+    frozenset({'P', 'P'}): 2.324,  
+    frozenset({'S', 'S'}): 2.038,  
+    frozenset({'H', 'C'}): 1.090,  
+    frozenset({'H', 'N'}): 1.010,  
+    frozenset({'H', 'O'}): 0.960,  
+    frozenset({'H', 'F'}): 0.920,  
+    frozenset({'H', 'Cl'}): 1.280,  
+    frozenset({'H', 'Br'}): 1.410,  
+    frozenset({'H', 'I'}): 1.600,  
+    frozenset({'H', 'P'}): 1.410,  
+    frozenset({'H', 'S'}): 1.340,  
+    frozenset({'C', 'N'}): 1.470,  
+    frozenset({'C', 'O'}): 1.440,  
+    frozenset({'C', 'F'}): 1.370,  
+    frozenset({'C', 'Cl'}): 1.800,  
+    frozenset({'C', 'Br'}): 1.940,  
+    frozenset({'C', 'I'}): 2.160,  
+    frozenset({'C', 'P'}): 1.830,  
+    frozenset({'C', 'S'}): 1.820,  
+    frozenset({'N', 'O'}): 1.420,  
+    frozenset({'N', 'F'}): 1.420,  
+    frozenset({'N', 'Cl'}): 1.750,  
+    frozenset({'N', 'Br'}): 1.930,  
+    frozenset({'N', 'I'}): 2.120,  
+    frozenset({'N', 'P'}): 1.720,  
+    frozenset({'N', 'S'}): 1.690,  
+    frozenset({'O', 'F'}): 1.410,  
+    frozenset({'O', 'Cl'}): 1.700,  
+    frozenset({'O', 'Br'}): 1.790,  
+    frozenset({'O', 'I'}): 2.110,  
+    frozenset({'O', 'P'}): 1.640,  
+    frozenset({'O', 'S'}): 1.650,  
+    frozenset({'F', 'Cl'}): 1.648,  
+    frozenset({'Cl', 'I'}): 2.550,  
+    frozenset({'Br', 'I'}): 2.671,  
+    frozenset({'F', 'P'}): 1.500,  
+    frozenset({'F', 'S'}): 1.580,  
+    frozenset({'Cl', 'P'}): 2.040,  
+    frozenset({'Cl', 'S'}): 2.030,  
+    frozenset({'Br', 'P'}): 2.240,  
+    frozenset({'Br', 'S'}): 2.210,  
+    frozenset({'I', 'P'}): 2.490,  
+    frozenset({'I', 'S'}): 2.560,  
+    frozenset({'P', 'S'}): 2.120,
+}
+C_Values={
+"C":1.339,
+"N":1.300,
+"O":1.249,
+"P":0.906,
+"S":1.448
+}
+Z_Values= {
+    'H': 0.784,
+    'C': 1.183,
+    'N': 1.212,
+    'O': 1.219,
+    'F': 1.166,
+    'Cl': 1.272,
+    'Br': 1.378,
+    'I': 1.398,
+    'P': 1.620,
+    'S': 1.280,
+}
+REFERENCE_ANGLE_BOND_ORDER = {
+    
+    # ==================== HYDROGEN-CENTERED ANGLES ====================
+    # Note: Hydrogen can only form one bond, so these are theoretical/transition state cases
+    
+    # ==================== CARBON-CENTERED ANGLES ====================
+    
+    # sp³ Carbon (tetrahedral, ~109.5°)
+    ('H', 'C', 'H', (1, 1)): 109.5,
+    ('H', 'C', 'C', (1, 1)): 109.5,
+    ('H', 'C', 'N', (1, 1)): 109.5,
+    ('H', 'C', 'O', (1, 1)): 109.5,
+    ('H', 'C', 'F', (1, 1)): 109.5,
+    ('H', 'C', 'Cl', (1, 1)): 109.5,
+    ('H', 'C', 'Br', (1, 1)): 109.5,
+    ('H', 'C', 'I', (1, 1)): 109.5,
+    ('H', 'C', 'P', (1, 1)): 109.5,
+    ('H', 'C', 'S', (1, 1)): 109.5,
+    ('C', 'C', 'C', (1, 1)): 109.5,
+    ('C', 'C', 'N', (1, 1)): 109.5,
+    ('C', 'C', 'O', (1, 1)): 109.5,
+    ('C', 'C', 'F', (1, 1)): 109.5,
+    ('C', 'C', 'Cl', (1, 1)): 109.5,
+    ('C', 'C', 'Br', (1, 1)): 109.5,
+    ('C', 'C', 'I', (1, 1)): 109.5,
+    ('C', 'C', 'P', (1, 1)): 109.5,
+    ('C', 'C', 'S', (1, 1)): 109.5,
+    ('N', 'C', 'N', (1, 1)): 109.5,
+    ('N', 'C', 'O', (1, 1)): 109.5,
+    ('O', 'C', 'O', (1, 1)): 109.5,
+    
+    # sp² Carbon (trigonal planar, ~120°)
+    ('H', 'C', 'H', (1, 2)): 120.0,  # One double bond
+    ('H', 'C', 'C', (1, 2)): 120.0,
+    ('H', 'C', 'N', (1, 2)): 120.0,
+    ('H', 'C', 'O', (1, 2)): 120.0,
+    ('C', 'C', 'C', (1, 2)): 120.0,
+    ('C', 'C', 'C', (2, 1)): 120.0,
+    ('C', 'C', 'N', (1, 2)): 120.0,
+    ('C', 'C', 'N', (2, 1)): 120.0,
+    ('C', 'C', 'O', (1, 2)): 120.0,
+    ('C', 'C', 'O', (2, 1)): 120.0,
+    ('N', 'C', 'N', (2, 1)): 120.0,
+    ('N', 'C', 'O', (2, 1)): 120.0,
+    ('O', 'C', 'O', (2, 1)): 120.0,
+    ('H', 'C', 'F', (1, 2)): 120.0,
+    ('H', 'C', 'Cl', (1, 2)): 120.0,
+    ('H', 'C', 'Br', (1, 2)): 120.0,
+    ('H', 'C', 'I', (1, 2)): 120.0,
+    
+    # sp Carbon (linear, 180°)
+    ('H', 'C', 'C', (1, 3)): 180.0,  # Triple bond
+    ('H', 'C', 'N', (1, 3)): 180.0,
+    ('C', 'C', 'C', (1, 3)): 180.0,
+    ('C', 'C', 'C', (3, 1)): 180.0,
+    ('C', 'C', 'N', (3, 1)): 180.0,
+    ('C', 'C', 'N', (1, 3)): 180.0,
+    
+    # Aromatic Carbon (sp² with delocalized electrons, ~120°)
+    ('H', 'C', 'C', (1, 1.5)): 120.0,
+    ('C', 'C', 'H', (1.25, 1)):120.0,
+    ('C', 'C', 'H', (1.75, 1)):120.0,
+    ('H', 'C', 'N', (1, 1.5)): 120.0,
+    ('C', 'C', 'C', (1.5, 1.5)): 120.0,
+    ('C', 'C', 'C', (1.5, 1.25)):120.0,
+    ('C', 'C', 'C', (1.25, 1.25)):120.0,
+    ('C', 'C', 'C', (1.25, 1.375)):120.0,
+    ('C', 'C', 'C', (1.25, 1.5)):120.0,
+    ('C', 'C', 'C', (1.25, 1.75)):120.0,
+    ('C', 'C', 'C', (1.75, 1.25)):120.0,
+    ('C', 'C', 'N', (1.5, 1.5)): 120.0,
+    ('C', 'C', 'O', (1.5, 1)): 120.0,
+    ('C', 'C', 'F', (1.5, 1)): 120.0,
+    ('C', 'C', 'Cl', (1.5, 1)): 120.0,
+    ('C', 'C', 'Br', (1.5, 1)): 120.0,
+    ('C', 'C', 'I', (1.5, 1)): 120.0,
+    ('N', 'C', 'N', (1.5, 1.5)): 120.0,
+    
+    # ==================== NITROGEN-CENTERED ANGLES ====================
+    
+    # sp³ Nitrogen (pyramidal, ~107°) - lone pair effect
+    ('H', 'N', 'H', (1, 1)): 107.0,
+    ('H', 'N', 'C', (1, 1)): 107.0,
+    ('C', 'N', 'C', (1, 1)): 107.0,  # Amines
+    ('C', 'N', 'H', (1, 1)): 107.0,
+    
+    # sp² Nitrogen (trigonal planar, ~120°)
+    ('C', 'N', 'C', (1, 2)): 120.0,  # Imines, amides
+    ('C', 'N', 'C', (2, 1)): 120.0,
+    ('C', 'N', 'H', (2, 1)): 120.0,
+    ('C', 'N', 'O', (1, 2)): 120.0,  # Nitro compounds
+    ('C', 'N', 'O', (2, 1)): 120.0,
+    ('O', 'N', 'O', (2, 2)): 120.0,  # NO₂ group
+    
+    # sp Nitrogen (linear, 180°)
+    ('C', 'N', 'N', (1, 3)): 180.0,  # Nitriles, diazo
+    ('C', 'N', 'O', (3, 1)): 180.0,
+    
+    # Aromatic Nitrogen
+    ('C', 'N', 'C', (1.5, 1.5)): 120.0,  # Pyridine-like
+    ('C', 'N', 'H', (1.5, 1)): 120.0,
+    
+    # ==================== OXYGEN-CENTERED ANGLES ====================
+    
+    # sp³ Oxygen (bent, ~104.5°) - two lone pairs
+    ('H', 'O', 'H', (1, 1)): 104.5,  # Water
+    ('H', 'O', 'C', (1, 1)): 104.5,  # Alcohols
+    ('C', 'O', 'C', (1, 1)): 104.5,  # Ethers
+    ('C', 'O', 'H', (1, 1)): 104.5,
+    
+    # sp² Oxygen (bent, ~120°) - carbonyl-like
+    ('C', 'O', 'C', (1, 2)): 120.0,
+    ('C', 'O', 'H', (2, 1)): 120.0,
+    
+    # ==================== PHOSPHORUS-CENTERED ANGLES ====================
+    
+    # sp³ Phosphorus (pyramidal, ~102°)
+    ('H', 'P', 'H', (1, 1)): 93.0,   # PH₃ (experimental value)
+    ('C', 'P', 'C', (1, 1)): 102.0,
+    ('C', 'P', 'H', (1, 1)): 102.0,
+    ('C', 'P', 'O', (1, 1)): 102.0,
+    ('O', 'P', 'O', (1, 1)): 102.0,
+    ('C', 'P', 'F', (1, 1)): 102.0,
+    ('C', 'P', 'Cl', (1, 1)): 102.0,
+    
+    # sp² Phosphorus
+    ('C', 'P', 'C', (1, 2)): 120.0,
+    ('C', 'P', 'O', (2, 1)): 120.0,
+    
+    # ==================== SULFUR-CENTERED ANGLES ====================
+    
+    # sp³ Sulfur (bent/pyramidal, ~92-104°)
+    ('H', 'S', 'H', (1, 1)): 92.0,   # H₂S (experimental value)
+    ('C', 'S', 'C', (1, 1)): 104.0,  # Thioethers
+    ('H', 'S', 'C', (1, 1)): 104.0,
+    ('C', 'S', 'H', (1, 1)): 104.0,
+    ('C', 'S', 'O', (1, 1)): 104.0,
+    ('O', 'S', 'O', (1, 1)): 104.0,
+    
+    # sp² Sulfur
+    ('C', 'S', 'C', (1, 2)): 120.0,
+    ('C', 'S', 'O', (2, 1)): 120.0,
+    ('O', 'S', 'O', (2, 2)): 120.0,  # SO₂
+    ('C', 'C', 'S', (1.0, 2.0)): 120.0,
+    ('C', 'C', 'S', (2.0, 1.0)): 120.0,
+    # Aromatic Sulfur (thiophene-like)
+    ('C', 'S', 'C', (1.5, 1.5)): 92.0,  # Thiophene (5-membered ring strain)
+    
+    # ==================== HALOGEN-CENTERED ANGLES ====================
+    # Note: Halogens typically form only one bond, but in hypervalent compounds:
+    
+    # Fluorine (rare, mostly in transition state or hypervalent compounds)
+    ('C', 'F', 'C', (1, 1)): 180.0,  # Linear when it occurs
+    
+    # Chlorine, Bromine, Iodine (can be hypervalent)
+    ('C', 'Cl', 'C', (1, 1)): 180.0,
+    ('C', 'Br', 'C', (1, 1)): 180.0,
+    ('C', 'I', 'C', (1, 1)): 180.0,
+    ('F', 'Cl', 'F', (1, 1)): 180.0,  # ClF₂⁻ type compounds
+    ('F', 'Br', 'F', (1, 1)): 180.0,
+    ('F', 'I', 'F', (1, 1)): 180.0,
+    
+    # ==================== FLIPPED ATOM ORDER ENTRIES (for completeness) ====================
+    # These are the same angles as above but with atom1 and atom3 positions swapped
+    # and bond orders accordingly flipped: (atom3, central_atom, atom1, (bond_order3, bond_order1))
+    
+    # CARBON-CENTERED (flipped)
+    ('C', 'C', 'H', (1, 1)): 109.5,
+    ('N', 'C', 'H', (1, 1)): 109.5,
+    ('O', 'C', 'H', (1, 1)): 109.5,
+    ('F', 'C', 'H', (1, 1)): 109.5,
+    ('Cl', 'C', 'H', (1, 1)): 109.5,
+    ('Br', 'C', 'H', (1, 1)): 109.5,
+    ('I', 'C', 'H', (1, 1)): 109.5,
+    ('P', 'C', 'H', (1, 1)): 109.5,
+    ('S', 'C', 'H', (1, 1)): 109.5,
+    ('N', 'C', 'C', (1, 1)): 109.5,
+    ('O', 'C', 'C', (1, 1)): 109.5,
+    ('F', 'C', 'C', (1, 1)): 109.5,
+    ('Cl', 'C', 'C', (1, 1)): 109.5,
+    ('Br', 'C', 'C', (1, 1)): 109.5,
+    ('I', 'C', 'C', (1, 1)): 109.5,
+    ('P', 'C', 'C', (1, 1)): 109.5,
+    ('S', 'C', 'C', (1, 1)): 109.5,
+    ('O', 'C', 'N', (1, 1)): 109.5,
+    ('O', 'C', 'O', (1, 1)): 109.5,
+    
+    # sp² Carbon (flipped)
+    ('C', 'C', 'H', (2, 1)): 120.0,
+    ('N', 'C', 'H', (2, 1)): 120.0,
+    ('O', 'C', 'H', (2, 1)): 120.0,
+    ('N', 'C', 'C', (2, 1)): 120.0,
+    ('O', 'C', 'C', (2, 1)): 120.0,
+    ('O', 'C', 'N', (1, 2)): 120.0,
+    ('F', 'C', 'H', (1, 2)): 120.0,
+    ('Cl', 'C', 'H', (1, 2)): 120.0,
+    ('Br', 'C', 'H', (1, 2)): 120.0,
+    ('I', 'C', 'H', (1, 2)): 120.0,
+    
+    # sp Carbon (flipped)
+    ('C', 'C', 'H', (3, 1)): 180.0,
+    ('N', 'C', 'H', (3, 1)): 180.0,
+    ('N', 'C', 'C', (3, 1)): 180.0,
+    
+    ('O', 'C', 'N', (2, 1)): 120.0,
+    ('N', 'C', 'O', (1, 2)): 120.0,
+    # Aromatic Carbon (flipped)
+    ('C', 'C', 'H', (1.5, 1)): 120.0,
+    ('N', 'C', 'H', (1.5, 1)): 120.0,
+    ('N', 'C', 'C', (1.5, 1.5)): 120.0,
+    ('O', 'C', 'C', (1, 1.5)): 120.0,
+    ('F', 'C', 'C', (1, 1.5)): 120.0,
+    ('Cl', 'C', 'C', (1, 1.5)): 120.0,
+    ('Br', 'C', 'C', (1, 1.5)): 120.0,
+    ('I', 'C', 'C', (1, 1.5)): 120.0,
+    
+    # NITROGEN-CENTERED (flipped)
+    ('C', 'N', 'H', (1, 1)): 107.0,
+    ('H', 'N', 'C', (1, 1)): 107.0,
+    ('C', 'N', 'C', (2, 1)): 120.0,
+    ('H', 'N', 'C', (1, 2)): 120.0,
+    ('O', 'N', 'C', (2, 1)): 120.0,
+    ('O', 'N', 'C', (1, 2)): 120.0,
+    ('N', 'N', 'C', (3, 1)): 180.0,
+    ('O', 'N', 'C', (1, 3)): 180.0,
+    ('H', 'N', 'C', (1, 1.5)): 120.0,
+    
+    # OXYGEN-CENTERED (flipped)
+    ('C', 'O', 'H', (1, 1)): 104.5,
+    ('C', 'O', 'C', (2, 1)): 120.0,
+    ('H', 'O', 'C', (1, 2)): 120.0,
+    
+    # PHOSPHORUS-CENTERED (flipped)
+    ('C', 'P', 'H', (1, 1)): 102.0,
+    ('O', 'P', 'C', (1, 1)): 102.0,
+    ('F', 'P', 'C', (1, 1)): 102.0,
+    ('Cl', 'P', 'C', (1, 1)): 102.0,
+    ('C', 'P', 'C', (2, 1)): 120.0,
+    ('O', 'P', 'C', (1, 2)): 120.0,
+    
+    # SULFUR-CENTERED (flipped)
+    ('C', 'S', 'H', (1, 1)): 104.0,
+    ('H', 'S', 'C', (1, 1)): 104.0,
+    ('O', 'S', 'C', (1, 1)): 104.0,
+    ('C', 'S', 'C', (2, 1)): 120.0,
+    ('O', 'S', 'C', (1, 2)): 120.0,
+    ('S', 'C', 'C', (1.0, 2.0)): 120.0,
+
+    # HALOGEN-CENTERED (flipped)
+    ('C', 'F', 'C', (1, 1)): 180.0,
+    ('C', 'Cl', 'C', (1, 1)): 180.0,
+    ('C', 'Br', 'C', (1, 1)): 180.0,
+    ('C', 'I', 'C', (1, 1)): 180.0,
+    ('F', 'Cl', 'F', (1, 1)): 180.0,
+    ('F', 'Br', 'F', (1, 1)): 180.0,
+    ('F', 'I', 'F', (1, 1)): 180.0,
+    # Note: The above ring strain entries use a different key format
+    # You may want to handle these separately in your code
+}
+def get_K_theta(atom1,atom2,atom3,bond_order1,bond_order2):
+    theta123_key=(atom1,atom2,atom3,(bond_order1,bond_order2))
+    try:
+        ref_angle_degree=REFERENCE_ANGLE_BOND_ORDER[theta123_key]
+    except:
+        ref_angle_degree=120.0
+    ref_angle_rad=ref_angle_degree/360*2*np.pi
+    REFERENCE_lnK_BOND[frozenset({atom1, atom2})]
+    r_ij_eq_A=REFERENCE_R0_BOND_A[frozenset({atom1, atom2})]
+    r_jk_eq_A=REFERENCE_R0_BOND_A[frozenset({atom2, atom3})]
+    r_ij_p_r_jk_A=r_ij_eq_A+r_jk_eq_A
+    D=(r_ij_eq_A-r_jk_eq_A)**2/r_ij_p_r_jk_A**2
+    K_theta_ijk_kcal_mol_rad2=143.9*Z_Values[atom1]*C_Values[atom2]*Z_Values[atom3]*ref_angle_rad**(-2)*r_ij_p_r_jk_A**(-1)*np.exp(-2*D)
+    #transform kcal/mol into Hartree
+    K_theta_ijk_Ha_rad2=0.0015936*K_theta_ijk_kcal_mol_rad2
+    K_theta_ijk_Ha_rad2_bohr2=K_theta_ijk_Ha_rad2
+    return K_theta_ijk_Ha_rad2_bohr2
+
+REFERENCE_DIHEDRAL_BO = {
+    #unit kcal/mol, see W. Jorgensenet. al; J. Am. Chem. Soc. 1996, 118, 11225-11236
+    # ==================== ALKANES (C-C single bonds) ====================
+    (('H','C','C','H'), (1, 1, 1)): (0.000, 0.000, 0.318),
+    (('H','C','C','C'), (1, 1, 1)): (0.000, 0.000, 0.366),
+    (('C','C','C','C'), (1, 1, 1)): (1.740, -0.157, 0.279),
+    (('C','C','C','H'), (1, 1, 1)): (0.000, 0.000, 0.366),  # Flipped
+    
+    # ==================== ALKENES (C=C double bonds) ====================
+    (('H','C','C','C'), (1, 2, 1)): (0.000, 0.000, -0.372),
+    (('C','C','C','H'), (1, 2, 1)): (0.000, 0.000, -0.372),  # Flipped
+    (('H','C','C','H'), (1, 2, 1)): (0.000, 0.000, 0.000),   # Ethene-like
+    (('C','C','C','C'), (1, 2, 1)): (0.000, 0.000, 0.000),   # Trans/cis barriers
+    
+    # ==================== AROMATIC SYSTEMS ====================
+    # Ethylbenzene and aromatic substitution
+    (('H','C','C','C'), (1, 1.5, 1.5)): (0.000, 0.000, 0.000),
+    (('C','C','C','C'), (1, 1, 1.5)): (0.000, 0.000, 0.000),
+    (('C','C','C','H'), (1.5, 1, 1)): (0.000, 0.000, 0.000),  # Flipped
+    (('H','C','C','C'), (1, 1, 1.5)): (0.000, 0.000, 0.462),
+    (('C','C','C','H'), (1.5, 1, 1)): (0.000, 0.000, 0.462),  # Flipped
+    (('C','C','C','C'), (1.5, 1.5, 1.5)): (0.000, 0.000, 0.000),  # Aromatic-aromatic
+    (('H','C','C','H'), (1, 1.5, 1)): (0.000, 0.000, 0.000),      # Aromatic H-H
+    
+    # ==================== ALCOHOLS (-OH groups) ====================
+    (('H','C','O','H'), (1, 1, 1)): (0.000, 0.000, 0.450),
+    (('H','O','C','H'), (1, 1, 1)): (0.000, 0.000, 0.450),  # Flipped
+    (('C','C','O','H'), (1, 1, 1)): (-0.356, -0.174, 0.492),
+    (('H','O','C','C'), (1, 1, 1)): (-0.356, -0.174, 0.492),  # Flipped
+    (('H','C','C','O'), (1, 1, 1)): (0.000, 0.000, 0.468),
+    (('O','C','C','H'), (1, 1, 1)): (0.000, 0.000, 0.468),  # Flipped
+    (('C','C','C','O'), (1, 1, 1)): (1.711, -0.500, 0.663),
+    (('O','C','C','C'), (1, 1, 1)): (1.711, -0.500, 0.663),  # Flipped
+    
+    # Polyol patterns
+    (('C','C','O','C'), (1, 1, 1)): (-0.356, -0.174, 0.492),  # C-C-O-C
+    (('O','C','O','H'), (1, 1, 1)): (0.000, 0.000, 0.900),    # Diol interactions
+    (('H','O','C','O'), (1, 1, 1)): (0.000, 0.000, 0.900),    # Flipped
+    
+    # ==================== PHENOLS (aromatic -OH) ====================
+    (('H','O','C','C'), (1, 1, 1.5)): (0.000, 1.682, 0.000),
+    (('C','C','O','H'), (1.5, 1, 1)): (0.000, 1.682, 0.000),  # Flipped
+    (('C','O','C','C'), (1, 1.5, 1.5)): (0.000, 1.682, 0.000), # O-aromatic-aromatic
+    
+    # ==================== THIOLS (-SH groups) ====================
+    (('H','C','S','H'), (1, 1, 1)): (0.000, 0.000, 0.451),
+    (('H','S','C','H'), (1, 1, 1)): (0.000, 0.000, 0.451),  # Flipped
+    (('C','C','S','H'), (1, 1, 1)): (-0.759, -0.282, 0.603),
+    (('H','S','C','C'), (1, 1, 1)): (-0.759, -0.282, 0.603),  # Flipped
+    (('H','C','C','S'), (1, 1, 1)): (0.000, 0.000, 0.452),
+    (('S','C','C','H'), (1, 1, 1)): (0.000, 0.000, 0.452),  # Flipped
+    (('C','C','C','S'), (1, 1, 1)): (1.876, 0.000, 0.000),
+    (('S','C','C','C'), (1, 1, 1)): (1.876, 0.000, 0.000),  # Flipped
+    
+    # ==================== SULFIDES (C-S-C) ====================
+    (('H','C','S','C'), (1, 1, 1)): (0.000, 0.000, 0.647),
+    (('C','S','C','H'), (1, 1, 1)): (0.000, 0.000, 0.647),  # Flipped
+    (('C','C','C','S'), (1, 1, 1)): (2.619, -0.620, 0.258),
+    (('S','C','C','C'), (1, 1, 1)): (2.619, -0.620, 0.258),  # Flipped
+    (('C','C','S','C'), (1, 1, 1)): (0.925, -0.576, 0.677),
+    (('C','S','C','C'), (1, 1, 1)): (0.925, -0.576, 0.677),  # Flipped
+    
+    # Aromatic sulfides
+    (('C','C','S','C'), (1.5, 1, 1)): (0.925, -0.576, 0.677),
+    (('C','S','C','C'), (1, 1, 1.5)): (0.925, -0.576, 0.677),
+    
+    # ==================== DISULFIDES (C-S-S-C) ====================
+    (('C','S','S','C'), (1, 1, 1)): (0.000, -7.414, 1.705),
+    (('H','C','S','S'), (1, 1, 1)): (0.000, 0.000, 0.558),
+    (('S','S','C','H'), (1, 1, 1)): (0.000, 0.000, 0.558),  # Flipped
+    (('C','C','S','S'), (1, 1, 1)): (1.941, -0.836, 0.935),
+    (('S','S','C','C'), (1, 1, 1)): (1.941, -0.836, 0.935),  # Flipped
+    
+    # Cyclic disulfides (like cysteine bridges)
+    (('S','C','C','S'), (1, 1, 1)): (0.000, -7.414, 1.705),
+    
+    # ==================== PRIMARY AMINES (1° -NH2) ====================
+    (('H','C','N','H'), (1, 1, 1)): (0.000, 0.000, 0.400),
+    (('H','N','C','H'), (1, 1, 1)): (0.000, 0.000, 0.400),  # Flipped
+    (('H','C','C','N'), (1, 1, 1)): (-1.013, -0.709, 0.473),
+    (('N','C','C','H'), (1, 1, 1)): (-1.013, -0.709, 0.473),  # Flipped
+    (('C','C','N','H'), (1, 1, 1)): (-0.190, -0.417, 0.418),
+    (('H','N','C','C'), (1, 1, 1)): (-0.190, -0.417, 0.418),  # Flipped
+    (('C','C','C','N'), (1, 1, 1)): (2.392, -0.674, 0.550),
+    (('N','C','C','C'), (1, 1, 1)): (2.392, -0.674, 0.550),  # Flipped
+    
+    # ==================== SECONDARY AMINES (2° -NH-) ====================
+    (('C','C','N','C'), (1, 1, 1)): (-0.190, -0.417, 0.418),
+    (('C','N','C','C'), (1, 1, 1)): (-0.190, -0.417, 0.418),  # Flipped
+    (('H','C','N','C'), (1, 1, 1)): (0.000, 0.000, 0.400),
+    (('C','N','C','H'), (1, 1, 1)): (0.000, 0.000, 0.400),   # Flipped
+    
+    # ==================== TERTIARY AMINES (3° -N<) ====================
+    (('C','C','N','C'), (1, 1, 1)): (-0.190, -0.417, 0.418),
+    (('C','N','C','C'), (1, 1, 1)): (-0.190, -0.417, 0.418),
+    
+    # ==================== ETHERS (C-O-C) ====================
+    (('H','C','O','C'), (1, 1, 1)): (0.000, 0.000, 0.760),
+    (('C','O','C','H'), (1, 1, 1)): (0.000, 0.000, 0.760),  # Flipped
+    (('C','C','O','C'), (1, 1, 1)): (0.650, -0.250, 0.670),
+    (('C','O','C','C'), (1, 1, 1)): (0.650, -0.250, 0.670),  # Flipped
+    
+    # Aromatic ethers
+    (('C','C','O','C'), (1.5, 1, 1)): (0.650, -0.250, 0.670),
+    (('C','O','C','C'), (1, 1, 1.5)): (0.650, -0.250, 0.670),
+    
+    # ==================== ACETALS/KETALS (C-O-C-O) ====================
+    (('C','O','C','O'), (1, 1, 1)): (-0.574, -0.997, 0.0),
+    (('O','C','O','C'), (1, 1, 1)): (-0.574, -0.997, 0.0),   # Flipped
+    (('H','O','C','O'), (1, 1, 1)): (-0.574, -0.997, 0.0),
+    (('O','C','O','H'), (1, 1, 1)): (-0.574, -0.997, 0.0),   # Flipped
+    
+    # ==================== CARBOXYLIC ACIDS (-COOH) ====================
+    # Note: There was a duplicate key in original, assuming this is the correct one
+    (('O','C','O','H'), (1, 1, 1)): (0.000, 4.830, 0.000),  # Carboxylic acid
+    (('H','O','C','O'), (1, 1, 1)): (0.000, 4.830, 0.000),  # Flipped
+    (('C','C','C','O'), (1, 1, 2)): (0.000, 0.000, 0.000),  # C=O rotation
+    (('O','C','C','C'), (2, 1, 1)): (0.000, 0.000, 0.000),  # Flipped
+    
+    # ==================== ESTERS (-COO-) ====================
+    (('C','C','O','C'), (1, 2, 1)): (0.000, 5.400, 0.000),  # Ester linkage
+    (('C','O','C','C'), (1, 2, 1)): (0.000, 5.400, 0.000),  # Flipped
+    (('O','C','O','C'), (2, 1, 1)): (0.000, 5.400, 0.000),  # C=O-O-C
+    (('C','O','C','O'), (1, 1, 2)): (0.000, 5.400, 0.000),  # Flipped
+    
+    # ==================== AMIDES (-CONH-) ====================
+    (('C','C','N','H'), (1, 2, 1)): (0.000, 10.000, 0.000), # Amide rotation barrier
+    (('H','N','C','C'), (1, 2, 1)): (0.000, 10.000, 0.000), # Flipped
+    (('C','C','N','C'), (1, 2, 1)): (0.000, 10.000, 0.000), # N-alkyl amides
+    (('C','N','C','C'), (1, 2, 1)): (0.000, 10.000, 0.000), # Flipped
+    (('O','C','N','H'), (2, 1, 1)): (0.000, 10.000, 0.000), # C=O-N-H
+    (('H','N','C','O'), (1, 1, 2)): (0.000, 10.000, 0.000), # Flipped
+    
+    # ==================== IMINES (C=N) ====================
+    (('C','C','N','C'), (1, 2, 1)): (0.000, 0.000, 0.000),  # C-C=N-C
+    (('C','N','C','C'), (1, 2, 1)): (0.000, 0.000, 0.000),  # Flipped
+    (('H','C','N','C'), (1, 2, 1)): (0.000, 0.000, 0.000),
+    (('C','N','C','H'), (1, 2, 1)): (0.000, 0.000, 0.000),  # Flipped
+    
+    # ==================== PHOSPHORUS COMPOUNDS ====================
+    (('C','C','P','C'), (1, 1, 1)): (0.000, 0.000, 0.200),  # Phosphines
+    (('C','P','C','C'), (1, 1, 1)): (0.000, 0.000, 0.200),  # Flipped
+    (('H','C','P','C'), (1, 1, 1)): (0.000, 0.000, 0.200),
+    (('C','P','C','H'), (1, 1, 1)): (0.000, 0.000, 0.200),  # Flipped
+    (('O','P','O','C'), (1, 1, 1)): (0.000, 0.000, 0.300),  # Phosphates
+    (('C','O','P','O'), (1, 1, 1)): (0.000, 0.000, 0.300),  # Flipped
+    
+    # ==================== NITRILES (-CN) ====================
+    (('C','C','C','N'), (1, 1, 3)): (0.000, 0.000, 0.000),  # C-C-C≡N
+    (('N','C','C','C'), (3, 1, 1)): (0.000, 0.000, 0.000),  # Flipped
+    (('H','C','C','N'), (1, 1, 3)): (0.000, 0.000, 0.000),
+    (('N','C','C','H'), (3, 1, 1)): (0.000, 0.000, 0.000),  # Flipped
+    
+    # ==================== NITRO GROUPS (-NO2) ====================
+    (('C','C','N','O'), (1, 1, 2)): (0.000, 0.000, 0.000),  # C-C-N=O
+    (('O','N','C','C'), (2, 1, 1)): (0.000, 0.000, 0.000),  # Flipped
+    (('O','N','C','H'), (2, 1, 1)): (0.000, 0.000, 0.000),
+    (('H','C','N','O'), (1, 1, 2)): (0.000, 0.000, 0.000),  # Flipped
+    
+    # ==================== SPECIAL RING SYSTEMS ====================
+    # 5-membered rings (furan, pyrrole, thiophene)
+    (('C','C','O','C'), (1.5, 1, 1.5)): (0.000, 0.000, 0.000),  # Furan
+    (('C','O','C','C'), (1.5, 1, 1.5)): (0.000, 0.000, 0.000),
+    (('C','C','N','C'), (1.5, 1, 1.5)): (0.000, 0.000, 0.000),  # Pyrrole
+    (('C','N','C','C'), (1.5, 1, 1.5)): (0.000, 0.000, 0.000),
+    (('C','C','S','C'), (1.5, 1, 1.5)): (0.000, 0.000, 0.000),  # Thiophene
+    (('C','S','C','C'), (1.5, 1, 1.5)): (0.000, 0.000, 0.000),
+    
+    # 6-membered rings (pyridine, pyrimidine)
+    (('C','C','N','C'), (1.5, 1.5, 1.5)): (0.000, 0.000, 0.000),  # Pyridine
+    (('N','C','C','N'), (1.5, 1.5, 1.5)): (0.000, 0.000, 0.000),  # Pyrimidine
+    
+    # ==================== HALOGENS ====================
+    (('H','C','C','F'), (1, 1, 1)): (0.000, 0.000, 0.460),
+    (('F','C','C','H'), (1, 1, 1)): (0.000, 0.000, 0.460),  # Flipped
+    (('H','C','C','Cl'), (1, 1, 1)): (0.000, 0.000, 0.355),
+    (('Cl','C','C','H'), (1, 1, 1)): (0.000, 0.000, 0.355),  # Flipped
+    (('H','C','C','Br'), (1, 1, 1)): (0.000, 0.000, 0.340),
+    (('Br','C','C','H'), (1, 1, 1)): (0.000, 0.000, 0.340),  # Flipped
+    (('H','C','C','I'), (1, 1, 1)): (0.000, 0.000, 0.320),
+    (('I','C','C','H'), (1, 1, 1)): (0.000, 0.000, 0.320),   # Flipped
+    
+    (('C','C','C','F'), (1, 1, 1)): (0.000, 0.000, 0.460),
+    (('F','C','C','C'), (1, 1, 1)): (0.000, 0.000, 0.460),   # Flipped
+    (('C','C','C','Cl'), (1, 1, 1)): (0.000, 0.000, 0.355),
+    (('Cl','C','C','C'), (1, 1, 1)): (0.000, 0.000, 0.355),  # Flipped
+    (('C','C','C','Br'), (1, 1, 1)): (0.000, 0.000, 0.340),
+    (('Br','C','C','C'), (1, 1, 1)): (0.000, 0.000, 0.340),  # Flipped
+    (('C','C','C','I'), (1, 1, 1)): (0.000, 0.000, 0.320),
+    (('I','C','C','C'), (1, 1, 1)): (0.000, 0.000, 0.320),   # Flipped
+}
+
+# Helper function to get dihedral parameters with automatic flipping
+def get_dihedral_params(atom1, atom2, atom3, atom4, bo1, bo2, bo3):
+    """
+    Get dihedral parameters with automatic handling of atom order.
+    Returns (V1, V2, V3) Fourier coefficients.
+    """
+    key1 = ((atom1, atom2, atom3, atom4), (bo1, bo2, bo3))
+    key2 = ((atom4, atom3, atom2, atom1), (bo3, bo2, bo1))  # Flipped
+    
+    if key1 in REFERENCE_DIHEDRAL_BO:
+        return REFERENCE_DIHEDRAL_BO[key1]
+    elif key2 in REFERENCE_DIHEDRAL_BO:
+        return REFERENCE_DIHEDRAL_BO[key2]
+    else:
+        # Return default values if not found
+        return (0.000, 0.000, 0.000)
+
+def get_initial_Hessian(atoms,coordinates_bohr,bonds,angles,dihedrals,s=1):
+
+    bond_order=assign_bond_orders(atoms=atoms,bonds=bonds)
+    coordinates_bohr=np.array(coordinates_bohr)
+    H_int_diag = np.zeros(len(bonds)+len(angles)+len(dihedrals))#+len(impropers))
+
+    for it_bond,bond in enumerate(bonds):
+        i_idx=bond[0]
+        j_idx=bond[1]
+        H_int_diag[it_bond]=get_K_bond(atoms[i_idx], atoms[j_idx], coordinates_bohr[i_idx],coordinates_bohr[j_idx])
+
+    for it_angle,angle in enumerate(angles):
+        i_idx=angle[0]
+        j_idx=angle[1]
+        k_idx=angle[2]
+        bond_order1=bond_order[tuple(sorted((i_idx,j_idx)))]
+        bond_order2=bond_order[tuple(sorted((j_idx,k_idx)))]
+        H_int_diag[len(bonds)+it_angle]=get_K_theta(atoms[i_idx],atoms[j_idx],atoms[k_idx],bond_order1,bond_order2)
+    for it_torsion,torsion in enumerate(dihedrals):
+        i_idx=torsion[0]
+        j_idx=torsion[1]
+        k_idx=torsion[2]
+        l_idx=torsion[3]
+        bond_order1=bond_order[tuple(sorted((i_idx,j_idx)))]
+        bond_order2=bond_order[tuple(sorted((j_idx,k_idx)))]
+        bond_order3=bond_order[tuple(sorted((k_idx,l_idx)))]
+        V1,V2,V3=get_dihedral_params(atoms[i_idx],atoms[j_idx],atoms[k_idx], atoms[l_idx], bond_order1, bond_order2, bond_order3)
+        #kcals/mol -> Hartree
+        V1*=0.0015936
+        V2*=0.0015936
+        V3*=0.0015936
+        
+        r_ij=coordinates_bohr[i_idx]-coordinates_bohr[j_idx]
+        r_kj=coordinates_bohr[k_idx]-coordinates_bohr[j_idx]
+        r_lk=coordinates_bohr[l_idx]-coordinates_bohr[k_idx]
+        r_u = np.linalg.norm(r_ij)
+        r_w = np.linalg.norm(r_kj)
+        r_v = np.linalg.norm(r_lk)
+
+        #scale_factor=1.0
+        u = r_ij / r_u
+        w = r_kj / r_w
+        v = r_lk / r_v
+
+        # Normals to the m-o-p and o-p-n planes
+        normal_mop = np.cross(u, w)
+        normal_opn = np.cross(v, -w) # Use -w to point away from central bond
+        
+        norm_mop_mag = np.linalg.norm(normal_mop)
+        norm_opn_mag = np.linalg.norm(normal_opn)
+
+        # Check for collinear atoms (which make planes undefined)
+        if norm_mop_mag < 1e-8 or norm_opn_mag < 1e-8:
+             H_int_diag[len(bonds)+len(angles)+it_torsion]=0
+             continue
+
+        # Calculate the dihedral angle using a stable atan2 method
+        # The axis of rotation is the central bond vector w
+        y = np.dot(np.cross(normal_mop, normal_opn), w)
+        x = np.dot(normal_mop, normal_opn)
+        phi = np.arctan2(y, x)
+        Hphi1phi2=-0.5*V1*np.cos(phi)+2*V2*np.cos(2*phi)-4.5*V3*np.cos(3*phi)
+        H_int_diag[len(bonds)+len(angles)+it_torsion]=Hphi1phi2
+
+    # --- Regularization ---
+    # Make all entries positive and avoid too small values
+    min_threshold = max(np.min(H_int_diag[H_int_diag > 0.005]), 1e-3)
+    H_int_diag = np.abs(H_int_diag) + min_threshold
+    
+    # Optional scaling factor
+    H_int_diag *= s
+    return H_int_diag*s
+    
 
 
 def write_cell(write_path,name,cell):
@@ -483,14 +1551,14 @@ def write_cell(write_path,name,cell):
         f.write(line)
 def prepare_force_eval(path,config):
     name=config["name"]
-    cell = config["cell"]
+    cell = config["cell_A"]
+    print(cell)
     atoms=config["atoms"]
-    coordinates=config["coordinates"]
+    coordinates=config["coordinates_A"]
     cell_files= [f for f in os.listdir(path) if f.endswith('_tmp.cell')]
-    
     if len(cell_files) == 0:
         if np.linalg.matrix_rank(cell)==0:
-            padding = 10.0 # Define a clear padding value (e.g., 5 Å on each side)
+            padding = 10 # Define a clear padding value (e.g., 10 Å on each side)
             # 1. Center the molecule at the origin.
             centered_coords, _ = get_principle_axis_coordinates(coordinates)
             centered_coords = np.array(centered_coords)
@@ -500,13 +1568,12 @@ def prepare_force_eval(path,config):
             mol_extent_x = 2 * np.max(np.abs(centered_coords[:, 0]))
             mol_extent_y = 2 * np.max(np.abs(centered_coords[:, 1]))
             mol_extent_z = 2 * np.max(np.abs(centered_coords[:, 2]))
-            max_extend=np.max([mol_extent_x,mol_extent_y,mol_extent_z])
-            
+            mol_extent=np.max([mol_extent_x,mol_extent_y,mol_extent_z])
             # 3. Define cell vectors as the molecular extent plus padding.
             cell = np.array([
-                [max_extend + padding, 0, 0],
-                [0, max_extend + padding, 0],
-                [0, 0, max_extend + padding]
+                [mol_extent + padding, 0, 0],
+                [0, mol_extent + padding, 0],
+                [0, 0, mol_extent + padding]
             ])
 
             write_cell(path, name, cell)
@@ -514,12 +1581,12 @@ def prepare_force_eval(path,config):
             # 4. Shift the centered coordinates to the center of the new box. This part is correct.
             cell_center = 0.5 * np.array([cell[0][0], cell[1][1], cell[2][2]])
             coordinates = centered_coords + cell_center
+            config["periodic"]="None"
         elif np.linalg.matrix_rank(cell)==1:
             _, R = np.linalg.qr(cell)
             independent_index = np.where(np.abs(np.diag(R)) > 1e-10)
             independent_vectors=cell[independent_index[0],:]
             independent_vector=independent_vectors[0]
-            print(independent_vector)
             cell_length_x=np.linalg.norm(independent_vector)
             e_x=independent_vector/cell_length_x
             # Create orthonormal basis with e_x as the first vector
@@ -540,7 +1607,11 @@ def prepare_force_eval(path,config):
             # Center the molecule along the periodic direction (x)
             x_center = np.mean(rotated_coords[:, 0])
             rotated_coords[:, 0] -= x_center-cell_length_x/2
-            
+
+            # If points go outside [0, cell_length_x], adjust cell length
+            for it in range(len(rotated_coords[:, 0])):
+                if rotated_coords[it, 0] <0:
+                    rotated_coords[it, 0]+=cell_length_x
             # Get principal axis coordinates for y and z directions (non-periodic)
             temp_coords_yz = rotated_coords[:, 1:]  # y and z coordinates
             centered_coords_yz, _ = get_principle_axis_coordinates(temp_coords_yz)
@@ -558,7 +1629,7 @@ def prepare_force_eval(path,config):
             max_extent_yz = np.max([mol_extent_y, mol_extent_z])
             
             # Define padding
-            padding = 10.0
+            padding = 20
             
             # Create new cell: periodic in x, large box in y and z
             new_cell = np.array([
@@ -587,7 +1658,7 @@ def prepare_force_eval(path,config):
             
             
             #reorient coordinate system s.t. x direction points to independent vector
-
+            config["periodic"]="x"
     elif len(cell) == 0 and len(cell_files) == 1:
         # This assumes the cell file is already in the correct path, so no action needed.
         pass
@@ -611,16 +1682,45 @@ def prepare_force_eval(path,config):
         accuracy="fine"
     )
     #update cell and coordinates in config
-    config["coordinates"]=coordinates
-    config["cell"]=cell
+    config["coordinates_A"]=coordinates
+    config["cell_A"]=cell
     return config
-def run_force_eval(
+def run_energy_force_eval(
     path: str,
     cp2k_exec: str = "./cp2k.popt",
     input_file: str = "input_file.inp",
     output_file: str = "output_file.out",
     runner: str = "local"
 ) -> Tuple[float, List[List[float]]]:
+    
+    # Build command string
+    if runner == "local":
+        cmd = f"cd {path} && HWLOC_HIDE_ERRORS=1 mpirun --mca hwloc_base_verbose 0 {cp2k_exec} -i {input_file} -o {output_file} 2>/dev/null"
+    elif runner == "slurm":
+        cmd = f"cd {path} && srun {cp2k_exec} -i {input_file} -o {output_file}"
+    else:
+        raise ValueError("runner must be 'local' or 'slurm'")
+    
+    
+    # Run the command - output goes directly to file
+    exit_code = os.system(cmd)
+    
+    
+    if exit_code != 0:
+        raise RuntimeError(f"CP2K failed with exit code {exit_code}")
+    
+    # Now collect results from the output files
+    forces = Read.read_forces(folder=path)
+    E0 = Read.read_total_energy(path=path, verbose=False)
+    
+    return E0, forces
+def run_energy_force_stress_eval(
+    path: str,
+    cp2k_exec: str = "./cp2k.popt",
+    input_file: str = "input_file.inp",
+    output_file: str = "output_file.out",
+    runner: str = "local"
+    ) -> Tuple[float, List[List[float]]]:
     """
     Runs a CP2K calculation for given coordinates and atoms.
 
@@ -666,7 +1766,7 @@ def run_force_eval(
     """
     # Step 3: Build command
     if runner == "local":
-        cmd = ["mpirun", "-np", str(4), cp2k_exec, "-i", input_file, "-o", output_file]
+        cmd = ["mpirun", "-np", str(9), cp2k_exec, "-i", input_file, "-o", output_file]
     elif runner == "slurm":
         # In SLURM allocation, srun handles MPI ranks automatically
         cmd = ["srun", cp2k_exec, "-i", input_file, "-o", output_file]
@@ -703,10 +1803,11 @@ def run_force_eval(
             raise RuntimeError(f"CP2K failed with return code {retcode}")
 
     # Step 4: Extract results
+    stresses = Read.read_stress(folder=path)
+    stresses*=2.94210e-5#conversion GPa -> Ha/a_0**3
     forces = Read.read_forces(folder=path)
     E0 = Read.read_total_energy(path=path,verbose=False)
-    return E0, forces
-    
+    return E0, forces, stresses
 def parse_cp2k_config(config) -> dict:
     """
     Parses a CP2K-style configuration string.
@@ -727,9 +1828,10 @@ def parse_cp2k_config(config) -> dict:
         "charge": 0,
         "multiplicity": 1,
         "UKS": False,
-        "cell":np.zeros((3,3)),
+        "cell_A":np.zeros((3,3)),
         "atoms":None,
-        "coordinates":None
+        "coordinates_A":None,
+        "masses":None
     }
     config_string=config[1][1:]
 
@@ -774,16 +1876,24 @@ def parse_cp2k_config(config) -> dict:
             result["multiplicity"] = int(field.split("=")[1])
         elif field.startswith("cell="):
             cell_data = field[len("cell="):].strip()
-            cell_data =cell_data.split(";")[0]
-            cell = np.array(ast.literal_eval(cell_data), dtype=float)
-            result["cell"] = cell
+            if cell_data.endswith(";"):
+                cell_data = cell_data[:-1]
+            try:
+                cell = np.array(ast.literal_eval(cell_data), dtype=float)
+            except Exception as e:
+                raise ValueError(f"Could not parse cell string: {cell_data}") from e
+            result["cell_A"] = cell
     coordinates=[]
     atoms=[]
     for line in config[2:]:
         atoms.append(line.split()[0])
         coordinates.append(np.array([float(line.split()[1]),float(line.split()[2]),float(line.split()[3])]))
     result["atoms"]=atoms
-    result["coordinates"]=coordinates
+    masses=[]
+    for atom in atoms:
+        masses.append(StandardAtomicWeights[atom])
+    result["masses"]=masses
+    result["coordinates_A"]=coordinates
     return result
 def generate_input(
     config,
@@ -797,7 +1907,11 @@ def generate_input(
     atoms=config["atoms"]
     # 2. Start building input
     string = global_section(molecule_name=name, run_mode=config["run_mode"])
-    string += dft_basis_set_section(basis_set_file=config["basis_file"], potential_file=config['potential_file'])
+    print(config["periodic"])
+    if config["periodic"]=="None":
+        string += dft_basis_set_section(basis_set_file=config["basis_file"], potential_file=config['potential_file'])
+    else:
+        string += dft_basis_set_section(basis_set_file=config["basis_file"], potential_file=config['potential_file'],stress_tensor="ANALYTICAL")
     string += dft_cutoff_rel_cutoff(accuracy=accuracy)
 
     hybrid = config["xc_functional"].split("_")[0] in ["CAM-B3LYP", "LCwPBE", "B3LYP", "PBEO"]
@@ -813,7 +1927,7 @@ def generate_input(
             string += dft_charge_multiplicity(charge=config["charge"], multiplicity=config["multiplicity"], LSD=True)
         else:
             string += dft_charge_multiplicity(charge=config["charge"], multiplicity=config["multiplicity"], LSD=False)
-    cell=config["cell"]
+    cell=config["cell_A"]
     # Cell / periodicity
     if np.sum(np.abs(cell)**2)<1e-10:
         string += poisson_section(periodic="NONE", psolver="WAVELET")
@@ -830,13 +1944,13 @@ def generate_input(
         density_cutoff=1e-10,
         gradient_cutoff=1e-10,
         tau_cutoff=1e-10,
-        eps_schwarz=1e-9,
+        eps_schwarz=1e-12,
         max_memory=30000,
         eps_storage_scaling=1e-1
     )
 
     periodic = "XYZ"
-    cell=config["cell"]
+    cell=config["cell_A"]
     if np.linalg.matrix_rank(cell)==0:
         periodic = "NONE"
     xc_func = config["xc_functional"].split("_")[0]
@@ -906,8 +2020,10 @@ def global_section(molecule_name, run_mode="energy"):
         RUN_TYPE = "ENERGY_FORCE"
     elif run_mode == "geo":
         RUN_TYPE = "ENERGY_FORCE"
+    elif run_mode == "cell":
+        RUN_TYPE = "ENERGY_FORCE"
     else:
-        raise ValueError(f"Unsupported run_mode: '{run_mode}'. Choose from 'energy', 'va', 'force', or 'geo'.")
+        raise ValueError(f"Unsupported run_mode: '{run_mode}'. Choose from 'energy', 'va', 'force', 'cell', or 'geo'.")
 
     string  = "&GLOBAL\n"
     string += f"   PROJECT {molecule_name}_{run_mode}\n"
@@ -1061,7 +2177,7 @@ def dft_cutoff_rel_cutoff(accuracy="fine"):
     if accuracy=="fine":
         cutoff=450; rel_cutoff=70; ngrids=5
     elif accuracy=="ultra":
-        cutoff=600; rel_cutoff=70; ngrids=6
+        cutoff=600; rel_cutoff=80; ngrids=6
     elif accuracy=="coarse":
         cutoff=300; rel_cutoff=50; ngrids=4
     string = "   &MGRID\n"
@@ -1096,10 +2212,10 @@ def print_AO_section(filename="KSHamiltonian"):
     return string
 def xc_section(
     xc_functional="CAM-B3LYP_omega=0.33",
-    density_cutoff=1e-12,
-    gradient_cutoff=1e-12,
-    tau_cutoff=1e-12,
-    eps_schwarz=1e-12,
+    density_cutoff=1e-10,
+    gradient_cutoff=1e-10,
+    tau_cutoff=1e-10,
+    eps_schwarz=1e-9,
     max_memory=30000,
     eps_storage_scaling=1e-1
 ):
@@ -1317,7 +2433,7 @@ def scf_section(
 
     string += "&END SCF\n"
     return string
-def poisson_section(periodic="NONE", psolver="ANALYTIC"):
+def poisson_section(periodic="NONE", psolver="WAVELET"):
     """
     Create the &POISSON section for a CP2K input file.
 
