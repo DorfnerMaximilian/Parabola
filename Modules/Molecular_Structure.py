@@ -79,7 +79,8 @@ class MolecularStructure():
             print(f"⌬ : Creating new Molecular Structure for {name} in:")
             print(os.path.abspath(self.path))
             print("▲ : Processing Geometric Structural Information")
-            xyz_filepath=Util.get_xyz_filename(path="./",verbose=True)
+            xyz_filepath=Read.get_xyz_filename(path="./",verbose=True)
+            self.xyz_path=xyz_filepath
             coordinates, masses, atomic_symbols = Read.read_coordinates_and_masses(xyz_filepath)
             self.coordinates=coordinates
             self.masses=masses
@@ -202,7 +203,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         super().__init__()  # Initialize parent class
         self.determine_symmetry(MolecularStructure)
     def determine_symmetry(self,MolecularStructure):
-        self._test_translation(MolecularStructure,tol_translation=5*10**(-4))
+        self._test_translation(MolecularStructure,tol_translation=5*10**(-5))
         primitive_indices=MolecularStructure.unitcells[(0,0,0)]
         geometry_centered_coordinates,center = Geometry.ComputeCenterOfGeometryCoordinates(np.array(MolecularStructure.coordinates)[primitive_indices])
         MolecularStructure.Geometric_Center_UC=center
