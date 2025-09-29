@@ -106,8 +106,6 @@ def read_cell(path):
     with open(path,"r") as f:
         line=f.readline()
     parts = line.split()
-    if len(parts) != 14:
-        raise ValueError(f"Expected 14 values, got {len(parts)}")
 
     # Next 9 values: h matrix (column-major in file)
     h_colwise = list(map(float, parts[2:11]))
@@ -380,6 +378,7 @@ def read_basis_vectors(parentfolder="./"):
         deltas = np.array(deltas)
 
     return BasisVectors, deltas
+
 def read_hessian(path="./"):
     #Read in the basis vectors of the finite displacements:
     BasisVectors,deltas=read_basis_vectors(path+"/")
@@ -477,6 +476,41 @@ def read_vibrations(parentfolder="./"):
         f.close()
         CarthesianDisplacements.append(np.array(mode))
     return VibrationalFrequencies,CarthesianDisplacements,normfactors
+
+def read_stress(folder,filename="Stress_Tensor"):
+    """
+    Parse CP2K output for the analytical stress tensor [GPa].
+
+    Parameters
+    ----------
+    filename : str
+        Path to CP2K output file.
+
+    Returns
+    -------
+    stress : np.ndarray, shape (3,3)
+        Stress tensor in GPa.
+    """
+    with open(folder+"/"+filename, "r") as f:
+        lines = f.readlines()
+
+    stress = None
+    for i, line in enumerate(lines):
+        if "STRESS| Analytical stress tensor" in line:
+            # the tensor is always in the next 3 lines (x, y, z rows)
+            mat = []
+            for l in lines[i+2:i+5]:
+                parts = l.split()
+                # Example line: "STRESS|      x   -6.92 ... -1.31 ... 5.52e-04"
+                row = [float(val) for val in parts[2:5]]
+                mat.append(row)
+            stress = np.array(mat, dtype=float)
+            break
+
+    if stress is None:
+        raise ValueError("Stress tensor not found in file.")
+
+    return stress
 ####################################################################################
 #########                    END Forces, Hessian & Vibrations               ########
 ####################################################################################
@@ -501,8 +535,9 @@ def read_cell_vectors(path="./",verbose=True):
             if len(l.split())>=1:
                 if l.split()[0]=='&CELL':
                     Cellflag=True
-                if l.split()[0]=='END' and l.split()[1]=='CELL':
-                    Cellflag=False
+                if len(l.split())>=2:
+                    if l.split()[0]=='&END' and l.split()[1]=='CELL':
+                        Cellflag=False
                 if Cellflag:
                     if l.split()[0]=='ABC':
                         cellvectors[0]=np.array([float(l.split()[1]),0.0,0.0])
@@ -611,7 +646,7 @@ def get_number_of_electrons(parentfolder="./",verbose=True):
     #Calculate the HOMO 
     NumberOfElectrons={}
     Charge=0
-    with open(parentfolder+"/"+filename,'r') as f:
+    with open(inp_file,'r') as f:
         lines=f.readlines()
         for line in lines:
             if len(line.split())>=2:
