@@ -1,7 +1,7 @@
 from . import Read
 import numpy as np
-from scipy.spatial.distance import pdist, squareform
 from copy import deepcopy
+from scipy.spatial.distance import pdist, squareform
 class MolecularGraph():
     def __init__(self,path="./"):
         self.path=path
