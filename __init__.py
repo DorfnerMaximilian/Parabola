@@ -2,6 +2,7 @@
 from .Modules import PhysConst
 from .Modules import Molecular_Structure
 from .Modules import Vibrational_Structure
+from .Modules import coordinate_tools
 from .Modules import Electronic_Structure
 from .Modules import Molecular_Graph
 from .Modules import cp2k_util

@@ -43,14 +43,14 @@ Examples:
     parser.add_argument(
         "--tol-max", 
         type=float,
-        default=5e-4,
-        help="Maximum force tolerance (default: 5e-4)"
+        default=6e-4,
+        help="Maximum force tolerance (default: 6e-4)"
     )
     parser.add_argument(
         "--tol-rms", 
         type=float,
-        default=1e-4,
-        help="RMS force tolerance (default: 1e-4)"
+        default=3e-4,
+        help="RMS force tolerance (default: 3e-4)"
     )
     
     # Output control
