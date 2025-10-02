@@ -99,7 +99,7 @@ Examples:
     parser.add_argument(
         "--tol-rms", 
         type=float,
-        default=1e-4,
+        default=5e-4,
         help="RMS force tolerance (default: 1e-4)"
     )
     
