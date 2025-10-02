@@ -2,11 +2,13 @@
 from . import Read 
 from .PhysConst import StandardAtomicWeights,ConversionFactors
 from .coordinate_tools import backtransform_iterative_refinement,getTransAndRotEigenvectors,get_principle_axis_coordinates,cartesian_to_internal_coordinates,generate_internal_representation,get_B_non_redundant_internal,assign_bond_orders
+from scipy.optimize import least_squares
 import numpy as np
 import os
 import shutil
 import subprocess
 import ast
+from datetime import datetime # Needed for timestamping the log
 from typing import List, Tuple
 num_of_e_atom = {
     "H": 1,
@@ -464,7 +466,7 @@ def bfgs_step_coord_internal(
     cp2k_exec="./cp2k.popt",
     runner="local",
     delta_min=0.005,
-    delta_max=1.0,
+    delta_max=0.5,
 ):
     """
     Perform one Trust-Radius BFGS optimization step.
@@ -483,9 +485,11 @@ def bfgs_step_coord_internal(
     angles=internals[1]
     dihedrals=internals[2]
     
+    PINV_RCOND_TOL = 1e-5
+
     q_k, B_prim = cartesian_to_internal_coordinates(np.array(coordinates_bohr), bonds, angles, dihedrals)
     B, U = get_B_non_redundant_internal(B_prim)
-    B_plus_T = np.linalg.pinv(B,rcond=1e-5).T
+    B_plus_T = np.linalg.pinv(B,rcond=PINV_RCOND_TOL).T
     projection_error=np.max(np.abs(forces_vec_cart_k-(B.T @ B_plus_T)@forces_vec_cart_k))
     forces_q_k =B_plus_T @ forces_vec_cart_k
     grad_q_k = -forces_q_k
@@ -493,12 +497,12 @@ def bfgs_step_coord_internal(
     if len(hessian) == 0:
         hessian=np.eye(len(grad_q_k))
     
-
-    # ... (The rest of the function for taking the step, evaluating, and updating Hessian is the same) ...
-    dx=solve_tr_subproblem_internal_coords(grad_q_k, hessian, B, delta, verbose=False)
-    s_q=B@dx
     step_type = "Trust"
     
+    # ... (The rest of the function for taking the step, evaluating, and updating Hessian is the same) ...
+    #dx=solve_tr_subproblem_internal_coords(grad_q_k, hessian, B, delta, verbose=False)
+    dq=solve_tr_subproblem_internal_coords(grad_q_k, hessian, B, delta, verbose=False)
+    dx = B_plus_T.T@dq
     x_new_cart=x_k_cart+dx
     coordinates_new_bohr = np.real(x_new_cart.reshape((len(atoms), 3)))
     
@@ -511,7 +515,7 @@ def bfgs_step_coord_internal(
     energy_new_Ha, forces_new_Ha_bohr = run_energy_force_eval(path=path, cp2k_exec=cp2k_exec, runner=runner)
 
     ared = energy_new_Ha-energy_Ha
-    pred = (grad_q_k.T @ s_q + 0.5 * s_q.T @ hessian @ s_q)
+    pred = (grad_q_k.T @ dq + 0.5 * dq.T @ hessian @ dq)
     rho = ared / pred
     delta_new, accepted = update_trust_rad(rho=rho, delta=delta,delta_min=delta_min,delta_max=delta_max)
     step_size = np.linalg.norm(dx)
@@ -520,7 +524,7 @@ def bfgs_step_coord_internal(
         coordinates_out = coordinates_new_bohr.tolist()
         q_k_plus_1, B_prim_new = cartesian_to_internal_coordinates(coordinates_new_bohr, bonds, angles, dihedrals)
         B_new, U_new = get_B_non_redundant_internal(B_prim_new)
-        B_plus_new_T = np.linalg.pinv(B_new, rcond=1e-5).T
+        B_plus_new_T = np.linalg.pinv(B_new, rcond=PINV_RCOND_TOL).T
         forces_out = np.array(forces_new_Ha_bohr).flatten()
         forces_out=forces_out.reshape((len(atoms), 3))
         energy_out = energy_new_Ha
@@ -591,7 +595,6 @@ def diis_step_coord_cart(
     coords_new = sum(c * q for c, q in zip(coeffs, Q))
     coords_current = Q[-1]
     disp = coords_new - coords_current
-    norm_disp = np.linalg.norm(disp)
     '''
     if norm_disp > max_step:
         disp *= max_step / norm_disp  # rescale displacement
@@ -613,6 +616,87 @@ def diis_step_coord_cart(
     coordinates_new_bohr = np.real(coords_new.reshape((len(atoms), 3)))
     return coordinates_new_bohr, forces_new, energy_new
 # --- New Wrapper Function ---
+def back_transform_iterative(
+    x_initial_cart,       # Initial Cartesian coords (flat array, Bohr)
+    q_initial_prim,       # Initial PRIMITIVE internal coords
+    p_q_non_redundant,    # The desired step in NON-REDUNDANT internals
+    B_plus_T,
+    U_matrix,             # Transformation from non-redundant to primitive space
+    internals,            # Definition of bonds, angles, etc.
+    ftol=1e-6,            # Convergence tolerance for the solver
+    xtol=1e-6
+):
+    """
+    Iteratively finds the Cartesian coordinates that correspond to a
+    step in internal coordinates using scipy.optimize.least_squares.
+    """
+    # 1. Define the target in the primitive (redundant) coordinate space
+    p_q_prim = U_matrix @ p_q_non_redundant
+    q_target = q_initial_prim + p_q_prim
+
+    # Define indices for angle wrapping
+    num_bonds = len(internals[0])
+    num_angles = len(internals[1])
+    dihedral_start_idx = num_bonds + num_angles
+
+    # 2. Define the residual function for the least-squares solver
+    # This function calculates: q(x_initial + dx) - q_target
+    def residual_function(dx, x_initial, q_target_vec):
+        """Calculates the vector of errors in internal coordinates."""
+        # Current geometry based on the step dx
+        x_current = x_initial + dx
+        
+        # Calculate the internal coordinates for the current geometry
+        q_current, _ = cartesian_to_internal_coordinates(
+            x_current.reshape(-1, 3), *internals
+        )
+
+        # Calculate the error, correctly wrapping dihedral angles
+        error = q_current - q_target_vec
+        for j in range(dihedral_start_idx, len(error)):
+            # Wrap the error to be in the range [-pi, pi]
+            while error[j] > np.pi: error[j] -= 2 * np.pi
+            while error[j] < -np.pi: error[j] += 2 * np.pi
+            
+        return error
+
+    # 3. Define the Jacobian function for the solver
+    # The Jacobian of the residual is simply the Wilson B-matrix
+    def jacobian_function(dx, x_initial,q_target):
+        """Calculates the Wilson B-matrix at the current geometry."""
+        x_current = x_initial + dx
+        _, B_prim = cartesian_to_internal_coordinates(
+            x_current.reshape(-1, 3), *internals
+        )
+        return B_prim
+
+    # 4. Set the initial guess for the step 'dx'
+    # A zero vector is a safe and simple initial guess.
+    dx_initial_guess = B_plus_T.T@p_q_non_redundant
+    if np.linalg.norm(dx_initial_guess)>0.025:
+        # 5. Run the least-squares optimization
+        result = least_squares(
+            fun=residual_function,
+            x0=dx_initial_guess,
+            jac=jacobian_function,
+            args=(x_initial_cart,q_target), # Extra args for our functions
+            method='trf',  # Trust Region Reflective is robust
+            ftol=ftol,
+            xtol=xtol,
+            verbose=0 # Change to 1 or 2 for debugging
+        )
+
+        # 6. Check for success and return the final geometry
+        if not result.success:
+            print(f"Warning: Back-transformation did not converge. Message: {result.message}")
+
+        final_dx = result.x
+        x_final = x_initial_cart + final_dx
+    else:
+        x_final=x_final = x_initial_cart + dx_initial_guess
+    
+    return x_final
+
 def solve_tr_subproblem_internal_coords(g_q, H_q, B, delta, verbose=False):
     """
     Solves the TR subproblem in internal coordinates with a physically
@@ -655,16 +739,16 @@ def solve_tr_subproblem_internal_coords(g_q, H_q, B, delta, verbose=False):
 
     # 4. Back-transform the step to get the Cartesian step p_x
     # p_s -> p_q -> p_x
-    p_q = L @ p_s
+    dq = L @ p_s
     
-    # Use the pseudoinverse of B to get the Cartesian step
-    B_inv = np.linalg.pinv(B)
-    p_x = B_inv @ p_q
+    ## Use the pseudoinverse of B to get the Cartesian step
+    #B_inv = np.linalg.pinv(B)
+    #p_x = B_inv @ p_q
 
-    if verbose:
-        print(f"Final ||p_x|| = {np.linalg.norm(p_x):.6f} (target δ={delta})")
+    #if verbose:
+    #    print(f"Final ||p_x|| = {np.linalg.norm(p_x):.6f} (target δ={delta})")
 
-    return p_x
+    return dq
 def more_sorensen_secular(g_q, H_q, delta, tol=1e-12, max_iter=50, verbose=False):
     """
     Solve the trust-region subproblem using the More–Sorensen algorithm
@@ -1685,34 +1769,101 @@ def prepare_force_eval(path,config):
     config["coordinates_A"]=coordinates
     config["cell_A"]=cell
     return config
-def run_energy_force_eval(
-    path: str,
-    cp2k_exec: str = "./cp2k.popt",
-    input_file: str = "input_file.inp",
-    output_file: str = "output_file.out",
-    runner: str = "local"
-) -> Tuple[float, List[List[float]]]:
-    
-    # Build command string
-    if runner == "local":
-        cmd = f"cd {path} && HWLOC_HIDE_ERRORS=1 mpirun --mca hwloc_base_verbose 0 {cp2k_exec} -i {input_file} -o {output_file} 2>/dev/null"
-    elif runner == "slurm":
-        cmd = f"cd {path} && srun {cp2k_exec} -i {input_file} -o {output_file}"
-    else:
+def run_energy_force_eval( path: str, cp2k_exec: str = "./cp2k.popt", input_file: str = "input_file.inp", output_file: str = "output_file.out", runner: str = "local" ) -> Tuple[float, List[List[float]]]: 
+    """ Runs a CP2K calculation for given coordinates and atoms. 
+        If config_string is provided: 
+            1. Updates the XYZ file in path 
+            2. Generates the CP2K input file from config_string 
+            Otherwise: Assumes input_file.inp already exists in path. 
+        Then: 
+            3. Runs CP2K 4. Reads forces and energy 
+
+        Parameters ---------- 
+        path : str Working directory. 
+        name : str Base name for XYZ file. 
+        coordinates : list of list of float Atomic coordinates. 
+        atoms : list of str Atom symbols. 
+        config_string : str or None CP2K config string (optional). 
+        cp2k_exec : str Path to CP2K executable. 
+        input_file : str CP2K input file name. 
+        output_file : str CP2K output file name. 
+        np : int Number of MPI processes. 
+        mpirun_cmd : str MPI command. 
+
+        Returns ------- 
+        E0 : float Ground state energy. 
+        forces : list of list of float Atomic forces. 
+    """ 
+    if runner == "local": 
+        cmd = ["mpirun", "-np", str(9), cp2k_exec, "-i", input_file, "-o", output_file] 
+    elif runner == "slurm": # In SLURM allocation, srun handles MPI ranks automatically 
+        cmd = ["srun", cp2k_exec, "-i", input_file, "-o", output_file] 
+    else: 
         raise ValueError("runner must be 'local' or 'slurm'")
-    
-    
-    # Run the command - output goes directly to file
-    exit_code = os.system(cmd)
-    
-    
-    if exit_code != 0:
-        raise RuntimeError(f"CP2K failed with exit code {exit_code}")
-    
-    # Now collect results from the output files
+
+    output_path = os.path.join(path, output_file)
+    with open(output_path, "w") as out_f:
+        process = subprocess.run(cmd,
+                                   cwd=path,
+                                   capture_output=True,
+                                   text=True )
+    # --- 2. New: Append output to a log file ---
+    log_file_path = os.path.join(path, "calculation.log")
+    try:
+        # Open the log file in append mode ('a')
+        with open(log_file_path, "a") as log_f:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log_f.write(f"\n{'='*20} LOG ENTRY: {timestamp} {'='*20}\n")
+            log_f.write(f"Command: {' '.join(cmd)}\n")
+            log_f.write(f"Return Code: {process.returncode}\n\n")
+            
+            log_f.write("--- STDOUT ---\n")
+            log_f.write(process.stdout)
+            
+            if process.stderr:
+                log_f.write("\n--- STDERR ---\n")
+                log_f.write(process.stderr)
+            
+            log_f.write(f"\n{'='*20} END OF LOG ENTRY {'='*20}\n")
+    except IOError as e:
+        print(f"Warning: Could not write to log file {log_file_path}. Error: {e}")
+
+    # --- 3. Check for errors ---
+    # The original output is still printed to the main SLURM output for convenience
+    # --- 3b. Append to separate log files ---
+    stdout_log = os.path.join(path, "std_out.log")
+    stderr_log = os.path.join(path, "std_err.log")
+
+    try:
+        with open(stdout_log, "a") as f:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"\n{'='*20} STDOUT: {timestamp} {'='*20}\n")
+            f.write(process.stdout)
+            f.write(f"\n{'='*20} END STDOUT {'='*20}\n")
+    except IOError as e:
+        print(f"Warning: Could not write to {stdout_log}. Error: {e}")
+
+    if process.stderr:
+        try:
+            with open(stderr_log, "a") as f:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f.write(f"\n{'='*20} STDERR: {timestamp} {'='*20}\n")
+                f.write(process.stderr)
+                f.write(f"\n{'='*20} END STDERR {'='*20}\n")
+        except IOError as e:
+            print(f"Warning: Could not write to {stderr_log}. Error: {e}")
+        
+    if process.returncode != 0:
+        # Improved error message points to the log for detailed debugging
+        raise RuntimeError(
+            f"CP2K failed with return code {process.returncode}. "
+            f"Check the detailed output in {log_file_path}"
+        )
+
+    # --- 4. Extract results as before ---
     forces = Read.read_forces(folder=path)
-    E0 = Read.read_total_energy(path=path, verbose=False)
-    
+    E0 = Read.read_total_energy(path=path,verbose=False)
+
     return E0, forces
 def run_energy_force_stress_eval(
     path: str,
@@ -2379,7 +2530,7 @@ def scf_section(
     method="STANDARD",  # OT or STANDARD
     # OT-specific
     preconditioner="FULL_ALL",
-    minimizer="CG",
+    minimizer="DIIS",
     # STANDARD-specific
     mixing_method="BROYDEN_MIXING",
     mixing_alpha=0.4,
