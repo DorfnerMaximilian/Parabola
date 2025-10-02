@@ -248,7 +248,7 @@ def geo_opt(
     tol_max=5e-4,
     tol_drm=5e-4,
     max_iter=200,  #Add a maximum iteration limit
-    stall_patience=4, # Number of steps with no progress before declaring a stall
+    stall_patience=2, # Number of steps with no progress before declaring a stall
     stall_energy_thresh=1e-7, #Energy change threshold for stalling
 ):
     """
@@ -356,58 +356,40 @@ def geo_opt(
     while (force_max > tol_max or drm_force > tol_drm) and it < max_iter:
         it += 1
         energy_Ha_prev = energy_Ha
+        coordinates_bohr, forces_Ha_bohr, energy_Ha, hessian, delta, accepted, info = bfgs_step_coord_internal(
+            path=geo_opt_path,
+            name=name,
+            atoms=atoms,
+            coordinates_bohr=coordinates_bohr,
+            internals=internals,
+            forces_Ha_bohr=forces_Ha_bohr,
+            energy_Ha=energy_Ha,
+            hessian=hessian,
+            delta=delta,
+            cp2k_exec=cp2k_exec,
+            runner="slurm" if cluster == "slurm" else "local",
+        )
+        forces_Ha_bohr = rot_projector @ np.array(forces_Ha_bohr).flatten()
+        forces_Ha_bohr = forces_Ha_bohr.reshape((len(atoms), 3))
 
-        # Always try the BFGS step first unless forces are extremely small
-        if drm_force > 1e-5:
-            # MODIFIED: Call the updated bfgs_step function
-            coordinates_bohr, forces_Ha_bohr, energy_Ha, hessian, delta, accepted, info = bfgs_step_coord_internal(
-                path=geo_opt_path,
-                name=name,
-                atoms=atoms,
-                coordinates_bohr=coordinates_bohr,
-                internals=internals,
-                forces_Ha_bohr=forces_Ha_bohr,
-                energy_Ha=energy_Ha,
-                hessian=hessian,
-                delta=delta,
-                cp2k_exec=cp2k_exec,
-                runner="slurm" if cluster == "slurm" else "local",
-            )
-            forces_Ha_bohr = rot_projector @ np.array(forces_Ha_bohr).flatten()
-            forces_Ha_bohr = forces_Ha_bohr.reshape((len(atoms), 3))
+        # NEW: Stall detection logic is now here
+        energy_change = abs(energy_Ha - energy_Ha_prev)
 
-            # NEW: Stall detection logic is now here
-            energy_change = abs(energy_Ha - energy_Ha_prev)
+        if energy_change < stall_energy_thresh:
+            stall_counter += 1
+        else:
+            # If we make progress, reset stall counters
+            stall_counter = 0
+            hessian_reset_active = False
 
-            if energy_change < stall_energy_thresh:
-                stall_counter += 1
-            else:
-                # If we make progress, reset stall counters
-                stall_counter = 0
-                hessian_reset_active = False
-
-            # NEW: Tiered stall recovery logic
-            if stall_counter >= stall_patience:
-                print(f"\nWarning: Stalled for {stall_counter} steps. Taking corrective action.", flush=True)
-                if not hessian_reset_active:
-                    print(" -> Action: Resetting Hessian matrix.", flush=True)
-                    hessian = [] # Reset Hessian, it will be re-initialized in the next step
-                    hessian_reset_active = True
-                else:
-                    print(" -> Action: Hessian already reset. Forcing a DIIS step to escape.", flush=True)
-                    # Force a DIIS step as a more drastic measure
-                    coordinates_bohr, forces_Ha_bohr, energy_Ha = diis_step_coord_cart(
-                         path=geo_opt_path, name=name, atoms=atoms, force_history=force_history,
-                         cp2k_exec=cp2k_exec, runner="slurm" if cluster == "slurm" else "local"
-                    )
-                    hessian_reset_active = False # Allow Hessian reset again after DIIS
-                stall_counter = 0 # Reset counter after taking action
-
-        else: # Switch to DIIS for final convergence
-            coordinates_bohr, forces_Ha_bohr, energy_Ha = diis_step_coord_cart(
-                path=geo_opt_path, name=name, atoms=atoms, force_history=force_history,
-                cp2k_exec=cp2k_exec, runner="slurm" if cluster == "slurm" else "local"
-            )
+        # NEW: Tiered stall recovery logic
+        if stall_counter >= stall_patience:
+            print(f"\nWarning: Stalled for {stall_counter} steps. Taking corrective action.", flush=True)
+            if not hessian_reset_active:
+                print(" -> Action: Resetting Hessian matrix.", flush=True)
+                hessian = [] # Reset Hessian, it will be re-initialized in the next step
+                hessian_reset_active = True
+            stall_counter = 0 # Reset counter after taking action
 
         if accepted:
             np.save(os.path.join(geo_opt_path, "Hessian.npy"), hessian)
@@ -819,7 +801,7 @@ def more_sorensen_secular(g_q, H_q, delta, tol=1e-12, max_iter=50, verbose=False
 def bfgs_update(dx: np.ndarray, 
                 dg: np.ndarray, 
                 hess_mat: np.ndarray,
-                min_curv: float = 0.2
+                min_curv: float = 0.1
                ) -> np.ndarray:
     """
     Perform BFGS Hessian update with Powell-style damping.
@@ -896,10 +878,10 @@ def update_trust_rad(rho: float, delta: float, delta_min: float,delta_max: float
     # Define boundaries and thresholds
     max_trust = delta_max
     min_trust = delta_min
-    eta1 = 0.15  # Threshold for shrinking
+    eta1 = 0.2  # Threshold for shrinking
     eta2 = 0.75  # Threshold for expansion
     
-    gamma_shrink = 0.75  # Factor to shrink radius
+    gamma_shrink = 0.5  # Factor to shrink radius
     gamma_shrink_large = 0.25  # Factor to shrink radius
     gamma_expand = 1.5   # Factor to expand radius
 
@@ -911,7 +893,7 @@ def update_trust_rad(rho: float, delta: float, delta_min: float,delta_max: float
     elif rho < eta1:
         # Poor agreement: model is unreliable. Shrink the trust region.
         delta_new = delta * gamma_shrink
-        return max(delta_new,min_trust),False
+        return max(delta_new,min_trust),True
     elif rho > eta2 and rho < 1.5:
         # Excellent agreement: model is reliable. Expand the trust region.
         delta_new = min(delta * gamma_expand, max_trust)
