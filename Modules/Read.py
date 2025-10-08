@@ -380,51 +380,55 @@ def read_basis_vectors(parentfolder="./"):
     return BasisVectors, deltas
 
 def read_hessian(path="./"):
-    #Read in the basis vectors of the finite displacements:
-    BasisVectors,deltas=read_basis_vectors(path+"/")
-    #Built the T matrix from b basis 
-    T=np.zeros((len(deltas),len(deltas)))
-    for salpha in range(len(deltas)):
+    try:
+        Hessian=np.load("Hessian.npy")
+    except:
+        #Read in the basis vectors of the finite displacements:
+        BasisVectors,deltas=read_basis_vectors(path+"/")
+        #Built the T matrix from b basis 
+        T=np.zeros((len(deltas),len(deltas)))
+        for salpha in range(len(deltas)):
+            for lambd in range(len(deltas)):
+                T[salpha][lambd]=BasisVectors[lambd][salpha]
+        #invert the Tmatrix:
+        Tinv=np.linalg.inv(T)
+        ##########################################
+        #get the subdirectories
+        ##########################################
+        Hessian=np.zeros((len(deltas),len(deltas)))
+        subdirectories=[f for f in os.listdir(path) if f.startswith('vector=')]
+        if len(subdirectories)!=2*len(deltas):
+            raise ValueError('InputError: Number of subdirectories does not match the number of needed Ones!')
+        
+        partialFpartialY=np.zeros((len(deltas),len(deltas)))
         for lambd in range(len(deltas)):
-            T[salpha][lambd]=BasisVectors[lambd][salpha]
-    #invert the Tmatrix:
-    Tinv=np.linalg.inv(T)
-    ##########################################
-    #get the subdirectories
-    ##########################################
-    Hessian=np.zeros((len(deltas),len(deltas)))
-    subdirectories=[f for f in os.listdir(path) if f.startswith('vector=')]
-    if len(subdirectories)!=2*len(deltas):
-        raise ValueError('InputError: Number of subdirectories does not match the number of needed Ones!')
-    
-    partialFpartialY=np.zeros((len(deltas),len(deltas)))
-    for lambd in range(len(deltas)):
-        folderplus='vector='+str(lambd+1)+'sign=+'
-        folderminus='vector='+str(lambd+1)+'sign=-'
-        #Project out the Force components into direction of rotation and translation D.O.F.
-        try:
-            Fplus=np.array(read_forces(path+"/"+folderplus))
-            if len(Fplus)==0:
+            folderplus='vector='+str(lambd+1)+'sign=+'
+            folderminus='vector='+str(lambd+1)+'sign=-'
+            #Project out the Force components into direction of rotation and translation D.O.F.
+            try:
+                Fplus=np.array(read_forces(path+"/"+folderplus))
+                if len(Fplus)==0:
+                    print("Error in folder: "+path+"/"+folderplus)
+                
+            except:
                 print("Error in folder: "+path+"/"+folderplus)
-            
-        except:
-            print("Error in folder: "+path+"/"+folderplus)
-            exit()
-        try:
-            Fminus=np.array(read_forces(path+"/"+folderminus))
-            if len(Fminus)==0:
+                exit()
+            try:
+                Fminus=np.array(read_forces(path+"/"+folderminus))
+                if len(Fminus)==0:
+                    print("Error in folder: "+path+"/"+folderminus)
+            except:
                 print("Error in folder: "+path+"/"+folderminus)
-        except:
-            print("Error in folder: "+path+"/"+folderminus)
-            exit()
-        try:
-            diffofforces=(Fplus-Fminus)/(2*deltas[lambd])
-        except:
-            print("Cannot take difference of Forces in: "+folderplus+" & "+folderminus)
-            exit()
-        for s1alpha1 in range(len(deltas)):
-            partialFpartialY[s1alpha1][lambd]=diffofforces.flatten()[s1alpha1]
-    Hessian=-partialFpartialY@Tinv
+                exit()
+            try:
+                diffofforces=(Fplus-Fminus)/(2*deltas[lambd])
+            except:
+                print("Cannot take difference of Forces in: "+folderplus+" & "+folderminus)
+                exit()
+            for s1alpha1 in range(len(deltas)):
+                partialFpartialY[s1alpha1][lambd]=diffofforces.flatten()[s1alpha1]
+        Hessian=-partialFpartialY@Tinv
+        np.save("Hessian.npy",Hessian)
     return Hessian
 
 def read_vibrations(parentfolder="./"):
