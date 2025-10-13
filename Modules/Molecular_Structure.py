@@ -79,7 +79,7 @@ class MolecularStructure():
             print(f"⌬ : Creating new Molecular Structure for {name} in:")
             print(os.path.abspath(self.path))
             print("▲ : Processing Geometric Structural Information")
-            xyz_filepath=Util.get_xyz_filename(path="./",verbose=True)
+            xyz_filepath=Read.get_xyz_filename(path=self.path,verbose=True)
             coordinates, masses, atomic_symbols = Read.read_coordinates_and_masses(xyz_filepath)
             self.coordinates=coordinates
             self.masses=masses
@@ -236,10 +236,10 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             MolecularStructure.Center_of_Mass_UC=center
             MolecularStructure.Mass_UC_Principle_Axis=[v1,v2,v3]
             MolecularStructure.Mass_UC_Centered_Coordinates=G_UC_CC
-        if len(primitive_indices)>1:
-            self._test_inversion(MolecularStructure,tol_inversion=5*10**(-3))
-            self._test_rotation(MolecularStructure,tol_rotation=5*10**(-2))
-            self._test_mirror(MolecularStructure,tol_mirror=5*10**(-2))
+        #if len(primitive_indices)>1:
+        #    self._test_inversion(MolecularStructure,tol_inversion=5*10**(-3))
+        #    self._test_rotation(MolecularStructure,tol_rotation=5*10**(-2))
+        #    self._test_mirror(MolecularStructure,tol_mirror=5*10**(-2))
         if not self.Symmetry_Generators:
             self.Symmetry_Generators["Id"]=np.eye(len(MolecularStructure.masses))
     def _test_translation(self,MolecularStructure,tol_translation):

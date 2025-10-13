@@ -88,7 +88,7 @@ def write_cube_file(x,y,z,data,atoms,filename='test.cube',parentfolder='./'):
         file.write(f"{Ny:5d} {0.0:12.6f} {dy:12.6f} {0.0:12.6f}\n")
         file.write(f"{Nz:5d} {0.0:12.6f} {0.0:12.6f} {dz:12.6f}\n")
         for atom in atoms:
-            file.write(format(AtomSymbolToAtomnumber(atom[1]),'5.0f')+format(0.0,'12.6f')+format(ConversionFactors['A->a.u.']*atom[2],'12.6f')+format(ConversionFactors['A->a.u.']*atom[3],'12.6f')+format(conFactors['A->a.u.']*atom[4],'12.6f')+"\n")
+            file.write(format(PhysConst.AtomSymbolToAtomNumber[atom[1]],'5.0f')+format(0.0,'12.6f')+format(PhysConst.ConversionFactors['A->a.u.']*atom[2],'12.6f')+format(PhysConst.ConversionFactors['A->a.u.']*atom[3],'12.6f')+format(PhysConst.ConversionFactors['A->a.u.']*atom[4],'12.6f')+"\n")
         for itx in range(Nx):
             for ity in range(Ny):
                 for itz in range(Nz):

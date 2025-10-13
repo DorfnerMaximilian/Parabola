@@ -7,7 +7,7 @@ from copy import deepcopy
 
 #get the environmental variable 
 pathtocp2k=os.environ["cp2kpath"]
-pathtocpp_lib="./CPP_Extension/bin/AtomicBasis.so"
+pathtocpp_lib="/home/nisarg3/software/Parabola/parabola/CPP_Extension/bin/AtomicBasis.so"
 #Python Implementation of the Overlap for Normalization of the Basis
 def gamma(alpha,n):
     ## computes the analytical value of the integral int_{-\inf}^{inf}x^ne^{-alphax^2}

@@ -7,6 +7,7 @@ rm -r ./__pycache__
 rm -r ./Modules/__pycache__
 cd ./CPP_Extension/
 make clean
+cd ..
 #compile the CPP extension
 cd "./CPP_Extension/"
 make

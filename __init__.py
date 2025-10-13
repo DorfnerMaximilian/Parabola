@@ -15,3 +15,4 @@ from .Modules import TDDFT
 from .Modules import ConvTests
 from .Modules import LCC
 from .Modules import Symmetry
+from .Modules import Wannier

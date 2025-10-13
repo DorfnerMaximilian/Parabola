@@ -413,7 +413,7 @@ def WFNonGrid(id=0,N1=200,N2=200,N3=200,parentfolder='./'):
     filename=str(id)
     np.save(parentfolder+"/"+filename,f)
     return f
-def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,cell_vectors=[0.0, 0.0, 0.0],saveflag=True,parentfolder='./'):
+def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,cell_vectors=[0.0, 0.0, 0.0], saveflag=True, wannier_printflag=False, Wan_file='Wannier_orbitals.npy', parentfolder='./'):
     '''Function to represent the DFT eigenstate HOMO+id on a real space grid within the unit cell with Nx,Ny,Nz grid points
        input:   id:               (int)                   specifies the Orbital, id=0 is HOMO id=1 is LUMO id=-1 is HOMO-1 ect. 
        (opt.)   parentfolder:     (str)                   path to the .inp file of the cp2k calculation to read in the cell dimensions    
@@ -421,12 +421,26 @@ def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,cell_vectors=[0.0, 0.0, 0.0],savefla
        output:  f                 (Nx x Ny x Nz np.array) Wavefunction coefficients, where first index is x, second y and third z
     '''
     Homoid=Read.read_homo_index(parentfolder)
-    _,A,Sm12=Util.Diagonalize_KS_Hamiltonian(parentfolder)
+
+    if wannier_printflag:
+        if os.path.isfile(parentfolder + Wan_file):
+            print('Found Pre-Made Wannier orbitals.')
+            mos_file = np.load(parentfolder+Wan_file, allow_pickle=True)
+        else:
+            print('Couldnt find the Wannier orbitals')
+    else:
+        _, A, Sm12 = Util.Diagonalize_KS_Hamiltonian(parentfolder)
     data=[]
+
     for id in ids:
-        a=Sm12@A[:,id+Homoid]
-        a*=getPhaseOfMO(A[:,id+Homoid])
-        Atoms=Read.read_atomic_coordinates(parentfolder)
+        if wannier_printflag:
+            a=mos_file[id,:]
+            a*=getPhaseOfMO(a)
+        else:
+            a=Sm12@A[:,id+Homoid]
+            a*=getPhaseOfMO(A[:,id+Homoid])
+            
+        Atoms=Read.read_atomic_coordinates(Read.get_xyz_filename(parentfolder))
         Basis=AtomicBasis.getBasis(parentfolder)
         Cellvectors=Read.read_cell_vectors(parentfolder)
         #Convert to atomic units
@@ -449,7 +463,7 @@ def WFNsOnGrid(ids=[0],N1=200,N2=200,N3=200,cell_vectors=[0.0, 0.0, 0.0],savefla
         filename=str(id)
         if saveflag:
             np.save(parentfolder+"/"+filename,f)
-    return np.array(data)
+    return np.array(data),grid1,grid2,grid3,Atoms
 def LocalPotentialOnGrid(gridpoints,MatrixElements,cell_vectors=[0.0, 0.0, 0.0],parentfolder='./'):
     '''Function to represent the DFT eigenstate HOMO+id on a real space grid within the unit cell with Nx,Ny,Nz grid points
        input:   id:               (int)                   specifies the Orbital, id=0 is HOMO id=1 is LUMO id=-1 is HOMO-1 ect. 

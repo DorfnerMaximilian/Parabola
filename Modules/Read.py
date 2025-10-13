@@ -35,7 +35,7 @@ def get_xyz_filename(path="./",verbose=True):
     # 2. If no optimized file, fall back to standard '.xyz' file
     # Ensure we don't accidentally match an '_opt.xyz' file here
     xyz_files = [f for f in os.listdir(path) if f.endswith('.xyz') and not f.endswith('_opt.xyz')]
-
+    print(xyz_files)
     if len(xyz_files) == 1:
         filename = xyz_files[0]
         if verbose:
@@ -611,7 +611,7 @@ def get_number_of_electrons(parentfolder="./",verbose=True):
     #Calculate the HOMO 
     NumberOfElectrons={}
     Charge=0
-    with open(parentfolder+"/"+filename,'r') as f:
+    with open(inp_file,'r') as f:
         lines=f.readlines()
         for line in lines:
             if len(line.split())>=2:
