@@ -1,0 +1,6 @@
+**/__pycache__
+CPP_Extension/bin
+CPP_Extension/build
+*.npy
+*.png
+
