@@ -378,7 +378,8 @@ double getoverlap(const std::array<double,3>& R1,
                   const std::vector<double>& contr_coeff2,
                   const std::vector<double>& alphas2,
                   const std::vector<Monomial>& lm2,
-                  const std::vector<double>& cell_vectors
+                  const std::vector<double>& cell_vectors,
+                  double cutoff_rad
                 ) {
 
     double overlap = 0.0;
@@ -393,7 +394,13 @@ double getoverlap(const std::array<double,3>& R1,
                                            R2[1] + cell_vector[1],
                                            R2[2] + cell_vector[2]};
 
-        // Compute the overlap for the shifted positions
+        double squared = pow(R1[0] - R2_shifted[0],2) + pow(R1[1] - R2_shifted[1],2) + pow(R1[2] - R2_shifted[2],2);
+        double distance = sqrt(squared);
+
+        // Compute the overlap for the shifted positions after checking distance between them
+        if (distance > cutoff_rad) {
+                continue;
+            }
         for (size_t it1 = 0; it1 < alphas1.size(); ++it1) {
             for (size_t it2 = 0; it2 < alphas2.size(); ++it2) {
                 overlap += contr_coeff1[it1] * contr_coeff2[it2] *
@@ -489,7 +496,8 @@ std::complex<double> get_phase_Matrix_Element(const std::array<double,3>& R1,
                   const std::vector<double>& alphas2,
                   const std::vector<Monomial>& lm2,
                   const std::vector<double>& cell_vectors,
-                  const std::array<double,3>& q
+                  const std::array<double,3>& q,
+                  double cutoff_rad
                 ) {
 
     std::complex<double>  matrix_element(0.0,0.0);
@@ -504,7 +512,13 @@ std::complex<double> get_phase_Matrix_Element(const std::array<double,3>& R1,
                                            R2[1] + cell_vector[1],
                                            R2[2] + cell_vector[2]};
 
-        // Compute the overlap for the shifted positions
+        double squared = pow(R1[0] - R2_shifted[0],2) + pow(R1[1] - R2_shifted[1],2) + pow(R1[2] - R2_shifted[2],2);
+        double distance = sqrt(squared);
+
+        // Compute the overlap for the shifted positions after checking the distance between them
+        if (distance > cutoff_rad) {
+                continue;
+            }
         for (size_t it1 = 0; it1 < alphas1.size(); ++it1) {
             for (size_t it2 = 0; it2 < alphas2.size(); ++it2) {
                 matrix_element += contr_coeff1[it1] * contr_coeff2[it2] *
@@ -533,8 +547,8 @@ double* get_T_Matrix(const char* atoms_set1[],
                                 const char* lms_set2[],
                                 int size_set2,
                                 const double cell_vectors[],
-                                int size_cell_vectors
-                                ) {
+                                int size_cell_vectors,
+                                double cutoff_rad) {
 
     // Initialize the map of monomials
     std::unordered_map<std::string, std::vector<Monomial>> solidHarmonics = getSolidHarmonics();
@@ -614,7 +628,7 @@ double* get_T_Matrix(const char* atoms_set1[],
                                         basisfunctions_set2[j].contr_coef,
                                         basisfunctions_set2[j].alphas,
                                         solidHarmonics[basisfunctions_set2[j].lm],
-                                        cell_vectors_vec
+                                        cell_vectors_vec,cutoff_rad
                                     );
 
             // Assign result to the appropriate index in the output array
@@ -1049,7 +1063,8 @@ std::complex<double>* get_Phase_Operators(const char* atoms_set1[],
     int size_set2,
     const double cell_vectors[],
     int size_cell_vectors,
-    const double q[]
+    const double q[],
+    double cutoff_rad
     ) {
 
 // Initialize the map of monomials
@@ -1131,7 +1146,8 @@ std::complex<double> matrix_element = get_phase_Matrix_Element(basisfunctions_se
             basisfunctions_set2[j].alphas,
             solidHarmonics[basisfunctions_set2[j].lm],
             cell_vectors_vec,
-            q_vector
+            q_vector,
+            cutoff_rad
         );
 
 // Assign result to the appropriate index in the output array

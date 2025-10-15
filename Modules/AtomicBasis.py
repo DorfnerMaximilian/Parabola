@@ -463,7 +463,7 @@ def getBasis(filename):
 
 
 #-------------------------------------------------------------------------
-def getTransformationmatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0], pathtolib=pathtocpp_lib):
+def getTransformationmatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0], cutoff_radius=50, pathtolib=pathtocpp_lib):
     ##Compute the overlap & transformation matrix of the Basis functions with respect to the conventional basis ordering
     ##input: Atoms1              atoms of the first index
     ##                           list of sublists. 
@@ -489,6 +489,7 @@ def getTransformationmatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0],
     ##
     ##
     ##     cellvectors (opt.)    different cell vectors to take into account in the calculation the default implements open boundary conditions
+    ##     cutoff_radius (opt.)  defines the distance upto which the calculation of overlaps will be taken into account (Unit: Angstroem)
     ##output:   Overlapmatrix    The Transformation matrix as a numpy array
     
     # Load the shared library
@@ -571,7 +572,8 @@ def getTransformationmatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0],
                              POINTER(c_char_p),
                              c_int,
                              POINTER(c_double),
-                             c_int
+                             c_int,
+                             c_double
                              ]
 
     freeArray = lib.free_ptr
@@ -596,12 +598,15 @@ def getTransformationmatrix(Atoms1, Atoms2, Basis, cell_vectors=[0.0, 0.0, 0.0],
 
     cell_vectors_ptr = (c_double * len(cell_vectors))(*cell_vectors)
 
+    # Converting the cutoff_radius into atomic units
+    cutoff_radius = cutoff_radius * ConversionFactors['A->a.u.']
+
     # Call the C++ function
     OLP_array_ptr = get_T_Matrix(atoms_set1_ptr, positions_set1_ptr, alphas_set1_ptr, alphas_lengths_set1_ptr,
                                   contr_coef_set1_ptr, contr_coef_lengths_set1_ptr, lms_set1_ptr, len(atoms_set1),
                                   atoms_set2_ptr, positions_set2_ptr, alphas_set2_ptr, alphas_lengths_set2_ptr,
                                   contr_coef_set2_ptr, contr_coef_lengths_set2_ptr, lms_set2_ptr, len(atoms_set2),
-                                  cell_vectors_ptr, len(cell_vectors))
+                                  cell_vectors_ptr, len(cell_vectors),cutoff_radius)
 
     array_data = np.ctypeslib.as_array(OLP_array_ptr, shape=(len(atoms_set1) * len(atoms_set2),))
     array_list = deepcopy(array_data)
@@ -1186,7 +1191,7 @@ class ComplexDouble(Structure):
     ]
     def __repr__(self):
         return f"ComplexDouble(real={self.real}, imag={self.imag})"
-def get_phase_operators(Atoms, Basis,q_vector=[0.0,0.0,0.0], cell_vectors=[0.0, 0.0, 0.0], pathtolib=pathtocpp_lib):
+def get_phase_operators(Atoms, Basis,q_vector=[0.0,0.0,0.0], cell_vectors=[0.0, 0.0, 0.0], cutoff_radius=50, pathtolib=pathtocpp_lib):
     
     
     # Load the shared library
@@ -1268,7 +1273,8 @@ def get_phase_operators(Atoms, Basis,q_vector=[0.0,0.0,0.0], cell_vectors=[0.0, 
                              c_int,
                              POINTER(c_double),
                              c_int,
-                             POINTER(c_double)
+                             POINTER(c_double),
+                             c_double
                              ]
 
     freeArray = lib.free_ptr_complex
@@ -1295,12 +1301,15 @@ def get_phase_operators(Atoms, Basis,q_vector=[0.0,0.0,0.0], cell_vectors=[0.0, 
 
     q_vector_ptr = (c_double * len(q_vector))(*q_vector)
 
+    # Converting the cutoff_radius into atomic units
+    cutoff_radius = cutoff_radius * ConversionFactors['A->a.u.']
+
     # Call the C++ function
     OLP_array_ptr = get_Phase_Operators(atoms_set1_ptr, positions_set1_ptr, alphas_set1_ptr, alphas_lengths_set1_ptr,
                                   contr_coef_set1_ptr, contr_coef_lengths_set1_ptr, lms_set1_ptr, len(atoms_set1),
                                   atoms_set2_ptr, positions_set2_ptr, alphas_set2_ptr, alphas_lengths_set2_ptr,
                                   contr_coef_set2_ptr, contr_coef_lengths_set2_ptr, lms_set2_ptr, len(atoms_set2),
-                                  cell_vectors_ptr, len(cell_vectors),q_vector_ptr)
+                                  cell_vectors_ptr, len(cell_vectors),q_vector_ptr,cutoff_radius)
 
     n_elements = len(atoms_set1) * len(atoms_set2)
 
