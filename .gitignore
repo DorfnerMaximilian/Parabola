@@ -3,4 +3,5 @@ CPP_Extension/bin
 CPP_Extension/build
 *.npy
 *.png
-
+.DS_Store
+.idea
