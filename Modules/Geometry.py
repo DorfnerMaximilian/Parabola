@@ -145,9 +145,16 @@ def getPrincipleAxis(centeredCoordinates, masses=None, tol=1e-3):
         # Check for near-equal eigenvalues
         for i in range(3):
             for j in range(i+1, 3):
-                if np.abs(evals[i] - evals[j]) / np.mean([evals[i], evals[j]]) < threshold:
-                    pairs.append((i,j))
-        if not pairs:
+                mean_val = np.mean([evals[i], evals[j]])
+                # Avoid division by zero or near-zero mean
+                if np.isclose(mean_val, 0.0, atol=1e-12):
+                    diff_ratio = np.abs(evals[i] - evals[j])
+                else:
+                    diff_ratio = np.abs(evals[i] - evals[j]) / np.abs(mean_val)
+                
+                if diff_ratio < threshold:
+                    pairs.append((i, j))
+                
             return False, [()]
         else:
             return True, pairs
