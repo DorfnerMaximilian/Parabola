@@ -527,8 +527,8 @@ def generate_internal_representation(
     bonds.sort()
     angles.sort()
     dihedrals = sorted(list(dihedral_set))
-
-    return bonds, angles, dihedrals
+    impropers=get_impropers(n_atoms=n_atoms,adj=adj)
+    return bonds, angles, dihedrals,impropers
 
 def get_bonds(
     coordinates_bohr: np.ndarray, 
@@ -778,10 +778,10 @@ def get_w_vector(u, v):
     # Fallback (shouldn't reach here)
     return np.array([1,0,0])
 
-def cartesian_to_internal_coordinates(coordinates,bonds,angles,dihedrals):
-    q=np.zeros(len(bonds)+len(angles)+len(dihedrals))#+len(impropers))
-    #Bq=np.zeros((len(bonds)+len(angles)+len(dihedrals)+len(impropers),3*len(coordinates)))
-    Bq=np.zeros((len(bonds)+len(angles)+len(dihedrals),3*len(coordinates)))
+def cartesian_to_internal_coordinates(coordinates,bonds,angles,dihedrals,impropers):
+    q=np.zeros(len(bonds)+len(angles)+len(dihedrals)+len(impropers))
+    Bq=np.zeros((len(bonds)+len(angles)+len(dihedrals)+len(impropers),3*len(coordinates)))
+    #Bq=np.zeros((len(bonds)+len(angles)+len(dihedrals),3*len(coordinates)))
     for it,bond in enumerate(bonds):
         up=coordinates[bond[1]]-coordinates[bond[0]]
         up_norm=np.linalg.norm(up)
@@ -902,7 +902,7 @@ def cartesian_to_internal_coordinates(coordinates,bonds,angles,dihedrals):
         Bq[row_idx, 3*n_idx : 3*n_idx+3] = B_n*scale_dihedrals
         Bq[row_idx, 3*o_idx : 3*o_idx+3] = -(B_m + B_p + B_n)*scale_dihedrals # B_o from formula above
         Bq[row_idx, 3*p_idx : 3*p_idx+3] = B_p*scale_dihedrals
-    """
+    
     for it,improper in enumerate(impropers):
         COLINEARITY_TOLERANCE = 1e-6
         r1=coordinates[improper[0]]
@@ -937,7 +937,7 @@ def cartesian_to_internal_coordinates(coordinates,bonds,angles,dihedrals):
             Bq[it+len(bonds)+len(angles)+len(dihedrals),j_index]=grad_r2_q[xyz_it]
             Bq[it+len(bonds)+len(angles)+len(dihedrals),k_index]=grad_r3_q[xyz_it]
             Bq[it+len(bonds)+len(angles)+len(dihedrals),l_index]=grad_r4_q[xyz_it]
-    """
+
     return q,Bq
 
 def get_B_non_redundant_internal(B_prim):
@@ -967,7 +967,7 @@ def get_B_non_redundant_internal(B_prim):
     # SVD of B_prim
     U, svals, _ = np.linalg.svd(B_prim, full_matrices=False)
     # Select the k largest singular values
-    indices=svals>1e-5
+    indices=svals>1e-8
     U_keep = U[:, indices]               # (m, k)
     B = U_keep.T @ B_prim             # (k, n)
 
