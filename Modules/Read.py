@@ -31,10 +31,19 @@ def get_xyz_filename(path="./",verbose=True):
         return os.path.abspath(os.path.join(path, filename))
     elif len(opt_files) > 1:
         raise ValueError(f"AmbiguityError: Found {len(opt_files)} '*_opt.xyz' files in '{path}'. Please keep only one.")
-
-    # 2. If no optimized file, fall back to standard '.xyz' file
+     # 2. Next prioritize the temp '_tmp.xyz' file
+    opt_files = [f for f in os.listdir(path) if f.endswith('_tmp.xyz')]
+    if len(opt_files) == 1:
+        filename = opt_files[0]
+        if verbose:
+            print(f"ℹ️ : Found and selected geometry from file: {filename}")
+        return os.path.abspath(os.path.join(path, filename))
+    elif len(opt_files) > 1:
+        raise ValueError(f"AmbiguityError: Found {len(opt_files)} '*_tmp.xyz' files in '{path}'. Please keep only one.")
+    
+    # 3. If no optimized file, fall back to standard '.xyz' file
     # Ensure we don't accidentally match an '_opt.xyz' file here
-    xyz_files = [f for f in os.listdir(path) if f.endswith('.xyz') and not f.endswith('_opt.xyz')]
+    xyz_files = [f for f in os.listdir(path) if f.endswith('.xyz') and not f.endswith('_opt.xyz') and not f.endswith('_tmp.xyz')]
 
     if len(xyz_files) == 1:
         filename = xyz_files[0]
