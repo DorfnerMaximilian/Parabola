@@ -241,12 +241,15 @@ def parse_last_optimization_step(path):
         "forces_Ha_bohr": forces,
         "stress_Ha_bohr_3": stress
     }
-
+def forces_summary(forces):
+        fmax = np.max(np.abs(forces))
+        frms = np.sqrt(np.sum(np.array(forces)**2) / len(forces))
+        return fmax, frms
 def geo_opt(
     cluster="local",
     path="./",
-    tol_max=5e-4,
-    tol_drm=5e-4,
+    tol_max=7e-4,
+    tol_drm=4e-4,
     max_iter=200,  #Add a maximum iteration limit
     stall_patience=2, # Number of steps with no progress before declaring a stall
     stall_energy_thresh=1e-7, #Energy change threshold for stalling
@@ -297,6 +300,7 @@ def geo_opt(
     else:
         name=config["name"]
         atoms=config["atoms"]
+        masses=config["masses"]
         results = parse_last_optimization_step(path=os.path.join(geo_opt_path, f"{name}.pos"))
         if results["name"] == name:
             it = results["step"]
@@ -312,10 +316,14 @@ def geo_opt(
                 hessian = []
                 print("No Hessian found, using initial guess.\n", flush=True)
 
-    _,rot_subspace=getTransAndRotEigenvectors(coordinates=coordinates_bohr,masses=masses)
+    trans_subspace,rot_subspace=getTransAndRotEigenvectors(coordinates=coordinates_bohr,masses=masses)
     rot_projector=np.eye(len(rot_subspace[0]))
+    trans_projector=np.eye(len(trans_subspace[0]))
     for rotation in rot_subspace:
         rot_projector-=np.outer(rotation,rotation)
+    for translation in trans_subspace:
+        trans_projector-=np.outer(translation,translation)
+    forces_Ha_bohr = trans_projector@rot_projector @ np.array(forces_Ha_bohr).flatten()
     force_history=[]
 
     # ... (Your printing header remains the same) ...
@@ -330,23 +338,19 @@ def geo_opt(
     # -------------------------------
     # 3. Optimization loop
     # -------------------------------
-    def forces_summary(forces):
-        fmax = np.max(np.abs(forces))
-        frms = np.sqrt(np.sum(np.array(forces)**2) / len(forces))
-        return fmax, frms
 
     forces_Ha_bohr=rot_projector@np.array(forces_Ha_bohr).flatten()
     forces_Ha_bohr=forces_Ha_bohr.reshape((len(atoms), 3))
     force_max, drm_force = forces_summary(forces_Ha_bohr)
     delta = 0.25
-    stall_counter = 0 # NEW: Centralized stall counter
-    hessian_reset_active = False # NEW: Flag to track if we've already tried resetting H
+    stall_counter = 0 # Centralized stall counter
+    hessian_reset_active = False # Flag to track if we've already tried resetting H
 
-    bonds, angles, dihedrals = generate_internal_representation(
+    bonds, angles, dihedrals,impropers = generate_internal_representation(
         atomic_symbols=atoms, coordinates_bohr=coordinates_bohr,
         cell_bohr=cell_bohr
     )
-    internals=(bonds,angles,dihedrals)
+    internals=(bonds,angles,dihedrals,impropers)
     
     print(f"{it:4d} | {energy_Ha:12.8f} | {'--------':>12} | {'--------':>12} | "
         f"{drm_force:10.6f} | {force_max:10.6f} | {'--------':>10} | {0.0:8.1f} | "
@@ -366,49 +370,66 @@ def geo_opt(
             energy_Ha=energy_Ha,
             hessian=hessian,
             delta=delta,
+            hessian_reset_active=hessian_reset_active,
             cp2k_exec=cp2k_exec,
             runner="slurm" if cluster == "slurm" else "local",
         )
-        forces_Ha_bohr = rot_projector @ np.array(forces_Ha_bohr).flatten()
+        trans_subspace,rot_subspace=getTransAndRotEigenvectors(coordinates=coordinates_bohr,masses=masses)
+        rot_projector=np.eye(len(rot_subspace[0]))
+        trans_projector=np.eye(len(rot_subspace[0]))
+        for rotation in rot_subspace:
+            rot_projector-=np.outer(rotation,rotation)
+        for translation in trans_subspace:
+            trans_projector-=np.outer(translation,translation)
+        forces_Ha_bohr = trans_projector@rot_projector @ np.array(forces_Ha_bohr).flatten()
         forces_Ha_bohr = forces_Ha_bohr.reshape((len(atoms), 3))
+        if info["step_type"]=="Trust":
+            # NEW: Stall detection logic is now here
+            energy_change = abs(energy_Ha - energy_Ha_prev)
 
-        # NEW: Stall detection logic is now here
-        energy_change = abs(energy_Ha - energy_Ha_prev)
+            if energy_change < stall_energy_thresh:
+                stall_counter += 1
+            else:
+                # If we make progress, reset stall counters
+                stall_counter = 0
+                hessian_reset_active = False
 
-        if energy_change < stall_energy_thresh:
-            stall_counter += 1
+            # NEW: Tiered stall recovery logic
+            if stall_counter >= stall_patience:
+                if not hessian_reset_active:
+                    hessian = [] # Reset Hessian, it will be re-initialized in the next step
+                    hessian_reset_active = True
+                    delta = 0.25
+                stall_counter = 0 # Reset counter after taking action
+
+            if accepted:
+                np.save(os.path.join(geo_opt_path, "Hessian.npy"), hessian)
+                force_history.append((np.array(coordinates_bohr).flatten(),np.array(forces_Ha_bohr).flatten()))
+                write_pos_file(
+                    name=name, atoms=atoms, coordinates_bohr=coordinates_bohr, cell_bohr=cell_bohr,
+                    energy_Ha=energy_Ha, forces_Ha_bohr=forces_Ha_bohr,
+                    step=it, path=os.path.join(geo_opt_path, f"{name}.pos")
+                )
+                write_geo_log_file(name=name, atoms=atoms, coordinates_bohr=coordinates_bohr,
+                                    energy_Ha=energy_Ha, step=it, path=os.path.join(geo_opt_path, f"{name}-pos.xyz"))
+
+            force_max, drm_force = forces_summary(forces_Ha_bohr)
+            # ... (Your print statement for the log remains the same) ...
+            print(f"{it:4d} | {energy_Ha:12.8f} | {energy_Ha - energy_Ha_prev:12.8f} | {info.get('pred', '--------'):12.8f} | "
+                f"{drm_force:10.6f} | {force_max:10.6f} | {info.get('step_size', '--------'):10.6f} | "
+                f"{np.round(info.get('projection_error', 0)/max(force_max,1e-12)*100,0):8.1f} | "
+                f"{info.get('rho', '--------'):10.6f} | {delta:10.6f} | "
+                f"{'Y' if accepted else 'N':>5} |{info.get('step_type','Trust'):>8} |", flush=True)
         else:
-            # If we make progress, reset stall counters
             stall_counter = 0
             hessian_reset_active = False
-
-        # NEW: Tiered stall recovery logic
-        if stall_counter >= stall_patience:
-            print(f"\nWarning: Stalled for {stall_counter} steps. Taking corrective action.", flush=True)
-            if not hessian_reset_active:
-                print(" -> Action: Resetting Hessian matrix.", flush=True)
-                hessian = [] # Reset Hessian, it will be re-initialized in the next step
-                hessian_reset_active = True
-            stall_counter = 0 # Reset counter after taking action
-
-        if accepted:
-            np.save(os.path.join(geo_opt_path, "Hessian.npy"), hessian)
-            force_history.append((np.array(coordinates_bohr).flatten(),np.array(forces_Ha_bohr).flatten()))
-            write_pos_file(
-                name=name, atoms=atoms, coordinates_bohr=coordinates_bohr, cell_bohr=cell_bohr,
-                energy_Ha=energy_Ha, forces_Ha_bohr=forces_Ha_bohr,
-                step=it, path=os.path.join(geo_opt_path, f"{name}.pos")
-            )
-            write_geo_log_file(name=name, atoms=atoms, coordinates_bohr=coordinates_bohr,
-                                energy_Ha=energy_Ha, step=it, path=os.path.join(geo_opt_path, f"{name}-pos.xyz"))
-
-        force_max, drm_force = forces_summary(forces_Ha_bohr)
-        # ... (Your print statement for the log remains the same) ...
-        print(f"{it:4d} | {energy_Ha:12.8f} | {energy_Ha - energy_Ha_prev:12.8f} | {info.get('pred', '--------'):12.8f} | "
-            f"{drm_force:10.6f} | {force_max:10.6f} | {info.get('step_size', '--------'):10.6f} | "
+            force_max, drm_force = forces_summary(forces_Ha_bohr)
+            print(f"{it:4d} | {energy_Ha:12.8f} | {energy_Ha - energy_Ha_prev:12.8f} | "
+            f"{info.get('pred', '--------'):12.8f} | {drm_force:10.6f} | {force_max:10.6f} | "
+            f"{info.get('step_size', '--------'):10.6f} | "
             f"{np.round(info.get('projection_error', 0)/max(force_max,1e-12)*100,0):8.1f} | "
             f"{info.get('rho', '--------'):10.6f} | {delta:10.6f} | "
-            f"{'Y' if accepted else 'N':>5} |", flush=True)
+            f"{'Y' if accepted else 'N':>5} | {info.get('step_type','Trust'):>8} |", flush=True)
 
     print("=" * 135, flush=True)
     
@@ -432,8 +453,6 @@ def geo_opt(
 
 
 
-
-
 def bfgs_step_coord_internal(
     path,
     name,
@@ -444,11 +463,11 @@ def bfgs_step_coord_internal(
     energy_Ha,
     hessian,
     delta,
-    # MODIFIED: stall_counter and related parameters are removed
+    hessian_reset_active,
     cp2k_exec="./cp2k.popt",
     runner="local",
     delta_min=0.005,
-    delta_max=0.5,
+    delta_max=1.0,
 ):
     """
     Perform one Trust-Radius BFGS optimization step.
@@ -466,10 +485,11 @@ def bfgs_step_coord_internal(
     bonds=internals[0]
     angles=internals[1]
     dihedrals=internals[2]
+    impropers=internals[3]
     
-    PINV_RCOND_TOL = 1e-5
+    PINV_RCOND_TOL = 1e-8
 
-    q_k, B_prim = cartesian_to_internal_coordinates(np.array(coordinates_bohr), bonds, angles, dihedrals)
+    q_k, B_prim = cartesian_to_internal_coordinates(np.array(coordinates_bohr), bonds, angles, dihedrals,impropers)
     B, U = get_B_non_redundant_internal(B_prim)
     B_plus_T = np.linalg.pinv(B,rcond=PINV_RCOND_TOL).T
     projection_error=np.max(np.abs(forces_vec_cart_k-(B.T @ B_plus_T)@forces_vec_cart_k))
@@ -477,12 +497,150 @@ def bfgs_step_coord_internal(
     grad_q_k = -forces_q_k
     
     if len(hessian) == 0:
-        hessian=np.eye(len(grad_q_k))
-    
-    step_type = "Trust"
-    
+        #hessian=np.eye(len(grad_q_k))
+        hessian=get_initial_Hessian(atoms,coordinates_bohr,bonds,angles,dihedrals,impropers,s=1)
+        hessian=np.diag(hessian)
+        hessian=U.T@hessian@U
+        #hessian=np.eye(len(grad_q_k))
     # ... (The rest of the function for taking the step, evaluating, and updating Hessian is the same) ...
-    #dx=solve_tr_subproblem_internal_coords(grad_q_k, hessian, B, delta, verbose=False)
+
+    if hessian_reset_active:
+        #dq=solve_tr_subproblem_internal_coords(grad_q_k, hessian, B, delta, verbose=False)
+        #dx = B_plus_T.T@dq
+        dx=0.025*forces_vec_cart_k/np.linalg.norm(forces_vec_cart_k)
+        delta_x=np.linalg.norm(dx)
+        search_dir=dx/np.linalg.norm(dx)
+
+        d=-np.dot(search_dir,forces_vec_cart_k)
+        E0=energy_Ha
+
+        # 2. Define a grid of α along the Newton direction
+        x_trial = x_k_cart +  dx
+        coords_trial = x_trial.reshape((len(atoms), 3))
+
+        # Write trial geometry
+        file_to_update = os.path.join(path, f"{name}_tmp.xyz")
+        with open(file_to_update, "w") as f:
+            f.write(str(len(atoms)) + "\n\n")
+            for atom, coord in zip(atoms, coords_trial):
+                f.write(f"{atom:2s} {coord[0]*ConversionFactors['a.u.->A']:20.12f} "
+                        f"{coord[1]*ConversionFactors['a.u.->A']:20.12f} "
+                        f"{coord[2]*ConversionFactors['a.u.->A']:20.12f}\n")
+
+        # Evaluate energy (forces optional for speed)
+        E1, Forces_trial1 = run_energy_force_eval(
+            path=path, cp2k_exec=cp2k_exec, runner=runner
+        )
+
+        g1=-np.dot(search_dir,np.array(Forces_trial1).flatten())
+        # 2. Define a grid of α along the Newton direction
+        x_trial = x_k_cart +  3*dx
+        coords_trial = x_trial.reshape((len(atoms), 3))
+
+        # Write trial geometry
+        file_to_update = os.path.join(path, f"{name}_tmp.xyz")
+        with open(file_to_update, "w") as f:
+            f.write(str(len(atoms)) + "\n\n")
+            for atom, coord in zip(atoms, coords_trial):
+                f.write(f"{atom:2s} {coord[0]*ConversionFactors['a.u.->A']:20.12f} "
+                        f"{coord[1]*ConversionFactors['a.u.->A']:20.12f} "
+                        f"{coord[2]*ConversionFactors['a.u.->A']:20.12f}\n")
+
+        # Evaluate energy (forces optional for speed)
+        E2, Forces_trial2 = run_energy_force_eval(
+            path=path, cp2k_exec=cp2k_exec, runner=runner
+        )
+        g2=-np.dot(search_dir,np.array(Forces_trial2).flatten())
+        lst_sq_matrix=np.array([[delta_x**4,delta_x**3,delta_x**2],[3**4*delta_x**4,3**3*delta_x**3,3**2*delta_x**2],[4*3**3*delta_x**3,3**3*delta_x**2,2*3*delta_x],[4*delta_x**3,3*delta_x**2,2*delta_x]])
+        lst_sq_vector=np.array([E1-E0-d*delta_x,E2-E0-2*d*delta_x,g2-d,g1-d])
+        sol, *_ = np.linalg.lstsq(lst_sq_matrix, lst_sq_vector, rcond=None)
+        a, b, c = sol  # unpack the 3 fitted coefficients
+        coeff = [4*a, 3*b, 2*c, d]  # proper quartic coefficients
+        roots = np.roots(coeff)
+        print(roots)
+        curvatures=[]
+        for root in roots:
+            curvatures.append(12*a*root**2+6*b*root+c)
+        
+        # Convert to NumPy array to enable elementwise comparisons
+        curvatures = np.array(curvatures, dtype=complex)
+        roots = np.array(roots, dtype=complex)  # ensure roots is also numeric array
+        
+        # --- Filter out roots with finite imaginary parts ---
+        # Keep only roots that are real or have infinite imaginary parts (which should be rare)
+        finite_imag_mask = np.abs(np.imag(roots)) > 1e-8
+        real_roots = roots[~finite_imag_mask].real
+        real_curvatures = curvatures[~finite_imag_mask].real
+
+        # Now determine scaling based on curvature and positivity
+        if np.sum(real_curvatures > 0) == 0:
+            # No positive curvature — take root with minimal absolute value
+            min_index = np.argmin(np.abs(real_roots))
+            scaling = real_roots[min_index]
+        elif np.sum(real_curvatures > 0) == 1:
+            # One positive curvature — take the corresponding root
+            min_index = np.where(real_curvatures > 0)[0][0]
+            scaling = real_roots[min_index]
+        else:
+            # Multiple positive curvatures — take the smallest positive root
+            positive_roots = real_roots[real_roots > 0]
+            if len(positive_roots) > 0:
+                scaling = np.min(positive_roots)
+            else:
+                # Fallback: take minimal absolute value
+                scaling = real_roots[np.argmin(np.abs(real_roots))]
+
+        # 2. Define a grid of α along the Newton direction
+        x_trial = x_k_cart +  scaling*search_dir
+        coords_trial = x_trial.reshape((len(atoms), 3))
+
+        # Write trial geometry
+        file_to_update = os.path.join(path, f"{name}_tmp.xyz")
+        with open(file_to_update, "w") as f:
+            f.write(str(len(atoms)) + "\n\n")
+            for atom, coord in zip(atoms, coords_trial):
+                f.write(f"{atom:2s} {coord[0]*ConversionFactors['a.u.->A']:20.12f} "
+                        f"{coord[1]*ConversionFactors['a.u.->A']:20.12f} "
+                        f"{coord[2]*ConversionFactors['a.u.->A']:20.12f}\n")
+
+        # Evaluate energy (forces optional for speed)
+        energy_new_Ha, forces_new_Ha_bohr = run_energy_force_eval(
+            path=path, cp2k_exec=cp2k_exec, runner=runner
+        )
+
+
+        # 4. Update coordinates and trust radius
+        x_new_cart = x_k_cart +  scaling*search_dir
+        coordinates_new_bohr = x_new_cart.reshape((len(atoms), 3))
+        q_k_plus_1, B_prim_new = cartesian_to_internal_coordinates(coordinates_new_bohr, bonds, angles, dihedrals,impropers)
+        B_new, U_new = get_B_non_redundant_internal(B_prim_new)
+        B_plus_new_T = np.linalg.pinv(B_new, rcond=PINV_RCOND_TOL).T
+        s_k_actual_redundant = q_k_plus_1 - q_k
+        dihedral_angle_start_index = len(bonds)+len(angles)
+        for i in range(dihedral_angle_start_index, len(bonds)+len(angles)+len(dihedrals)):
+            if abs(s_k_actual_redundant[i]) > np.pi:
+                s_k_actual_redundant[i] -= np.sign(s_k_actual_redundant[i]) * 2*np.pi
+        s_update = U_new.T @ s_k_actual_redundant
+        dg_new = -B_plus_new_T@(np.array(forces_new_Ha_bohr).flatten()-np.array(forces_Ha_bohr).flatten())
+        hessian=bfgs_update(s_update,dg_new, hessian)
+        coordinates_out = coordinates_new_bohr.tolist()
+        forces_out = forces_new_Ha_bohr  # optionally recompute
+        accepted = True
+        delta_new = delta  # keep trust radius
+        step_size = np.linalg.norm(scaling)
+        ared = energy_new_Ha-energy_Ha
+        info = {
+        "step_type": "Line",
+        "rho": 0.0,
+        "ared": ared,
+        "pred": 0.0,
+        "projection_error": projection_error,
+        "step_size": step_size if step_size is not None else 0.0
+                }
+
+        return coordinates_out, forces_out, energy_new_Ha, hessian, delta_new, accepted, info
+
+    step_type = "Trust"
     dq=solve_tr_subproblem_internal_coords(grad_q_k, hessian, B, delta, verbose=False)
     dx = B_plus_T.T@dq
     x_new_cart=x_k_cart+dx
@@ -504,7 +662,7 @@ def bfgs_step_coord_internal(
 
     if accepted:
         coordinates_out = coordinates_new_bohr.tolist()
-        q_k_plus_1, B_prim_new = cartesian_to_internal_coordinates(coordinates_new_bohr, bonds, angles, dihedrals)
+        q_k_plus_1, B_prim_new = cartesian_to_internal_coordinates(coordinates_new_bohr, bonds, angles, dihedrals,impropers)
         B_new, U_new = get_B_non_redundant_internal(B_prim_new)
         B_plus_new_T = np.linalg.pinv(B_new, rcond=PINV_RCOND_TOL).T
         forces_out = np.array(forces_new_Ha_bohr).flatten()
@@ -513,14 +671,14 @@ def bfgs_step_coord_internal(
         
         s_k_actual_redundant = q_k_plus_1 - q_k
         dihedral_angle_start_index = len(bonds)+len(angles)
-        for i in range(dihedral_angle_start_index, len(s_k_actual_redundant)):
+        for i in range(dihedral_angle_start_index, len(bonds)+len(angles)+len(dihedrals)):
             if abs(s_k_actual_redundant[i]) > np.pi:
                 s_k_actual_redundant[i] -= np.sign(s_k_actual_redundant[i]) * 2*np.pi
         s_update = U_new.T @ s_k_actual_redundant
         if np.shape(U_new)==np.shape(U):
             dg_new = -B_plus_new_T@(np.array(forces_new_Ha_bohr).flatten()-np.array(forces_Ha_bohr).flatten())
         else:
-            H_cart = B.T @ np.linalg.inv(hessian) @ B
+            H_cart = B.T @ hessian @ B
             hessian = B_plus_new_T @ H_cart @ B_plus_new_T.T
             dg_new = -B_plus_new_T@(np.array(forces_new_Ha_bohr).flatten()-np.array(forces_Ha_bohr).flatten())
         hessian=bfgs_update(s_update,dg_new, hessian)
@@ -533,152 +691,6 @@ def bfgs_step_coord_internal(
     
     # MODIFIED: Removed stall_counter from the return statement
     return coordinates_out, forces_out, energy_out, hessian, delta_new, accepted, info
-def diis_step_coord_cart(
-    path,
-    name,
-    atoms,
-    force_history,
-    N=5,
-    cp2k_exec="./cp2k.popt",
-    runner="local"
-):
-    """
-    Perform one geometric DIIS step using force history in cart. coordinates.
-    """
-
-    if len(force_history) > N:
-        force_history.pop(0)  # keep last N points
-
-
-    # ---------------------------------
-    # 3. Build DIIS matrix B_ij = <f_i|f_j>
-    # ---------------------------------
-    m = len(force_history)
-    F = [f for _, f in force_history]
-    Bmat = np.empty((m+1, m+1))
-    Bmat[-1, :] = -1
-    Bmat[:, -1] = -1
-    Bmat[-1, -1] = 0
-    for i in range(m):
-        for j in range(m):
-            Bmat[i, j] = np.dot(F[i], F[j])
-
-    # ---------------------------------
-    # 4. Solve for coefficients
-    # ---------------------------------
-    rhs = np.zeros(m+1)
-    rhs[-1] = -1
-    coeffs = np.linalg.solve(Bmat, rhs)[:-1]  # last element is Lagrange multiplier
-
-    # ---------------------------------
-    # 5. Extrapolate geometry
-    # ---------------------------------
-    Q = [q for q, _ in force_history]
-    coords_new = sum(c * q for c, q in zip(coeffs, Q))
-    coords_current = Q[-1]
-    disp = coords_new - coords_current
-    '''
-    if norm_disp > max_step:
-        disp *= max_step / norm_disp  # rescale displacement
-        coords_new = coords_current + disp
-    '''
-    # Write temporary geometry for evaluation
-    file_to_update = os.path.join(path, f"{name}_tmp.xyz")
-    with open(file_to_update, "w") as f:
-        f.write(str(len(atoms)) + "\n\n")
-        for it,atom in enumerate(atoms):
-            f.write(f"{atom:2s} {coords_new[3*it]*ConversionFactors['a.u.->A']:20.12f} "
-                    f"{coords_new[3*it+1]*ConversionFactors['a.u.->A']:20.12f} "
-                    f"{coords_new[3*it+2]*ConversionFactors['a.u.->A']:20.12f}\n")
-
-    # ---------------------------------
-    # 7. Evaluate new energy & forces
-    # ---------------------------------
-    energy_new, forces_new = run_energy_force_eval(path=path, cp2k_exec=cp2k_exec, runner=runner)
-    coordinates_new_bohr = np.real(coords_new.reshape((len(atoms), 3)))
-    return coordinates_new_bohr, forces_new, energy_new
-# --- New Wrapper Function ---
-def back_transform_iterative(
-    x_initial_cart,       # Initial Cartesian coords (flat array, Bohr)
-    q_initial_prim,       # Initial PRIMITIVE internal coords
-    p_q_non_redundant,    # The desired step in NON-REDUNDANT internals
-    B_plus_T,
-    U_matrix,             # Transformation from non-redundant to primitive space
-    internals,            # Definition of bonds, angles, etc.
-    ftol=1e-6,            # Convergence tolerance for the solver
-    xtol=1e-6
-):
-    """
-    Iteratively finds the Cartesian coordinates that correspond to a
-    step in internal coordinates using scipy.optimize.least_squares.
-    """
-    # 1. Define the target in the primitive (redundant) coordinate space
-    p_q_prim = U_matrix @ p_q_non_redundant
-    q_target = q_initial_prim + p_q_prim
-
-    # Define indices for angle wrapping
-    num_bonds = len(internals[0])
-    num_angles = len(internals[1])
-    dihedral_start_idx = num_bonds + num_angles
-
-    # 2. Define the residual function for the least-squares solver
-    # This function calculates: q(x_initial + dx) - q_target
-    def residual_function(dx, x_initial, q_target_vec):
-        """Calculates the vector of errors in internal coordinates."""
-        # Current geometry based on the step dx
-        x_current = x_initial + dx
-        
-        # Calculate the internal coordinates for the current geometry
-        q_current, _ = cartesian_to_internal_coordinates(
-            x_current.reshape(-1, 3), *internals
-        )
-
-        # Calculate the error, correctly wrapping dihedral angles
-        error = q_current - q_target_vec
-        for j in range(dihedral_start_idx, len(error)):
-            # Wrap the error to be in the range [-pi, pi]
-            while error[j] > np.pi: error[j] -= 2 * np.pi
-            while error[j] < -np.pi: error[j] += 2 * np.pi
-            
-        return error
-
-    # 3. Define the Jacobian function for the solver
-    # The Jacobian of the residual is simply the Wilson B-matrix
-    def jacobian_function(dx, x_initial,q_target):
-        """Calculates the Wilson B-matrix at the current geometry."""
-        x_current = x_initial + dx
-        _, B_prim = cartesian_to_internal_coordinates(
-            x_current.reshape(-1, 3), *internals
-        )
-        return B_prim
-
-    # 4. Set the initial guess for the step 'dx'
-    # A zero vector is a safe and simple initial guess.
-    dx_initial_guess = B_plus_T.T@p_q_non_redundant
-    if np.linalg.norm(dx_initial_guess)>0.025:
-        # 5. Run the least-squares optimization
-        result = least_squares(
-            fun=residual_function,
-            x0=dx_initial_guess,
-            jac=jacobian_function,
-            args=(x_initial_cart,q_target), # Extra args for our functions
-            method='trf',  # Trust Region Reflective is robust
-            ftol=ftol,
-            xtol=xtol,
-            verbose=0 # Change to 1 or 2 for debugging
-        )
-
-        # 6. Check for success and return the final geometry
-        if not result.success:
-            print(f"Warning: Back-transformation did not converge. Message: {result.message}")
-
-        final_dx = result.x
-        x_final = x_initial_cart + final_dx
-    else:
-        x_final=x_final = x_initial_cart + dx_initial_guess
-    
-    return x_final
-
 def solve_tr_subproblem_internal_coords(g_q, H_q, B, delta, verbose=False):
     """
     Solves the TR subproblem in internal coordinates with a physically
@@ -704,7 +716,7 @@ def solve_tr_subproblem_internal_coords(g_q, H_q, B, delta, verbose=False):
         # Fallback for semi-definite G (due to redundancies)
         # Use eigendecomposition: G = Q Lmbda Q.T => G^1/2 = Q sqrt(Lmbda) Q.T
         eigvals, eigvecs = np.linalg.eigh(G)
-        eigvals[eigvals < 1e-9] = 0 # Clamp small/negative eigenvalues
+        eigvals[eigvals < 1e-8] = 0 # Clamp small/negative eigenvalues
         L = eigvecs @ np.diag(np.sqrt(eigvals)) @ eigvecs.T
 
 
@@ -731,6 +743,7 @@ def solve_tr_subproblem_internal_coords(g_q, H_q, B, delta, verbose=False):
     #    print(f"Final ||p_x|| = {np.linalg.norm(p_x):.6f} (target δ={delta})")
 
     return dq
+
 def more_sorensen_secular(g_q, H_q, delta, tol=1e-12, max_iter=50, verbose=False):
     """
     Solve the trust-region subproblem using the More–Sorensen algorithm
@@ -756,10 +769,9 @@ def more_sorensen_secular(g_q, H_q, delta, tol=1e-12, max_iter=50, verbose=False
     p : ndarray
         Optimal step solving min g^T p + 0.5 p^T B p with ||p|| <= delta.
     """
-
     # Try unconstrained minimizer first
     try:
-        p_star = -np.linalg.solve(H_q, g_q)
+        p_star = -np.linalg.pinv(H_q, rcond=1e-12) @ g_q
         if np.linalg.norm(p_star) <= delta:
             if verbose:
                 print("Unconstrained minimizer inside trust region.")
@@ -797,11 +809,10 @@ def more_sorensen_secular(g_q, H_q, delta, tol=1e-12, max_iter=50, verbose=False
         print(f"||p|| = {np.linalg.norm(p):.6f} (target δ={delta})")
 
     return p
-
 def bfgs_update(dx: np.ndarray, 
                 dg: np.ndarray, 
                 hess_mat: np.ndarray,
-                min_curv: float = 0.1
+                min_curv: float = 0.2
                ) -> np.ndarray:
     """
     Perform BFGS Hessian update with Powell-style damping.
@@ -829,11 +840,10 @@ def bfgs_update(dx: np.ndarray,
     work = hess_mat @ dx
     dxw = np.dot(dx, work)
     gdx = np.dot(dg, dx)
-    
     if abs(gdx) < 1e-8 or abs(dxw) < 1e-8:
         print("Warning: Small curvature, skipping BFGS update")
         return hess_mat
-
+    
     # ---------------------
     # Damping condition (Powell)
     # ---------------------
@@ -1531,11 +1541,11 @@ def get_dihedral_params(atom1, atom2, atom3, atom4, bo1, bo2, bo3):
         # Return default values if not found
         return (0.000, 0.000, 0.000)
 
-def get_initial_Hessian(atoms,coordinates_bohr,bonds,angles,dihedrals,s=1):
+def get_initial_Hessian(atoms,coordinates_bohr,bonds,angles,dihedrals,impropers,s=1):
 
     bond_order=assign_bond_orders(atoms=atoms,bonds=bonds)
     coordinates_bohr=np.array(coordinates_bohr)
-    H_int_diag = np.zeros(len(bonds)+len(angles)+len(dihedrals))#+len(impropers))
+    H_int_diag = np.zeros(len(bonds)+len(angles)+len(dihedrals)+len(impropers))
 
     for it_bond,bond in enumerate(bonds):
         i_idx=bond[0]
@@ -1594,7 +1604,8 @@ def get_initial_Hessian(atoms,coordinates_bohr,bonds,angles,dihedrals,s=1):
         phi = np.arctan2(y, x)
         Hphi1phi2=-0.5*V1*np.cos(phi)+2*V2*np.cos(2*phi)-4.5*V3*np.cos(3*phi)
         H_int_diag[len(bonds)+len(angles)+it_torsion]=Hphi1phi2
-
+    for it_improper,_ in enumerate(impropers):
+        H_int_diag[len(bonds)+len(angles)+len(dihedrals)+it_improper]=0.05
     # --- Regularization ---
     # Make all entries positive and avoid too small values
     min_threshold = max(np.min(H_int_diag[H_int_diag > 0.005]), 1e-3)
@@ -1602,7 +1613,7 @@ def get_initial_Hessian(atoms,coordinates_bohr,bonds,angles,dihedrals,s=1):
     
     # Optional scaling factor
     H_int_diag *= s
-    return H_int_diag*s
+    return H_int_diag
     
 
 
@@ -2077,7 +2088,7 @@ def generate_input(
         density_cutoff=1e-10,
         gradient_cutoff=1e-10,
         tau_cutoff=1e-10,
-        eps_schwarz=1e-12,
+        eps_schwarz=1e-10,
         max_memory=30000,
         eps_storage_scaling=1e-1
     )
@@ -2185,9 +2196,9 @@ def qs_section(
     Returns:
         str: A formatted &QS section.
     """
-    eps_default=1e-12
+    eps_default=1e-10
     if accuracy=="coarse":
-        eps_default=1e-10
+        eps_default=1e-8
     elif accuracy=="ultra":
         eps_default=1e-14
         
@@ -2308,9 +2319,9 @@ def dft_cutoff_rel_cutoff(accuracy="fine"):
         str: A formatted DFT section.
     """
     if accuracy=="fine":
-        cutoff=450; rel_cutoff=70; ngrids=5
+        cutoff=400; rel_cutoff=60; ngrids=6
     elif accuracy=="ultra":
-        cutoff=600; rel_cutoff=80; ngrids=6
+        cutoff=800; rel_cutoff=100; ngrids=8
     elif accuracy=="coarse":
         cutoff=300; rel_cutoff=50; ngrids=4
     string = "   &MGRID\n"
@@ -2345,10 +2356,10 @@ def print_AO_section(filename="KSHamiltonian"):
     return string
 def xc_section(
     xc_functional="CAM-B3LYP_omega=0.33",
-    density_cutoff=1e-10,
-    gradient_cutoff=1e-10,
-    tau_cutoff=1e-10,
-    eps_schwarz=1e-9,
+    density_cutoff=1e-12,
+    gradient_cutoff=1e-12,
+    tau_cutoff=1e-12,
+    eps_schwarz=1e-10,
     max_memory=30000,
     eps_storage_scaling=1e-1
 ):
@@ -2498,6 +2509,10 @@ def xc_section(
 
     else:
         raise ValueError(f"Unsupported XC functional: {xc_functional}")
+    string+="   &XC_GRID\n"
+    string+="       XC_DERIV NN50_SMOOTH\n"
+    #string+="       USE_FINER_GRID .TRUE.\n"
+    string+="   &END XC_GRID\n"
     string+= "&END XC\n"
     string+="&END DFT"
     string +="\n"
@@ -2507,12 +2522,12 @@ def scf_section(
     max_scf_standard=300,
     max_scf_ot=20,
     max_scf_outer=20,
-    eps_scf_ot=1.0e-6,
+    eps_scf_ot=1.0e-7,
     eps_scf_standard=1.0e-7,
     method="STANDARD",  # OT or STANDARD
     # OT-specific
     preconditioner="FULL_ALL",
-    minimizer="DIIS",
+    minimizer="CG",
     # STANDARD-specific
     mixing_method="BROYDEN_MIXING",
     mixing_alpha=0.4,
@@ -2673,4 +2688,62 @@ def create_summary_file(input_file: str, output_name: str):
     with open(output_name, 'w') as f:
         f.write(f"This is a summary of {input_file}.\n")
     print("Done.")
+def data_for_force_field(path="./",cluster="local"):
+    start_path=os.path.join(path, "start")
+    bond_path = os.path.join(path, "bonds")
+    
+    xyz_filepath = Read.get_xyz_filename(path, verbose=True)
+
+    with open(xyz_filepath, "r") as f:
+        input_data = f.readlines()
+    config = parse_cp2k_config(input_data)
+    # -------------------------------
+    # 2. Initialization / Restart
+    # -------------------------------
+    cp2k_exec = get_cp2k_exec(cluster=cluster)
+    if not os.path.exists(start_path):
+        os.makedirs(start_path, exist_ok=True)
+        config=prepare_force_eval(path=start_path, config=config)
+        energy_Ha_0, forces_Ha_bohr_0 = run_energy_force_eval(
+            path=start_path,
+            cp2k_exec=cp2k_exec,
+            runner="slurm" if cluster == "slurm" else "local"
+        )
+        name=config["name"]
+        atoms=config["atoms"]
+        masses=config["masses"]
+        coordinates_A=config["coordinates_A"]
+        coordinates_bohr=ConversionFactors["A->a.u."]*coordinates_A
+        print(coordinates_bohr)
+        cell_A=config["cell_A"]
+        cell_bohr=ConversionFactors["A->a.u."]*cell_A
+        
+        bonds, angles, dihedrals,impropers = generate_internal_representation(
+            atomic_symbols=atoms, coordinates_bohr=coordinates_bohr,
+            cell_bohr=cell_bohr
+        )
+        q0, B_prim = cartesian_to_internal_coordinates(np.array(coordinates_bohr), bonds, angles, dihedrals,impropers)
+        B_plus_plus = np.linalg.pinv(B_prim,rcond=1e-8)
+        B_plus_minus=B_plus_plus.copy()
+        coordinates_current_plus=np.array(coordinates_bohr).flatten()
+        coordinates_current_minus=np.array(coordinates_bohr).flatten()
+    stepsize=0.1
+    for it,bond in enumerate(bonds):
+        for it in range(1,3):
+            current_bond_path = os.path.join(bond_path, str(it))
+            os.makedirs(current_bond_path, exist_ok=True)
+            config=prepare_force_eval(path=current_bond_path, config=config)
+            dq_plus=np.zeros(np.shape(q0))
+            dq_minus=np.zeros(np.shape(q0))
+            dq_plus[it]=stepsize
+            dq_minus[it]=-stepsize
+            dx_plus = B_plus_plus@dq_plus
+            dx_minus = B_plus_minus@dq_minus
+            coordinates_current_plus+=dx_plus
+            coordinates_current_minus+=dx_minus
+            _, B_current = cartesian_to_internal_coordinates(np.array(coordinates_bohr), bonds, angles, dihedrals,impropers)
+            B_plus_plus = np.linalg.pinv(B_current,rcond=1e-8)
+
+            
+    
 
