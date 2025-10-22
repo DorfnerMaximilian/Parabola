@@ -203,7 +203,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         super().__init__()  # Initialize parent class
         self.determine_symmetry(MolecularStructure)
     def determine_symmetry(self,MolecularStructure):
-        self._test_translation(MolecularStructure,tol_translation=5*10**(-5))
+        self._test_translation(MolecularStructure,tol_translation=5*10**(-4))
         primitive_indices=MolecularStructure.unitcells[(0,0,0)]
         geometry_centered_coordinates,center = Geometry.ComputeCenterOfGeometryCoordinates(np.array(MolecularStructure.coordinates)[primitive_indices])
         MolecularStructure.Geometric_Center_UC=center
@@ -239,7 +239,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             MolecularStructure.Mass_UC_Centered_Coordinates=G_UC_CC
         if len(primitive_indices)>1:
             self._test_inversion(MolecularStructure,tol_inversion=5*10**(-3))
-            self._test_rotation(MolecularStructure,tol_rotation=5*10**(-2))
+            self._test_rotation(MolecularStructure,tol_rotation=5*10**(-3))
             self._test_mirror(MolecularStructure,tol_mirror=5*10**(-2))
         if not self.Symmetry_Generators:
             self.Symmetry_Generators["Id"]=np.eye(len(MolecularStructure.masses))
@@ -316,8 +316,13 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         for axis in ["x","y","z"]:
             for n in range(nmax,1,-1):
                 has_symmetry, rotation_pairs=detect_rotational_symmetry(Geometric_UC_Centered_Coordinates, np.array(atomic_symbols)[primitive_indices], axis=axis, n=n, tolerance=tol_rotation)
-                if has_symmetry and n!=1:
+                if has_symmetry and n!=1 and n!=nmax:
                     break
+                elif has_symmetry and n==nmax:
+                    has_symmetry_2, _=detect_rotational_symmetry(Geometric_UC_Centered_Coordinates, np.array(atomic_symbols)[primitive_indices], axis=axis, n=nmax+1, tolerance=tol_rotation)
+                    if has_symmetry_2 and has_symmetry:
+                        has_symmetry=False
+                        break
             if has_symmetry and n!=1:
                 #Generate the Original Pairs
                 pairs={}
@@ -393,7 +398,7 @@ def to_fractional(lattice, positions):
     inv_lattice = np.linalg.inv(lattice)
     fractional_positions = [inv_lattice @ pos for pos in positions]
     return np.array(fractional_positions)
-def is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, N1,N2,N3,tolerance=1e-5):
+def is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, N1,N2,N3,tolerance=1e-7):
     """
     Checks if a scaled unit cell is legitimate by verifying that all atoms 
     in the scaled lattice can be mapped into the primitive unit cell using 
@@ -516,7 +521,9 @@ def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols,tolerance=1e-8)
             break
     #x3 divisor
     for itz in primes:
+        print(itz)
         iscell,_,_=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, 1,1,itz,tolerance=tolerance)
+        print(iscell)
         if iscell:
             break
     iscell,primitive_indices, scaled_lattice=is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols,itx,ity,itz,tolerance=tolerance)
@@ -731,6 +738,24 @@ def rotate_coords(coords, axis, angle_rad):
 
     return [R @ coord for coord in coords]
 
+def detect_rotational_symmetry(centered_coords, atomic_symbols, axis='z', n=2, tolerance=1e-5):
+    """
+    Checks for Cn rotational symmetry about a specified axis.
+
+    Args:
+        centered_coords (list): List of numpy arrays, each representing an atom's 3D coordinates.
+        atomic_symbols (list): List of atomic symbols corresponding to each coordinate.
+        axis (str): Axis of rotation: 'x', 'y', or 'z'.
+        n (int): Order of rotation (C_n means 360/n degrees).
+        tolerance (float): Tolerance for matching atom positions.
+
+    Returns:
+        bool: True if Cn rotational symmetry is detected.
+        dict: Mapping of original atom indices to rotated counterparts if symmetry exists.
+    """
+    angle_rad = 2 * np.pi / n
+    rotated_coords = rotate_coords(centered_coords, axis, angle_rad)
+    return find_rotated_match(rotated_coords, centered_coords, atomic_symbols, tolerance=tolerance)
 
 def find_rotated_match(rotated_coords, original_coords, atomic_symbols, tolerance=1e-5):
     """
@@ -758,24 +783,7 @@ def find_rotated_match(rotated_coords, original_coords, atomic_symbols, toleranc
     return True, rotation_pairs
 
 
-def detect_rotational_symmetry(centered_coords, atomic_symbols, axis='z', n=2, tolerance=1e-5):
-    """
-    Checks for Cn rotational symmetry about a specified axis.
 
-    Args:
-        centered_coords (list): List of numpy arrays, each representing an atom's 3D coordinates.
-        atomic_symbols (list): List of atomic symbols corresponding to each coordinate.
-        axis (str): Axis of rotation: 'x', 'y', or 'z'.
-        n (int): Order of rotation (C_n means 360/n degrees).
-        tolerance (float): Tolerance for matching atom positions.
-
-    Returns:
-        bool: True if Cn rotational symmetry is detected.
-        dict: Mapping of original atom indices to rotated counterparts if symmetry exists.
-    """
-    angle_rad = 2 * np.pi / n
-    rotated_coords = rotate_coords(centered_coords, axis, angle_rad)
-    return find_rotated_match(rotated_coords, centered_coords, atomic_symbols, tolerance=tolerance)
 #### Mirror Symmetry Helper Functions ####
 def reflect_coords(coords, axis):
     """
