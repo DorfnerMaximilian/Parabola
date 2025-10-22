@@ -317,6 +317,12 @@ class ElectronicStructure:
         print(f"ℹ️ : Symmetry Sectors and Electronic Energies")
         current_index = 0
         # 5. Iterate through the sorted labels to process each block.
+        label_alpha=[]
+        energy_alpha=[]
+        if self.UKS:
+            label_beta=[]
+            energy_beta=[]
+        # 5. Iterate through the sorted labels to process each block.
         for sym in sorted_sym_labels:
             block_size = len(SymSectors[sym])
             
@@ -355,10 +361,21 @@ class ElectronicStructure:
                 V_mwh_beta=fix_phases_states(V_mwh_beta, threshold=1e-10)
                 self.real_eigenstates["beta"][sym].append(V_mwh_beta)
                 self.energies["beta"]=energies_alpha_eV
-        
+
+            for i in range(block_size):
+                label_alpha.append((sym,i))
+                energy_alpha.append(eigenvalues_alpha[i])
+                if self.UKS:
+                    label_beta.append((sym,i))
+                    energy_beta.append(eigenvalues_beta[i])
             # Advance the index to the start of the next block
             current_index += block_size
-
+        if not self.UKS:
+            sorted_indices=np.argsort(energy_alpha)
+            label_alpha=np.array(label_alpha)[sorted_indices]
+            Homoindex=self.num_e/2
+            for id,element in enumerate(label_alpha):
+                self.indexmap["alpha"][int(id+1-Homoindex)]=element
 
 def test_phase_op(mol):
     # Initialize dictionary to track periodicity
