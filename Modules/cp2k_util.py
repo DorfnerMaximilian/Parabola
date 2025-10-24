@@ -503,8 +503,8 @@ def bfgs_step_coord_internal(
         hessian=U.T@hessian@U
         #hessian=np.eye(len(grad_q_k))
     # ... (The rest of the function for taking the step, evaluating, and updating Hessian is the same) ...
-
-    if hessian_reset_active:
+    fmax,_=forces_summary(forces_vec_cart_k)
+    if hessian_reset_active or fmax<1.2e-3:
         #dq=solve_tr_subproblem_internal_coords(grad_q_k, hessian, B, delta, verbose=False)
         #dx = B_plus_T.T@dq
         dx=0.025*forces_vec_cart_k/np.linalg.norm(forces_vec_cart_k)
@@ -557,7 +557,6 @@ def bfgs_step_coord_internal(
         a, b, c = sol  # unpack the 3 fitted coefficients
         coeff = [4*a, 3*b, 2*c, d]  # proper quartic coefficients
         roots = np.roots(coeff)
-        print(roots)
         curvatures=[]
         for root in roots:
             curvatures.append(12*a*root**2+6*b*root+c)
