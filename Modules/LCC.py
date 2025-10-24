@@ -7,14 +7,18 @@ from . import Read
 from . import AtomicBasis
 from . import TDDFT
 from . import VibAna
-pathtocp2k=os.environ["cp2kpath"]
-pathtobinaries=pathtocp2k+"/exe/local/"
-def LCC_inputs(deltas,parentfolder="./",linktobinary=True,binaryloc=pathtobinaries):
-    _,normCD,_=Read.read_vibrations(parentfolder)
-    nCD=[]
+
+pathtocp2k = os.environ["cp2kpath"]
+pathtobinaries = pathtocp2k + "/exe/local/"
+
+
+def LCC_inputs(deltas, parentfolder="./", linktobinary=True, binaryloc=pathtobinaries):
+    _, normCD, _ = Read.read_vibrations(parentfolder)
+    nCD = []
     for it in range(np.shape(normCD)[0]):
-        nCD.append(normCD[it,:])
-    VibAna.Vib_Ana_inputs(deltas,nCD,parentpath=parentfolder)
+        nCD.append(normCD[it, :])
+    VibAna.Vib_Ana_inputs(deltas, nCD, parentpath=parentfolder)
+
 
 def getManyBodyCouplings(eta, LCC, id_homo):
     """
@@ -35,7 +39,7 @@ def getManyBodyCouplings(eta, LCC, id_homo):
                               Shape: (num_modes, num_excited_states).
     """
     # --- Setup: No changes needed here, these are fast operations ---
-    
+
     # Slicing assumes the first (id_homo + 1) orbitals are holes
     # and the remaining are electrons (particles).
     print("🚀 Starting Many-Body Coupling Calculation...")
@@ -45,12 +49,14 @@ def getManyBodyCouplings(eta, LCC, id_homo):
     num_holes = id_homo + 1
     num_modes = LCC.shape[0]
     num_excited_states = eta.shape[2]
-    
-    print(f"   - System Info: {num_modes} modes, {num_excited_states} excited states, HOMO index {id_homo}.")
-    
-    g = LCC[:, num_holes:, num_holes:]        # Particle-particle block
-    h = LCC[:, :num_holes, :num_holes] * -1   # Hole-hole block
-    k = LCC[:, :num_holes, num_holes:]        # Hole-particle block
+
+    print(
+        f"   - System Info: {num_modes} modes, {num_excited_states} excited states, HOMO index {id_homo}."
+    )
+
+    g = LCC[:, num_holes:, num_holes:]  # Particle-particle block
+    h = LCC[:, :num_holes, :num_holes] * -1  # Hole-hole block
+    k = LCC[:, :num_holes, num_holes:]  # Hole-particle block
 
     # --- 1. Vectorized State Normalization ---
     # The original loop calculates the squared Frobenius norm for each state matrix
@@ -65,17 +71,17 @@ def getManyBodyCouplings(eta, LCC, id_homo):
     # Original operation: K[lamb, m] = np.trace(k[lamb] @ etap[m])
     # einsum equivalent: K_lm = sum_{i,j} k_lij * eta_jim
     eta_slice_k = eta[num_holes:, :num_holes, :]
-    K = np.einsum('lij,jim->lm', k, eta_slice_k, optimize=True)
+    K = np.einsum("lij,jim->lm", k, eta_slice_k, optimize=True)
     # --- 3. Vectorized Excited State Coupling (H matrix) ---
     # The slow triple nested loop is replaced by two einsum calls.
-    eta_sub = eta[num_holes:, :num_holes, :] # particle-hole slice of all states
+    eta_sub = eta[num_holes:, :num_holes, :]  # particle-hole slice of all states
     # Term 1: np.trace(np.transpose(etaq) @ g @ etap)
     # einsum: H_lqp = sum_{e,f,h} eta_ehq * g_lef * eta_fhp
-    term1 = np.einsum('ehq,lef,fhp->lqp', eta_sub, g, eta_sub, optimize=True)
-    
+    term1 = np.einsum("ehq,lef,fhp->lqp", eta_sub, g, eta_sub, optimize=True)
+
     # Term 2: np.trace(etaq @ h @ np.transpose(etap))
     # einsum: H_lqp = sum_{e,i,j} eta_eiq * h_lij * eta_ejp
-    term2 = np.einsum('eiq,lij,ejp->lqp', eta_sub, h, eta_sub, optimize=True)
+    term2 = np.einsum("eiq,lij,ejp->lqp", eta_sub, h, eta_sub, optimize=True)
     H = term1 + term2
     print(f"   - H matrix calculated. Shape: {H.shape}")
     # The original code copied H[l,q,p] to H[l,p,q]. The einsum calculation
@@ -85,17 +91,22 @@ def getManyBodyCouplings(eta, LCC, id_homo):
     print("   - Saving coupling constant matrices...")
     np.save("H_CouplingConstants", H)
     np.save("K_CouplingConstants", K)
-    print("   - Files 'H_CouplingConstants.npy' and 'K_CouplingConstants.npy' saved successfully.")
+    print(
+        "   - Files 'H_CouplingConstants.npy' and 'K_CouplingConstants.npy' saved successfully."
+    )
 
     end_time = time.time()
     print(f"✅ Calculation complete! Total time: {end_time - start_time:.2f} seconds.")
     return H, K
 
+
 #######################################################################################################
-#Helper routine to get the range of considered electronic states
+# Helper routine to get the range of considered electronic states
 #######################################################################################################
-def getadiabaticallyConnectedEigenstates(orthogonalEigenstates_Eq,orthorgonalEigenstates_deflected,Tmatrix_deflected):
-    ''' 
+def getadiabaticallyConnectedEigenstates(
+    orthogonalEigenstates_Eq, orthorgonalEigenstates_deflected, Tmatrix_deflected
+):
+    """
     Compute adiabatically connected eigenstates.
 
     Parameters:
@@ -110,7 +121,7 @@ def getadiabaticallyConnectedEigenstates(orthogonalEigenstates_Eq,orthorgonalEig
 
         spread: int, optional
             Compute coupling elements for orbitals HOMO-spread, HOMO-spread+1, ..., LUMO+spread.
-        
+
 
     Returns:
         list
@@ -124,7 +135,7 @@ def getadiabaticallyConnectedEigenstates(orthogonalEigenstates_Eq,orthorgonalEig
         It iterates over each equilibrium eigenstate and finds the corresponding deflected eigenstate with the maximum overlap.
         If the maximum overlap is less than 0.5, it raises a ValueError.
 
-    '''
+    """
     adibaticallyConnectediters_Plus = []
     # Precompute some values
     orthogonal_states_Plus = (np.array(orthorgonalEigenstates_deflected).T).copy()
@@ -135,281 +146,437 @@ def getadiabaticallyConnectedEigenstates(orthogonalEigenstates_Eq,orthorgonalEig
         iter1 = np.argmax(np.abs(overlaps))
         maximumAbsOverlap = np.abs(overlaps[iter1])
         adibaticallyConnectediters_Plus.append(iter1)
-        if overlaps[iter1]<0:
-            orthorgonalEigenstates_deflected[iter1]*=-1
+        if overlaps[iter1] < 0:
+            orthorgonalEigenstates_deflected[iter1] *= -1
         if maximumAbsOverlap < 0.60:
-            print("Maximum Overlap: ", maximumAbsOverlap," for Orbital ", it0)
-    return adibaticallyConnectediters_Plus,orthorgonalEigenstates_deflected
+            print("Maximum Overlap: ", maximumAbsOverlap, " for Orbital ", it0)
+    return adibaticallyConnectediters_Plus, orthorgonalEigenstates_deflected
 
 
 #######################################################################################################
-#Function to Compute the local Coupling constants g 
+# Function to Compute the local Coupling constants g
 #######################################################################################################
-def getLCC_EIG(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
-    '''Compute linear coupling constants from finitly displaced geometries.
-    
+def getLCC_EIG(parentfolder="./", idmin=0, idmax=-1, cell_vectors=[0.0, 0.0, 0.0]):
+    """Compute linear coupling constants from finitly displaced geometries.
+
     Parameters:
-        parentfolder (str): Absolute or relative path where the geometry optimized .xyz file lies, 
+        parentfolder (str): Absolute or relative path where the geometry optimized .xyz file lies,
                             with electronic structure data at displaced geometries in subfolders.
                             Default is the current directory.
-                                                 
+
        Output:
         Saves coupling constants in a numpy .npy file named "Linear_Coupling_Constants.npy" in the parentfolder.
-    '''
-    #Get the .xyz file
-    xyz_files = [f for f in os.listdir(parentfolder+"/"+'Equilibrium_Geometry') if f.endswith('.xyz')]
+    """
+    # Get the .xyz file
+    xyz_files = [
+        f
+        for f in os.listdir(parentfolder + "/" + "Equilibrium_Geometry")
+        if f.endswith(".xyz")
+    ]
     if len(xyz_files) != 1:
-        raise ValueError('InputError: There should be only one xyz file in the directory:'+parentfolder+"/"+'Equilibrium_Geometry/')
+        raise ValueError(
+            "InputError: There should be only one xyz file in the directory:"
+            + parentfolder
+            + "/"
+            + "Equilibrium_Geometry/"
+        )
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # Equilibrium configuration
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
 
-    #get the Equilibrium Configuration 
-    Atoms_Eq=Read.read_atomic_coordinates(parentfolder+"/Equilibrium_Geometry/")
-    #Construct Basis of the Equilibrium configuration
-    Basis_Eq=AtomicBasis.getBasis(parentfolder+"/Equilibrium_Geometry/")
-    #Diagonalize to the KS Hamiltonian in the ortonormal Basis
-    E_Eq,a_orth_Eq,Sm12_Eq=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/Equilibrium_Geometry/")
-    #get the normalized Eigenstates in the non-orthorgonal Basis & fix Phase
+    # get the Equilibrium Configuration
+    Atoms_Eq = Read.read_atomic_coordinates(parentfolder + "/Equilibrium_Geometry/")
+    # Construct Basis of the Equilibrium configuration
+    Basis_Eq = AtomicBasis.getBasis(parentfolder + "/Equilibrium_Geometry/")
+    # Diagonalize to the KS Hamiltonian in the ortonormal Basis
+    E_Eq, a_orth_Eq, Sm12_Eq = Util.Diagonalize_KS_Hamiltonian(
+        parentfolder + "/Equilibrium_Geometry/"
+    )
+    # get the normalized Eigenstates in the non-orthorgonal Basis & fix Phase
     orthorgonalEigenstates_Eq = []
     # Precompute phases
     phases = np.array([TDDFT.getPhaseOfMO(a_orth_Eq[:, it]) for it in range(len(E_Eq))])
-    #parsing the input
-    Homoid=Read.read_homo_index(parentfolder+"/Equilibrium_Geometry/")
-    #parsing for occupied orbitals
-    index_low=0
-    if idmin==0:
-        index_low=0
+    # parsing the input
+    Homoid = Read.read_homo_index(parentfolder + "/Equilibrium_Geometry/")
+    # parsing for occupied orbitals
+    index_low = 0
+    if idmin == 0:
+        index_low = 0
         print("Computing coupling matrix elements for all occupied orbitals!")
-    elif idmin>=Homoid:
-        print("Cannot take into account more then "+str(Homoid+1)+" occupied orbitals.\n")
+    elif idmin >= Homoid:
+        print(
+            "Cannot take into account more then "
+            + str(Homoid + 1)
+            + " occupied orbitals.\n"
+        )
         print("Continuing by taking into account all occupied orbitals!")
-        index_low=0
+        index_low = 0
     else:
-        print("Computing coupling matrix elements for the occupied orbitals HOMO, ... HOMO-"+str(idmin)+"\n")
-        index_low=Homoid-idmin
-    #parsing for empty orbitals
-    index_up=0
-    if idmax==-1:
-        index_up=len(E_Eq)
+        print(
+            "Computing coupling matrix elements for the occupied orbitals HOMO, ... HOMO-"
+            + str(idmin)
+            + "\n"
+        )
+        index_low = Homoid - idmin
+    # parsing for empty orbitals
+    index_up = 0
+    if idmax == -1:
+        index_up = len(E_Eq)
         print("Computing coupling matrix elements for all empty orbitals!")
-    elif idmax+Homoid+1>=len(E_Eq):
-        print("Cannot take into account more then "+str(len(E_Eq)-Homoid-1)+" empty orbitals.\n")
+    elif idmax + Homoid + 1 >= len(E_Eq):
+        print(
+            "Cannot take into account more then "
+            + str(len(E_Eq) - Homoid - 1)
+            + " empty orbitals.\n"
+        )
         print("Continuing by taking into account all empty orbitals!")
-        index_up=len(E_Eq)
+        index_up = len(E_Eq)
     else:
-        print("Computing coupling matrix elements for the empty orbitals LUMO, ... LUMO+"+str(idmax)+"\n")
-        index_up=Homoid+idmax
+        print(
+            "Computing coupling matrix elements for the empty orbitals LUMO, ... LUMO+"
+            + str(idmax)
+            + "\n"
+        )
+        index_up = Homoid + idmax
     # Compute and append normalized eigenstates
-    included_orbitals=[]
+    included_orbitals = []
     for it in range(len(E_Eq)):
-        orth_eigenstate = a_orth_Eq[:, it]  # Make a copy to avoid modifying the original data
+        orth_eigenstate = a_orth_Eq[
+            :, it
+        ]  # Make a copy to avoid modifying the original data
         phase = phases[it]
         orth_eigenstate *= phase
-        if it>=index_low and it<=index_up:
+        if it >= index_low and it <= index_up:
             included_orbitals.append(it)
             orthorgonalEigenstates_Eq.append(orth_eigenstate)
-        
-    _,deltas=Read.read_basis_vectors(parentfolder)
-    #get the normal modes from the cartesian displacements
-    VibrationalFrequencies,_,normfactors=Read.read_vibrations(parentfolder)
-    #This has index convention lambda,mu
-    couplingConstants=np.zeros((len(normfactors),np.shape(E_Eq)[0],np.shape(E_Eq)[0]))
-    for mu in Util.progressbar(range(len(normfactors)),"Coupling Constants:",40):
-        #----------------------------------------------------------------------
-        # Positively displaced 
-        #----------------------------------------------------------------------
-        folderplus='vector='+str(mu+1)+'sign=+'
-        #Get the stompositions for the positively displaced atoms
-        Atoms_Plus=Read.read_atomic_coordinates(parentfolder+"/"+folderplus)
-        EPlus,a_orth_Plus,Sm12_Plus=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/"+folderplus+"/")
-        T_Eq_Plus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq,cell_vectors)
-        T_matrix_Plus=Sm12_Eq@T_Eq_Plus@Sm12_Plus
-        #T_matrix_Plus=np.eye(np.shape(Sm12_Plus)[0])
-        #----------------------------------------------------------------------
-        # Negatively displaced 
-        #----------------------------------------------------------------------
-        folderminus='vector='+str(mu+1)+'sign=-'
-        #Get the atom positions for the negatively displaced atoms
-        Atoms_Minus=Read.read_atomic_coordinates(parentfolder+"/"+folderminus)
-        EMinus,a_orth_Minus,Sm12_Minus=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/"+folderminus+"/")
-        #obtain the Basis Transformation Matrix 
-        T_Eq_Minus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq,cell_vectors)
-        T_Matrix_Minus=Sm12_Eq@T_Eq_Minus@Sm12_Minus
-        #T_Matrix_Minus=np.eye(np.shape(Sm12_Plus)[0])
-        #fix the phase of the Eigenstates
-        orthorgonalEigenstates_Plus=[]
+
+    _, deltas = Read.read_basis_vectors(parentfolder)
+    # get the normal modes from the cartesian displacements
+    VibrationalFrequencies, _, normfactors = Read.read_vibrations(parentfolder)
+    # This has index convention lambda,mu
+    couplingConstants = np.zeros(
+        (len(normfactors), np.shape(E_Eq)[0], np.shape(E_Eq)[0])
+    )
+    for mu in Util.progressbar(range(len(normfactors)), "Coupling Constants:", 40):
+        # ----------------------------------------------------------------------
+        # Positively displaced
+        # ----------------------------------------------------------------------
+        folderplus = "vector=" + str(mu + 1) + "sign=+"
+        # Get the stompositions for the positively displaced atoms
+        Atoms_Plus = Read.read_atomic_coordinates(parentfolder + "/" + folderplus)
+        EPlus, a_orth_Plus, Sm12_Plus = Util.Diagonalize_KS_Hamiltonian(
+            parentfolder + "/" + folderplus + "/"
+        )
+        T_Eq_Plus = AtomicBasis.getTransformationmatrix(
+            Atoms_Eq, Atoms_Plus, Basis_Eq, cell_vectors
+        )
+        T_matrix_Plus = Sm12_Eq @ T_Eq_Plus @ Sm12_Plus
+        # T_matrix_Plus=np.eye(np.shape(Sm12_Plus)[0])
+        # ----------------------------------------------------------------------
+        # Negatively displaced
+        # ----------------------------------------------------------------------
+        folderminus = "vector=" + str(mu + 1) + "sign=-"
+        # Get the atom positions for the negatively displaced atoms
+        Atoms_Minus = Read.read_atomic_coordinates(parentfolder + "/" + folderminus)
+        EMinus, a_orth_Minus, Sm12_Minus = Util.Diagonalize_KS_Hamiltonian(
+            parentfolder + "/" + folderminus + "/"
+        )
+        # obtain the Basis Transformation Matrix
+        T_Eq_Minus = AtomicBasis.getTransformationmatrix(
+            Atoms_Eq, Atoms_Minus, Basis_Eq, cell_vectors
+        )
+        T_Matrix_Minus = Sm12_Eq @ T_Eq_Minus @ Sm12_Minus
+        # T_Matrix_Minus=np.eye(np.shape(Sm12_Plus)[0])
+        # fix the phase of the Eigenstates
+        orthorgonalEigenstates_Plus = []
         for it in range(len(EPlus)):
-            orth_eigenstate=a_orth_Plus[:,it]
+            orth_eigenstate = a_orth_Plus[:, it]
             if it in included_orbitals:
                 orthorgonalEigenstates_Plus.append(orth_eigenstate)
-        #fix the phase of the Eigenstates
-        orthorgonalEigenstates_Minus=[]
+        # fix the phase of the Eigenstates
+        orthorgonalEigenstates_Minus = []
         for it in range(len(EMinus)):
-            orth_eigenstate=a_orth_Minus[:,it]
+            orth_eigenstate = a_orth_Minus[:, it]
             if it in included_orbitals:
                 orthorgonalEigenstates_Minus.append(orth_eigenstate)
-        #Get the adiabtically connected eigenvalues/states for the positive displacement
-        adibaticallyConnectediters_Plus,orthorgonalEigenstates_Plus=getadiabaticallyConnectedEigenstates(orthorgonalEigenstates_Eq,orthorgonalEigenstates_Plus,T_matrix_Plus)
-        #Check that each iterator is exactly once in the adibaticallyConnectediters_Plus set
+        # Get the adiabtically connected eigenvalues/states for the positive displacement
+        adibaticallyConnectediters_Plus, orthorgonalEigenstates_Plus = (
+            getadiabaticallyConnectedEigenstates(
+                orthorgonalEigenstates_Eq, orthorgonalEigenstates_Plus, T_matrix_Plus
+            )
+        )
+        # Check that each iterator is exactly once in the adibaticallyConnectediters_Plus set
         for it in included_orbitals:
-            if adibaticallyConnectediters_Plus.count(it)!=1:
-                ValueError("Some eigenstates appear more or less then once as maximum weight states! Check your inputs!")
-        #Get the adiabtically connected eigenvalues/states for the negative displacement
-        adibaticallyConnectediters_Minus,orthorgonalEigenstates_Minus=getadiabaticallyConnectedEigenstates(orthorgonalEigenstates_Eq,orthorgonalEigenstates_Minus,T_Matrix_Minus)
-        #Check that each iterator is exactly once in the adibaticallyConnectediters set
+            if adibaticallyConnectediters_Plus.count(it) != 1:
+                ValueError(
+                    "Some eigenstates appear more or less then once as maximum weight states! Check your inputs!"
+                )
+        # Get the adiabtically connected eigenvalues/states for the negative displacement
+        adibaticallyConnectediters_Minus, orthorgonalEigenstates_Minus = (
+            getadiabaticallyConnectedEigenstates(
+                orthorgonalEigenstates_Eq, orthorgonalEigenstates_Minus, T_Matrix_Minus
+            )
+        )
+        # Check that each iterator is exactly once in the adibaticallyConnectediters set
         for it in included_orbitals:
-            if adibaticallyConnectediters_Minus.count(it)!=1:
-                ValueError("Some eigenstates appear more or less then once as maximum weight states! Check your inputs!")
-        #Precompute the matrix products
-        Tmatrix_Plus_dot_states_Plus = T_matrix_Plus@np.array(orthorgonalEigenstates_Plus).T
-        Tmatrix_Plus_dot_states_Minus=T_Matrix_Minus@np.array(orthorgonalEigenstates_Minus).T
+            if adibaticallyConnectediters_Minus.count(it) != 1:
+                ValueError(
+                    "Some eigenstates appear more or less then once as maximum weight states! Check your inputs!"
+                )
+        # Precompute the matrix products
+        Tmatrix_Plus_dot_states_Plus = (
+            T_matrix_Plus @ np.array(orthorgonalEigenstates_Plus).T
+        )
+        Tmatrix_Plus_dot_states_Minus = (
+            T_Matrix_Minus @ np.array(orthorgonalEigenstates_Minus).T
+        )
         for it0 in range(len(included_orbitals)):
             for it1 in range(len(included_orbitals)):
-                if it0==it1:
-                    deltaE=(EPlus[included_orbitals[adibaticallyConnectediters_Plus[it0]]]-EMinus[included_orbitals[adibaticallyConnectediters_Minus[it1]]])/(2*deltas[mu])*normfactors[mu]
-                    couplingConstants[mu,included_orbitals[it0],included_orbitals[it1]]=ConversionFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*deltaE
+                if it0 == it1:
+                    deltaE = (
+                        (
+                            EPlus[
+                                included_orbitals[adibaticallyConnectediters_Plus[it0]]
+                            ]
+                            - EMinus[
+                                included_orbitals[adibaticallyConnectediters_Minus[it1]]
+                            ]
+                        )
+                        / (2 * deltas[mu])
+                        * normfactors[mu]
+                    )
+                    couplingConstants[
+                        mu, included_orbitals[it0], included_orbitals[it1]
+                    ] = (
+                        ConversionFactors["E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)"]
+                        / (VibrationalFrequencies[mu]) ** (1.5)
+                        * deltaE
+                    )
                 else:
-                    overlap1=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus_dot_states_Plus[:,adibaticallyConnectediters_Plus[it1]])
-                    overlap2=np.dot(orthorgonalEigenstates_Eq[it0],Tmatrix_Plus_dot_states_Minus[:,adibaticallyConnectediters_Minus[it1]])
-                    deltaE=(overlap1-overlap2)/(2*deltas[mu])*normfactors[mu]*(E_Eq[included_orbitals[it1]]-E_Eq[included_orbitals[it0]])
-                    couplingConstants[mu,included_orbitals[it0],included_orbitals[it1]]=ConversionFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*deltaE
-    np.save(parentfolder+"/Linear_Coupling_Constants",couplingConstants)
-def getLCC_STATES(parentfolder="./",idmin=0,idmax=-1,cell_vectors=[0.0, 0.0, 0.0]):
-    '''Compute linear coupling constants from finitly displaced geometries.
-    
+                    overlap1 = np.dot(
+                        orthorgonalEigenstates_Eq[it0],
+                        Tmatrix_Plus_dot_states_Plus[
+                            :, adibaticallyConnectediters_Plus[it1]
+                        ],
+                    )
+                    overlap2 = np.dot(
+                        orthorgonalEigenstates_Eq[it0],
+                        Tmatrix_Plus_dot_states_Minus[
+                            :, adibaticallyConnectediters_Minus[it1]
+                        ],
+                    )
+                    deltaE = (
+                        (overlap1 - overlap2)
+                        / (2 * deltas[mu])
+                        * normfactors[mu]
+                        * (E_Eq[included_orbitals[it1]] - E_Eq[included_orbitals[it0]])
+                    )
+                    couplingConstants[
+                        mu, included_orbitals[it0], included_orbitals[it1]
+                    ] = (
+                        ConversionFactors["E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)"]
+                        / (VibrationalFrequencies[mu]) ** (1.5)
+                        * deltaE
+                    )
+    np.save(parentfolder + "/Linear_Coupling_Constants", couplingConstants)
+
+
+def getLCC_STATES(parentfolder="./", idmin=0, idmax=-1, cell_vectors=[0.0, 0.0, 0.0]):
+    """Compute linear coupling constants from finitly displaced geometries.
+
     Parameters:
-        parentfolder (str): Absolute or relative path where the geometry optimized .xyz file lies, 
+        parentfolder (str): Absolute or relative path where the geometry optimized .xyz file lies,
                             with electronic structure data at displaced geometries in subfolders.
                             Default is the current directory.
-                                                 
+
        Output:
         Saves coupling constants in a numpy .npy file named "Linear_Coupling_Constants.npy" in the parentfolder.
-    '''
-    
-    #Get the .xyz file
-    xyz_files = [f for f in os.listdir(parentfolder+"/"+'Equilibrium_Geometry') if f.endswith('.xyz')]
-    if len(xyz_files) != 1:
-        raise ValueError('InputError: There should be only one xyz file in the directory:'+parentfolder+"/"+'Equilibrium_Geometry/')
+    """
 
-    #----------------------------------------------------------------------
+    # Get the .xyz file
+    xyz_files = [
+        f
+        for f in os.listdir(parentfolder + "/" + "Equilibrium_Geometry")
+        if f.endswith(".xyz")
+    ]
+    if len(xyz_files) != 1:
+        raise ValueError(
+            "InputError: There should be only one xyz file in the directory:"
+            + parentfolder
+            + "/"
+            + "Equilibrium_Geometry/"
+        )
+
+    # ----------------------------------------------------------------------
     # Equilibrium configuration
-    #----------------------------------------------------------------------
-    xyz_filepath=Util.get_xyz_filename(path=parentfolder+"/Equilibrium_Geometry/")
-     #get the Equilibrium Configuration 
-    Atoms_Eq=Read.read_atomic_coordinates(xyz_filepath)
-    #Construct Basis of the Equilibrium configuration
-    Basis_Eq=AtomicBasis.getBasis(parentfolder+"/Equilibrium_Geometry/")
-    #Diagonalize to the KS Hamiltonian in the ortonormal Basis
-    E_Eq,a_orth_Eq,Sm12_Eq=Util.Diagonalize_KS_Hamiltonian(parentfolder+"/Equilibrium_Geometry/")
-    if len(np.shape(a_orth_Eq))==2:
-        a_orth_Eq=a_orth_Eq[:,:,np.newaxis]
-    UKS=False
-    if np.shape(a_orth_Eq)[-1]==2:
-        UKS=True
-    #get the normalized Eigenstates in the non-orthorgonal Basis & fix Phase
+    # ----------------------------------------------------------------------
+    xyz_filepath = Util.get_xyz_filename(path=parentfolder + "/Equilibrium_Geometry/")
+    # get the Equilibrium Configuration
+    Atoms_Eq = Read.read_atomic_coordinates(xyz_filepath)
+    # Construct Basis of the Equilibrium configuration
+    Basis_Eq = AtomicBasis.getBasis(parentfolder + "/Equilibrium_Geometry/")
+    # Diagonalize to the KS Hamiltonian in the ortonormal Basis
+    E_Eq, a_orth_Eq, Sm12_Eq = Util.Diagonalize_KS_Hamiltonian(
+        parentfolder + "/Equilibrium_Geometry/"
+    )
+    if len(np.shape(a_orth_Eq)) == 2:
+        a_orth_Eq = a_orth_Eq[:, :, np.newaxis]
+    UKS = False
+    if np.shape(a_orth_Eq)[-1] == 2:
+        UKS = True
+    # get the normalized Eigenstates in the non-orthorgonal Basis & fix Phase
     orthorgonalEigenstates_Eq = []
     if UKS:
         orthorgonalEigenstates_Eq_beta = []
     # Precompute phases
-    phases = np.array([TDDFT.getPhaseOfMO(a_orth_Eq[:, it,0]) for it in range(len(E_Eq))])
+    phases = np.array(
+        [TDDFT.getPhaseOfMO(a_orth_Eq[:, it, 0]) for it in range(len(E_Eq))]
+    )
     if UKS:
-        phases_beta = np.array([TDDFT.getPhaseOfMO(a_orth_Eq[:, it,1]) for it in range(len(E_Eq))])
-    #parsing the input
-    Homoid=Read.read_homo_index(parentfolder+"/Equilibrium_Geometry/")
-    #parsing for occupied orbitals
-    index_low=0
-    if idmin==0:
-        index_low=0
+        phases_beta = np.array(
+            [TDDFT.getPhaseOfMO(a_orth_Eq[:, it, 1]) for it in range(len(E_Eq))]
+        )
+    # parsing the input
+    Homoid = Read.read_homo_index(parentfolder + "/Equilibrium_Geometry/")
+    # parsing for occupied orbitals
+    index_low = 0
+    if idmin == 0:
+        index_low = 0
         print("Computing coupling matrix elements for all occupied orbitals!")
-    elif idmin>=Homoid:
-        print("Cannot take into account more then "+str(Homoid+1)+" occupied orbitals.\n")
+    elif idmin >= Homoid:
+        print(
+            "Cannot take into account more then "
+            + str(Homoid + 1)
+            + " occupied orbitals.\n"
+        )
         print("Continuing by taking into account all occupied orbitals!")
-        index_low=0
+        index_low = 0
     else:
-        print("Computing coupling matrix elements for the occupied orbitals HOMO, ... HOMO-"+str(idmin)+"\n")
-        index_low=Homoid-idmin
-    #parsing for empty orbitals
-    index_up=0
-    if idmax==-1:
-        index_up=len(E_Eq)
+        print(
+            "Computing coupling matrix elements for the occupied orbitals HOMO, ... HOMO-"
+            + str(idmin)
+            + "\n"
+        )
+        index_low = Homoid - idmin
+    # parsing for empty orbitals
+    index_up = 0
+    if idmax == -1:
+        index_up = len(E_Eq)
         print("Computing coupling matrix elements for all empty orbitals!")
-    elif idmax+Homoid+1>=len(E_Eq):
-        print("Cannot take into account more then "+str(len(E_Eq)-Homoid-1)+" empty orbitals.\n")
+    elif idmax + Homoid + 1 >= len(E_Eq):
+        print(
+            "Cannot take into account more then "
+            + str(len(E_Eq) - Homoid - 1)
+            + " empty orbitals.\n"
+        )
         print("Continuing by taking into account all empty orbitals!")
-        index_up=len(E_Eq)
+        index_up = len(E_Eq)
     else:
-        print("Computing coupling matrix elements for the empty orbitals LUMO, ... LUMO+"+str(idmax)+"\n")
-        index_up=Homoid+idmax
+        print(
+            "Computing coupling matrix elements for the empty orbitals LUMO, ... LUMO+"
+            + str(idmax)
+            + "\n"
+        )
+        index_up = Homoid + idmax
     # Compute and append normalized eigenstates
-    included_orbitals=[]
+    included_orbitals = []
     for it in range(len(E_Eq)):
-        orth_eigenstate = a_orth_Eq[:, it,0]  # Make a copy to avoid modifying the original data
+        orth_eigenstate = a_orth_Eq[
+            :, it, 0
+        ]  # Make a copy to avoid modifying the original data
         phase = phases[it]
         orth_eigenstate *= phase
-        if it>=index_low and it<=index_up:
+        if it >= index_low and it <= index_up:
             included_orbitals.append(it)
             orthorgonalEigenstates_Eq.append(orth_eigenstate)
     print(np.shape(orthorgonalEigenstates_Eq))
     if UKS:
-        included_orbitals_beta=[]
+        included_orbitals_beta = []
         for it in range(len(E_Eq)):
-            orth_eigenstate = a_orth_Eq[:, it,1]  # Make a copy to avoid modifying the original data
+            orth_eigenstate = a_orth_Eq[
+                :, it, 1
+            ]  # Make a copy to avoid modifying the original data
             phase = phases_beta[it]
             orth_eigenstate *= phase
-            if it>=index_low and it<=index_up:
+            if it >= index_low and it <= index_up:
                 included_orbitals_beta.append(it)
                 orthorgonalEigenstates_Eq_beta.append(orth_eigenstate)
         print(np.shape(orthorgonalEigenstates_Eq_beta))
 
-    States=np.transpose(np.array(orthorgonalEigenstates_Eq))
+    States = np.transpose(np.array(orthorgonalEigenstates_Eq))
     if UKS:
-        States_beta=np.transpose(np.array(orthorgonalEigenstates_Eq_beta))
-    _,deltas=Read.read_basis_vectors(parentfolder)
-    #get the normal modes from the cartesian displacements
-    VibrationalFrequencies,_,normfactors=Read.read_vibrations(parentfolder)
-    #This has index convention lambda,mu
+        States_beta = np.transpose(np.array(orthorgonalEigenstates_Eq_beta))
+    _, deltas = Read.read_basis_vectors(parentfolder)
+    # get the normal modes from the cartesian displacements
+    VibrationalFrequencies, _, normfactors = Read.read_vibrations(parentfolder)
+    # This has index convention lambda,mu
     if not UKS:
-        couplingConstants=np.zeros((len(normfactors),np.shape(States)[0],np.shape(States)[0],1))
+        couplingConstants = np.zeros(
+            (len(normfactors), np.shape(States)[0], np.shape(States)[0], 1)
+        )
     else:
-        couplingConstants=np.zeros((len(normfactors),np.shape(States)[0],np.shape(States)[0],2))
-    for mu in Util.progressbar(range(len(normfactors)),"Coupling Constants:",40):
-        #----------------------------------------------------------------------
-        # Positively displaced 
-        #----------------------------------------------------------------------
-        folderplus='vector='+str(mu+1)+'sign=+'
-        #Get the stompositions for the positively displaced atoms
-        xyz_filepath=Util.get_xyz_filename(path=parentfolder+"/"+folderplus)
-        Atoms_Plus=Read.read_atomic_coordinates(xyz_filepath)
-        KSH_alpha_Plus,KSH_beta_Plus,OLM_Plus=Read.read_ks_matrices(parentfolder+"/"+folderplus)
-        T_Eq_Plus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Plus,Basis_Eq,cell_vectors)
-        Sm1_Plus=Util.getSm1(OLM_Plus)
-        T_Plus=Sm12_Eq@T_Eq_Plus@Sm1_Plus
-        #Do Basis Transform
-        KS_Plus=T_Plus@KSH_alpha_Plus@np.transpose(T_Plus)
+        couplingConstants = np.zeros(
+            (len(normfactors), np.shape(States)[0], np.shape(States)[0], 2)
+        )
+    for mu in Util.progressbar(range(len(normfactors)), "Coupling Constants:", 40):
+        # ----------------------------------------------------------------------
+        # Positively displaced
+        # ----------------------------------------------------------------------
+        folderplus = "vector=" + str(mu + 1) + "sign=+"
+        # Get the stompositions for the positively displaced atoms
+        xyz_filepath = Util.get_xyz_filename(path=parentfolder + "/" + folderplus)
+        Atoms_Plus = Read.read_atomic_coordinates(xyz_filepath)
+        KSH_alpha_Plus, KSH_beta_Plus, OLM_Plus = Read.read_ks_matrices(
+            parentfolder + "/" + folderplus
+        )
+        T_Eq_Plus = AtomicBasis.getTransformationmatrix(
+            Atoms_Eq, Atoms_Plus, Basis_Eq, cell_vectors
+        )
+        Sm1_Plus = Util.getSm1(OLM_Plus)
+        T_Plus = Sm12_Eq @ T_Eq_Plus @ Sm1_Plus
+        # Do Basis Transform
+        KS_Plus = T_Plus @ KSH_alpha_Plus @ np.transpose(T_Plus)
         if UKS:
-            KS_Plus_beta=T_Plus@KSH_beta_Plus@np.transpose(T_Plus)
-        #----------------------------------------------------------------------
-        # Negatively displaced 
-        #----------------------------------------------------------------------
-        folderminus='vector='+str(mu+1)+'sign=-'
-        #Get the atom positions for the negatively displaced atoms
-        xyz_filepath=Util.get_xyz_filename(path=parentfolder+"/"+folderminus)
-        Atoms_Minus=Read.read_atomic_coordinates(xyz_filepath)
-        KSH_alpha_Minus,KSH_beta_Minus,OLM_Minus=Read.read_ks_matrices(parentfolder+"/"+folderminus)
-        T_Eq_Minus=AtomicBasis.getTransformationmatrix(Atoms_Eq,Atoms_Minus,Basis_Eq,cell_vectors)
-        Sm1_Minus=Util.getSm1(OLM_Minus)
-        T_Minus=Sm12_Eq@T_Eq_Minus@Sm1_Minus
-        #Do Basis Transform
-        KS_minus=T_Minus@KSH_alpha_Minus@np.transpose(T_Minus)
+            KS_Plus_beta = T_Plus @ KSH_beta_Plus @ np.transpose(T_Plus)
+        # ----------------------------------------------------------------------
+        # Negatively displaced
+        # ----------------------------------------------------------------------
+        folderminus = "vector=" + str(mu + 1) + "sign=-"
+        # Get the atom positions for the negatively displaced atoms
+        xyz_filepath = Util.get_xyz_filename(path=parentfolder + "/" + folderminus)
+        Atoms_Minus = Read.read_atomic_coordinates(xyz_filepath)
+        KSH_alpha_Minus, KSH_beta_Minus, OLM_Minus = Read.read_ks_matrices(
+            parentfolder + "/" + folderminus
+        )
+        T_Eq_Minus = AtomicBasis.getTransformationmatrix(
+            Atoms_Eq, Atoms_Minus, Basis_Eq, cell_vectors
+        )
+        Sm1_Minus = Util.getSm1(OLM_Minus)
+        T_Minus = Sm12_Eq @ T_Eq_Minus @ Sm1_Minus
+        # Do Basis Transform
+        KS_minus = T_Minus @ KSH_alpha_Minus @ np.transpose(T_Minus)
         if UKS:
-            KS_minus_beta=T_Minus@KSH_beta_Minus@np.transpose(T_Minus)
-        #Compute derivative
-        derivativeKS=(KS_Plus-KS_minus)/(2*deltas[mu])*normfactors[mu]
+            KS_minus_beta = T_Minus @ KSH_beta_Minus @ np.transpose(T_Minus)
+        # Compute derivative
+        derivativeKS = (KS_Plus - KS_minus) / (2 * deltas[mu]) * normfactors[mu]
         if UKS:
-            derivativeKS_beta=(KS_Plus_beta-KS_minus_beta)/(2*deltas[mu])*normfactors[mu]
-        couplingConstants[mu,:,:,0]=ConversionFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*np.transpose(States)@derivativeKS@States
+            derivativeKS_beta = (
+                (KS_Plus_beta - KS_minus_beta) / (2 * deltas[mu]) * normfactors[mu]
+            )
+        couplingConstants[mu, :, :, 0] = (
+            ConversionFactors["E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)"]
+            / (VibrationalFrequencies[mu]) ** (1.5)
+            * np.transpose(States)
+            @ derivativeKS
+            @ States
+        )
         if UKS:
-            couplingConstants[mu,:,:,1]=ConversionFactors['E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)']/(VibrationalFrequencies[mu])**(1.5)*np.transpose(States_beta)@derivativeKS_beta@States_beta
-    np.save(parentfolder+"/LCC_STATES",couplingConstants)
+            couplingConstants[mu, :, :, 1] = (
+                ConversionFactors["E_H/a_0*hbar/sqrt(2*m_H)->cm^(3/2)"]
+                / (VibrationalFrequencies[mu]) ** (1.5)
+                * np.transpose(States_beta)
+                @ derivativeKS_beta
+                @ States_beta
+            )
+    np.save(parentfolder + "/LCC_STATES", couplingConstants)

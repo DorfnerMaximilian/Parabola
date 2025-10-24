@@ -5,217 +5,276 @@ import numpy as np
 from scipy.linalg import schur
 import matplotlib.pyplot as plt
 import os
-pathtocp2k=os.environ["cp2kpath"]
-pathtobinaries=pathtocp2k+"/exe/local/"
-def getRotProjector(Mass_UC_Centered_Coordinates,Geometric_UC_Principle_Axis,Mass_UC_Principle_Axis,masses,periodicity):
-        if periodicity==(0,0,0):
-            centerofmasscoordinates=Mass_UC_Centered_Coordinates
-            V=np.array(Geometric_UC_Principle_Axis)
-            U=np.array(Mass_UC_Principle_Axis)
-            T=V@U.T
-            Roteigenvectors=[]
-            for it in [0,1,2]:
-                #Define the RotEigenvector
-                RotEigenvector=np.zeros(3*len(masses))
-                #generate the vector X along the principle axis
-                X=np.zeros(3)
-                X[it]=1.0
-                for s in range(len(masses)):
-                    rvector=np.cross(X,centerofmasscoordinates[s])
-                    #Expand rvector in basis [v1,v2,v3]
-                    rvector=T@rvector
-                    RotEigenvector[3*s]=rvector[0]
-                    RotEigenvector[3*s+1]=rvector[1]
-                    RotEigenvector[3*s+2]=rvector[2]
-                #Normalize the generated Eigenvector
-                RotEigenvector/=np.linalg.norm(RotEigenvector)
-                Roteigenvectors.append(RotEigenvector)
-            projector=np.zeros((3*len(masses),3*len(masses)))
-            for it in range(3):
-                projector+=np.outer(Roteigenvectors[it],Roteigenvectors[it])
-            return projector
-        else:
-            return None
+
+pathtocp2k = os.environ["cp2kpath"]
+pathtobinaries = pathtocp2k + "/exe/local/"
+
+
+def getRotProjector(
+    Mass_UC_Centered_Coordinates,
+    Geometric_UC_Principle_Axis,
+    Mass_UC_Principle_Axis,
+    masses,
+    periodicity,
+):
+    if periodicity == (0, 0, 0):
+        centerofmasscoordinates = Mass_UC_Centered_Coordinates
+        V = np.array(Geometric_UC_Principle_Axis)
+        U = np.array(Mass_UC_Principle_Axis)
+        T = V @ U.T
+        Roteigenvectors = []
+        for it in [0, 1, 2]:
+            # Define the RotEigenvector
+            RotEigenvector = np.zeros(3 * len(masses))
+            # generate the vector X along the principle axis
+            X = np.zeros(3)
+            X[it] = 1.0
+            for s in range(len(masses)):
+                rvector = np.cross(X, centerofmasscoordinates[s])
+                # Expand rvector in basis [v1,v2,v3]
+                rvector = T @ rvector
+                RotEigenvector[3 * s] = rvector[0]
+                RotEigenvector[3 * s + 1] = rvector[1]
+                RotEigenvector[3 * s + 2] = rvector[2]
+            # Normalize the generated Eigenvector
+            RotEigenvector /= np.linalg.norm(RotEigenvector)
+            Roteigenvectors.append(RotEigenvector)
+        projector = np.zeros((3 * len(masses), 3 * len(masses)))
+        for it in range(3):
+            projector += np.outer(Roteigenvectors[it], Roteigenvectors[it])
+        return projector
+    else:
+        return None
+
+
 def getTransProjector(masses):
-    NumDisplacements=3*len(masses)
-    trans_projector=np.zeros((NumDisplacements,NumDisplacements))
+    NumDisplacements = 3 * len(masses)
+    trans_projector = np.zeros((NumDisplacements, NumDisplacements))
     for it in range(3):
         TransEigenvector = np.zeros(NumDisplacements)
-        TransEigenvector[it::3] = 1.0/np.sqrt(NumDisplacements/3.0)
-        trans_projector+=np.outer(TransEigenvector,TransEigenvector)
+        TransEigenvector[it::3] = 1.0 / np.sqrt(NumDisplacements / 3.0)
+        trans_projector += np.outer(TransEigenvector, TransEigenvector)
     return trans_projector
+
+
 class VibrationalStructure:
-    def __init__(self, mol,disable_symmetry=False):
-        #Parse the Data
-        vibrational_structure_path=mol.vibrational_structure_path
-        masses=mol.masses
-        molecular_symmetry=mol.Molecular_Symmetry
-        axes=mol.Geometric_UC_Principle_Axis
-        Hessian=Read.read_hessian(vibrational_structure_path)
-        self.Hessian=Hessian
-        self.inverse_sqrt_MassMatrix=np.sqrt(np.linalg.inv(np.kron(np.diag(masses),np.eye(3))))
-        self.VibrationalModes={}
+    def __init__(self, mol, disable_symmetry=False):
+        # Parse the Data
+        vibrational_structure_path = mol.vibrational_structure_path
+        masses = mol.masses
+        molecular_symmetry = mol.Molecular_Symmetry
+        axes = mol.Geometric_UC_Principle_Axis
+        Hessian = Read.read_hessian(vibrational_structure_path)
+        self.Hessian = Hessian
+        self.inverse_sqrt_MassMatrix = np.sqrt(
+            np.linalg.inv(np.kron(np.diag(masses), np.eye(3)))
+        )
+        self.VibrationalModes = {}
         if disable_symmetry:
             print("❗ Symmetry Disabled for Vibrational Analysis.")
             # 1. Get the number of atoms
             num_atoms = len(masses)
-            
+
             # 2. Create an identity matrix of size N_atoms x N_atoms
             #    This represents the identity permutation of atoms.
             id_matrix = np.eye(num_atoms)
 
             # 3. Create a new, blank Symmetry object
-            molecular_symmetry.Symmetry_Generators={"Id": id_matrix}
-            
+            molecular_symmetry.Symmetry_Generators = {"Id": id_matrix}
+
         # Now safe to access parent attributes
         self.Vibrational_Symmetry = Vibrational_Symmetry(molecular_symmetry)
         self.ImposeTranslationalSymmetry(masses=masses)
         self.getVibrationalModes(axes=axes)
-        #Generate Projectors:
-        rot_projector=getRotProjector(mol.Mass_UC_Centered_Coordinates,mol.Geometric_UC_Principle_Axis,mol.Mass_UC_Principle_Axis,mol.masses,mol.periodicity)
-        trans_projector=getTransProjector(mol.masses)
-        self.identify_external_dof(trans_projector,rot_projector)
-        self.write_mol_file(mol.coordinates,mol.masses,mol.atoms,mol.path)
-    def getVibrationalModes(self,axes):
-        def TransformHessian(Hessian,Axis):
+        # Generate Projectors:
+        rot_projector = getRotProjector(
+            mol.Mass_UC_Centered_Coordinates,
+            mol.Geometric_UC_Principle_Axis,
+            mol.Mass_UC_Principle_Axis,
+            mol.masses,
+            mol.periodicity,
+        )
+        trans_projector = getTransProjector(mol.masses)
+        self.identify_external_dof(trans_projector, rot_projector)
+        self.write_mol_file(mol.coordinates, mol.masses, mol.atoms, mol.path)
+
+    def getVibrationalModes(self, axes):
+        def TransformHessian(Hessian, Axis):
             M = np.array(Axis).T  # M is 3x3
             N = Hessian.shape[0] // 3  # Number of blocks
             block = np.kron(np.eye(N), M)  # Build 3N x 3N block diagonal matrix
             return block.T @ Hessian @ block, block
-        
+
         # --- Setup and Hessian Transformation ---
-        Hessian,O=TransformHessian(self.Hessian,axes)
+        Hessian, O = TransformHessian(self.Hessian, axes)
         sqrtMm1 = self.inverse_sqrt_MassMatrix
         MassWeightedHessian = sqrtMm1 @ Hessian @ sqrtMm1
         # Convert units to get frequencies in cm^-1
-        MassWeightedHessian *= (10**3 / 1.8228884842645) * (2.19474631370540E+02)**2
-        
+        MassWeightedHessian *= (10**3 / 1.8228884842645) * (2.19474631370540e02) ** 2
+
         # (Optional) Visualize the original mass-weighted Hessian
-        plt.imshow(MassWeightedHessian, cmap='viridis', interpolation='nearest')
+        plt.imshow(MassWeightedHessian, cmap="viridis", interpolation="nearest")
         plt.colorbar()
         plt.savefig("./Hessian_Original.png")
         plt.close()
-        
+
         # --- CONSISTENT SYMMETRY ORDERING ---
         SymSectors = self.Vibrational_Symmetry.SymSectors
         VIrr = self.Vibrational_Symmetry.IrrepsProjector
-        
+
         # 1. Sort symmetry labels alphabetically to ensure a consistent order.
         sorted_sym_labels = sorted(SymSectors.keys())
-        
+
         # 2. Build the reordering array based on the sorted labels.
         # This groups basis functions by symmetry, in a fixed order.
         reordering = np.concatenate([SymSectors[key] for key in sorted_sym_labels])
-        
+
         # 3. Reorder the projector matrix columns based on the sorted symmetry order.
         VIrr_reordered = VIrr[:, reordering]
-        
+
         # 4. Create the block-diagonal Hessian. The blocks are now in a consistent order.
-        MassWeightedHessian_Sectors = VIrr_reordered.T @ MassWeightedHessian @ VIrr_reordered
-        
+        MassWeightedHessian_Sectors = (
+            VIrr_reordered.T @ MassWeightedHessian @ VIrr_reordered
+        )
+
         # (Optional) Visualize the block-diagonalized Hessian
-        plt.imshow(MassWeightedHessian_Sectors, cmap='viridis', interpolation='nearest')
+        plt.imshow(MassWeightedHessian_Sectors, cmap="viridis", interpolation="nearest")
         plt.colorbar()
         plt.savefig("./Hessian_Sectors.png")
         plt.close()
-        
+
         # --- BLOCK DIAGONALIZATION (IN CONSISTENT ORDER) ---
         print(f"ℹ️ : Symmetry Sectors and Vibrational Frequencies")
         current_index = 0
         # 5. Iterate through the sorted labels to process each block.
         for sym in sorted_sym_labels:
             block_size = len(SymSectors[sym])
-            
+
             # Extract the symmetry block
-            Block_Hessian = MassWeightedHessian_Sectors[current_index : current_index + block_size,
-                                                        current_index : current_index + block_size]
-            
+            Block_Hessian = MassWeightedHessian_Sectors[
+                current_index : current_index + block_size,
+                current_index : current_index + block_size,
+            ]
+
             # Diagonalize the block to get eigenvalues and eigenvectors for this symmetry
             eigenvalues, eigenvectors = np.linalg.eigh(Block_Hessian)
-            
+
             # Frequencies (cm^-1) are the signed square roots of the eigenvalues
             frequencies_cm_inv = np.sign(eigenvalues) * np.sqrt(np.abs(eigenvalues))
-            print(f"Symmetry Sector: {sym}, Frequencies (cm⁻¹): \n {frequencies_cm_inv}")
-            
+            print(
+                f"Symmetry Sector: {sym}, Frequencies (cm⁻¹): \n {frequencies_cm_inv}"
+            )
+
             # Transform eigenvectors from the symmetry basis back to the mass-weighted basis
-            V_mwh = O@VIrr_reordered[:, current_index : current_index + block_size] @ eigenvectors
-            
+            V_mwh = (
+                O
+                @ VIrr_reordered[:, current_index : current_index + block_size]
+                @ eigenvectors
+            )
+
             # Store the calculated vibrational modes
             if sym not in self.VibrationalModes:
                 self.VibrationalModes[sym] = []
-            
+
             for i in range(block_size):
-                mode = VibrationalMode(frequencies_cm_inv[i], V_mwh[:, i],sqrtMm1@V_mwh[:, i], sym)
+                mode = VibrationalMode(
+                    frequencies_cm_inv[i], V_mwh[:, i], sqrtMm1 @ V_mwh[:, i], sym
+                )
                 self.VibrationalModes[sym].append(mode)
-                
+
             # Advance the index to the start of the next block
             current_index += block_size
-    def ImposeTranslationalSymmetry(self,masses):
+
+    def ImposeTranslationalSymmetry(self, masses):
         # Imposes exact relation on the Hessian, that has to be fullfilled for the Translational D.O.F. to decouple from the rest
-        #input: 
-        #Hessian:    (numpy.array)  Hessian in carthesian coordinates 
-        #Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
+        # input:
+        # Hessian:    (numpy.array)  Hessian in carthesian coordinates
+        # Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
         def getJ(masses):
             # Computes the J matrix, the linear, invertible transformation, that transforms into the Jacobi coordinates, in which the center of mass
             # motion explicitly decouples, x_rel=J*x
-            #input: 
-            #Hessian:    (numpy.array)  Hessian in carthesian coordinates 
-            #Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
-            Rcm=np.zeros(len(masses))
-            Rcm[0]=1.0
-            Mj=masses[0]
-            Jupdown=np.zeros(((len(masses),len(masses))))
-            for j in range(1,len(masses)):
-                Rj=np.zeros(len(masses))
-                Rj[j]=1.0
-                Deltaj=Rj-Rcm
-                Jupdown[j-1][:]=Deltaj
-                Rcm=(Mj*Rcm+masses[j]*Rj)/(Mj+masses[j])
-                Mj+=masses[j]
-            Jupdown[-1][:]=Rcm
-            J=np.zeros((3*len(masses),3*len(masses)))
+            # input:
+            # Hessian:    (numpy.array)  Hessian in carthesian coordinates
+            # Hessian:    (numpy.array)  Hessian in carthesian coordinates, which has been cleaned from contamination of the Translations
+            Rcm = np.zeros(len(masses))
+            Rcm[0] = 1.0
+            Mj = masses[0]
+            Jupdown = np.zeros(((len(masses), len(masses))))
+            for j in range(1, len(masses)):
+                Rj = np.zeros(len(masses))
+                Rj[j] = 1.0
+                Deltaj = Rj - Rcm
+                Jupdown[j - 1][:] = Deltaj
+                Rcm = (Mj * Rcm + masses[j] * Rj) / (Mj + masses[j])
+                Mj += masses[j]
+            Jupdown[-1][:] = Rcm
+            J = np.zeros((3 * len(masses), 3 * len(masses)))
             for it1 in range(len(masses)):
                 for it2 in range(len(masses)):
-                    J[3*it1][3*it2]=Jupdown[it1][it2]
-                    J[3*it1+1][3*it2+1]=Jupdown[it1][it2]
-                    J[3*it1+2][3*it2+2]=Jupdown[it1][it2]
+                    J[3 * it1][3 * it2] = Jupdown[it1][it2]
+                    J[3 * it1 + 1][3 * it2 + 1] = Jupdown[it1][it2]
+                    J[3 * it1 + 2][3 * it2 + 2] = Jupdown[it1][it2]
             return J
-        
-        J=getJ(masses)
-        Hessiantilde=np.transpose(np.linalg.inv(J))@self.Hessian@np.linalg.inv(J)
-        for it1 in range(3*len(masses)):
-            for it2 in range(3*len(masses)):
-                if it1>=3*len(masses)-3 or it2>=3*len(masses)-3:
-                    Hessiantilde[it1][it2]=0.0
-        Hessian=np.transpose(J)@Hessiantilde@J
-        self.Hessian=0.5*(Hessian+np.transpose(Hessian))
-    def identify_external_dof(self,projector_trans,projector_rot):
-        def isTranslation(mode,projector_trans,tolerance=0.95):
-            if np.abs(np.dot(mode.normalized_carthesian_displacement,projector_trans@mode.normalized_carthesian_displacement))>tolerance:
-                mode.istranslation=True
-        def isRotation(mode,projector_rot,tolerance=0.8):
-            if np.abs(np.dot(mode.normalized_carthesian_displacement,projector_rot@mode.normalized_carthesian_displacement))>tolerance:
-                mode.isrotation=True
+
+        J = getJ(masses)
+        Hessiantilde = np.transpose(np.linalg.inv(J)) @ self.Hessian @ np.linalg.inv(J)
+        for it1 in range(3 * len(masses)):
+            for it2 in range(3 * len(masses)):
+                if it1 >= 3 * len(masses) - 3 or it2 >= 3 * len(masses) - 3:
+                    Hessiantilde[it1][it2] = 0.0
+        Hessian = np.transpose(J) @ Hessiantilde @ J
+        self.Hessian = 0.5 * (Hessian + np.transpose(Hessian))
+
+    def identify_external_dof(self, projector_trans, projector_rot):
+        def isTranslation(mode, projector_trans, tolerance=0.95):
+            if (
+                np.abs(
+                    np.dot(
+                        mode.normalized_carthesian_displacement,
+                        projector_trans @ mode.normalized_carthesian_displacement,
+                    )
+                )
+                > tolerance
+            ):
+                mode.istranslation = True
+
+        def isRotation(mode, projector_rot, tolerance=0.8):
+            if (
+                np.abs(
+                    np.dot(
+                        mode.normalized_carthesian_displacement,
+                        projector_rot @ mode.normalized_carthesian_displacement,
+                    )
+                )
+                > tolerance
+            ):
+                mode.isrotation = True
 
         for sym in self.VibrationalModes:
             for mode in self.VibrationalModes[sym]:
-                isTranslation(mode,projector_trans)
+                isTranslation(mode, projector_trans)
                 if projector_rot is not None:
-                    isRotation(mode,projector_rot)
-
+                    isRotation(mode, projector_rot)
 
     def CheckSymmetry(self):
         for sym in self.Vibrational_Symmetry.Symmetry_Generators:
             print(sym)
-            comm1=self.Hessian@self.Vibrational_Symmetry.Symmetry_Generators[sym]-self.Vibrational_Symmetry.Symmetry_Generators[sym]@self.Hessian
-            comm2=self.MassMatrix@self.Vibrational_Symmetry.Symmetry_Generators[sym]-self.Vibrational_Symmetry.Symmetry_Generators[sym]@self.MassMatrix
+            comm1 = (
+                self.Hessian @ self.Vibrational_Symmetry.Symmetry_Generators[sym]
+                - self.Vibrational_Symmetry.Symmetry_Generators[sym] @ self.Hessian
+            )
+            comm2 = (
+                self.MassMatrix @ self.Vibrational_Symmetry.Symmetry_Generators[sym]
+                - self.Vibrational_Symmetry.Symmetry_Generators[sym] @ self.MassMatrix
+            )
             print(np.linalg.norm(comm1))
             print(np.linalg.norm(comm2))
             print(np.linalg.norm(self.Hessian))
-    def write_mol_file(self,coordinates,masses,atoms,path):
-        '''
+
+    def write_mol_file(self, coordinates, masses, atoms, path):
+        """
         Function to generate a .mol file for use with e.g., Jmol.
-        
+
         Parameters:
         - normalmodeEnergies (np.array): The normal mode energies as a numpy array.
         - normalmodes (np.array): Normalized Cartesian displacements, i.e., vectors proportional to the Cartesian displacements.
@@ -228,84 +287,117 @@ class VibrationalStructure:
         - The function looks for a single .xyz file in the specified directory and reads the atomic coordinates from it.
         - The .mol file is generated with sections for frequencies, atomic coordinates, normalization factors, and vibrational modes.
         - The generated .mol file is named "Vibrations.mol" and is saved in the specified parent folder.
-        '''
+        """
         ##########################################
-        #Get the number of atoms from the xyz file
+        # Get the number of atoms from the xyz file
         ##########################################
-        numofatoms=len(masses)
-        coordinates=coordinates
-        atoms=atoms
-        SymSectors=[sym for sym in self.VibrationalModes]
-        normalmodeEnergies=[]
-        Normalized_Displacement=[]
-        normfactors=[]
+        numofatoms = len(masses)
+        coordinates = coordinates
+        atoms = atoms
+        SymSectors = [sym for sym in self.VibrationalModes]
+        normalmodeEnergies = []
+        Normalized_Displacement = []
+        normfactors = []
         for sym in SymSectors:
             for Mode in self.VibrationalModes[sym]:
                 if not Mode.istranslation and not Mode.isrotation:
                     normalmodeEnergies.append(Mode.frequency)
-                    Normalized_Displacement.append(Mode.normalized_carthesian_displacement)
+                    Normalized_Displacement.append(
+                        Mode.normalized_carthesian_displacement
+                    )
                     normfactors.append(Mode.norm_factor)
-        with open(path+"/Vibrations.mol",'w') as f:
-            f.write('[Molden Format]\n')
-            f.write('[FREQ]\n')
+        with open(path + "/Vibrations.mol", "w") as f:
+            f.write("[Molden Format]\n")
+            f.write("[FREQ]\n")
             for Frequency in normalmodeEnergies:
-                f.write('   '+str(Frequency)+'\n')
-            f.write('[FR-COORD]\n')
-            for it,coord in enumerate(coordinates):
-                f.write(atoms[it]+'   '+str(coord[0]*ConversionFactors["A->a.u."])+'   '+str(coord[1]*ConversionFactors["A->a.u."])+'   '+str(coord[2]*ConversionFactors["A->a.u."])+'\n')
-            f.write('[SYMMETRY-SECTORS]\n')
+                f.write("   " + str(Frequency) + "\n")
+            f.write("[FR-COORD]\n")
+            for it, coord in enumerate(coordinates):
+                f.write(
+                    atoms[it]
+                    + "   "
+                    + str(coord[0] * ConversionFactors["A->a.u."])
+                    + "   "
+                    + str(coord[1] * ConversionFactors["A->a.u."])
+                    + "   "
+                    + str(coord[2] * ConversionFactors["A->a.u."])
+                    + "\n"
+                )
+            f.write("[SYMMETRY-SECTORS]\n")
             for sym in SymSectors:
-                f.write(sym+'\n')
-            f.write('[NORM-FACTORS]\n')
+                f.write(sym + "\n")
+            f.write("[NORM-FACTORS]\n")
             for normfactor in normfactors:
-                f.write(str(normfactor)+'\n')
-            f.write('[FR-NORM-COORD]\n')
-            modeiter=1
+                f.write(str(normfactor) + "\n")
+            f.write("[FR-NORM-COORD]\n")
+            modeiter = 1
             for mode in Normalized_Displacement:
-                f.write('vibration      '+str(modeiter)+'\n')
+                f.write("vibration      " + str(modeiter) + "\n")
                 for s in range(numofatoms):
-                    f.write('   '+str(round(mode[3*s], 12))+'   '+str(round(mode[3*s+1], 12))+'   '+str(round(mode[3*s+2],12))+'\n')
-                modeiter+=1
+                    f.write(
+                        "   "
+                        + str(round(mode[3 * s], 12))
+                        + "   "
+                        + str(round(mode[3 * s + 1], 12))
+                        + "   "
+                        + str(round(mode[3 * s + 2], 12))
+                        + "\n"
+                    )
+                modeiter += 1
+
+
 class XYZ_Symmetry(Symmetry.Symmetry):
-    def __init__(self,Molecular_Symmetry):
+    def __init__(self, Molecular_Symmetry):
         super().__init__()  # Initialize parent class
         self.xyz_Generators(Molecular_Symmetry)
-    def xyz_Generators(self,Molecular_Symmetry):
-        Molecular_Symmetry_Generators=Molecular_Symmetry.Symmetry_Generators
-        xyz_Generators={}
+
+    def xyz_Generators(self, Molecular_Symmetry):
+        Molecular_Symmetry_Generators = Molecular_Symmetry.Symmetry_Generators
+        xyz_Generators = {}
         for symmetrylabel in Molecular_Symmetry_Generators.keys():
-            xyz_Generators[symmetrylabel]=getXYZRepresentation(symmetrylabel)
-        self.Symmetry_Generators=xyz_Generators
+            xyz_Generators[symmetrylabel] = getXYZRepresentation(symmetrylabel)
+        self.Symmetry_Generators = xyz_Generators
+
+
 class Vibrational_Symmetry(Symmetry.Symmetry):
-    def __init__(self,Molecular_Symmetry):
+    def __init__(self, Molecular_Symmetry):
         super().__init__()  # Initialize parent class
-        molecular_symmetry=Molecular_Symmetry
+        molecular_symmetry = Molecular_Symmetry
         if "Id" not in Molecular_Symmetry.Symmetry_Generators.keys():
-            xyz_symmetry=XYZ_Symmetry(Molecular_Symmetry)
-            generators={}
+            xyz_symmetry = XYZ_Symmetry(Molecular_Symmetry)
+            generators = {}
             for sym in molecular_symmetry.Symmetry_Generators:
-                generators[sym]=np.kron(molecular_symmetry.Symmetry_Generators[sym],xyz_symmetry.Symmetry_Generators[sym])
-            self.Symmetry_Generators=generators
+                generators[sym] = np.kron(
+                    molecular_symmetry.Symmetry_Generators[sym],
+                    xyz_symmetry.Symmetry_Generators[sym],
+                )
+            self.Symmetry_Generators = generators
             self._iscommutative()
             if self.commutative:
-                self.IrrepsProjector=simultaneous_real_block_diagonalization(list(self.Symmetry_Generators.values()))
+                self.IrrepsProjector = simultaneous_real_block_diagonalization(
+                    list(self.Symmetry_Generators.values())
+                )
             else:
                 self._determineCentralizer()
                 self._determineIrrepsProjector()
         else:
-            self.IrrepsProjector=np.kron(molecular_symmetry.Symmetry_Generators["Id"],np.eye(3))
+            self.IrrepsProjector = np.kron(
+                molecular_symmetry.Symmetry_Generators["Id"], np.eye(3)
+            )
         self._determineSymmetrySectors()
+
+
 class VibrationalMode:
-    def __init__(self, frequency,normal_mode,displacement, symmetry_label):
+    def __init__(self, frequency, normal_mode, displacement, symmetry_label):
         self.frequency = frequency
-        self.normal_mode=normal_mode
-        normfactor=np.sqrt(np.dot(displacement,displacement))
-        self.normalized_carthesian_displacement = displacement/normfactor
-        self.norm_factor=normfactor
+        self.normal_mode = normal_mode
+        normfactor = np.sqrt(np.dot(displacement, displacement))
+        self.normalized_carthesian_displacement = displacement / normfactor
+        self.norm_factor = normfactor
         self.symmetry_label = symmetry_label
-        self.istranslation=False
-        self.isrotation=False
-    
+        self.istranslation = False
+        self.isrotation = False
+
     def getTransEigenvectors(self):
         """
         Computes the translational according to "Vibrational Analysis in Gaussian,"
@@ -330,68 +422,72 @@ class VibrationalMode:
         - All generated eigenvectors are normalized.
         """
 
-        masses=self.masses
-        numofatoms=int(len(masses))
-        Transeigenvectors=[]
-        for it in [0,1,2]:
-            #Define the TransEigenvector
-            TransEigenvector=np.zeros(3*numofatoms)
+        masses = self.masses
+        numofatoms = int(len(masses))
+        Transeigenvectors = []
+        for it in [0, 1, 2]:
+            # Define the TransEigenvector
+            TransEigenvector = np.zeros(3 * numofatoms)
             for s in range(numofatoms):
-                TransEigenvector[3*s+it]=1.0
-            #Normalize the generated Eigenvector
-            TransEigenvector/=np.linalg.norm(TransEigenvector)
+                TransEigenvector[3 * s + it] = 1.0
+            # Normalize the generated Eigenvector
+            TransEigenvector /= np.linalg.norm(TransEigenvector)
             Transeigenvectors.append(TransEigenvector)
         return Transeigenvectors
+
+
 #### Define Symmetry Class ####
 def detect_block_sizes(matrix, tol=1e-8):
-        """
-        Detects block sizes in a (approximately) block-diagonal square matrix.
-        Args:
-            matrix: (n x n) NumPy array (assumed square and block-diagonal).
-            tol: threshold below which off-diagonal elements are considered zero.
+    """
+    Detects block sizes in a (approximately) block-diagonal square matrix.
+    Args:
+        matrix: (n x n) NumPy array (assumed square and block-diagonal).
+        tol: threshold below which off-diagonal elements are considered zero.
 
-        Returns:
-            A list of (start_index, block_size) tuples.
-        """
-        n = matrix.shape[0]
-        assert matrix.shape[0] == matrix.shape[1], "Matrix must be square."
-        blocks = []
-        i = 0
+    Returns:
+        A list of (start_index, block_size) tuples.
+    """
+    n = matrix.shape[0]
+    assert matrix.shape[0] == matrix.shape[1], "Matrix must be square."
+    blocks = []
+    i = 0
 
-        while i < n:
-            block_found = False
-            for size in range(1, n - i + 1):
-                # Extract candidate block
-                block = matrix[i:i+size, i:i+size]
+    while i < n:
+        block_found = False
+        for size in range(1, n - i + 1):
+            # Extract candidate block
+            block = matrix[i : i + size, i : i + size]
 
-                # Check if it's isolated: off-block rows/cols should be zero
-                off_block = matrix[i:i+size, i+size:]
-                off_block_T = matrix[i+size:, i:i+size]
+            # Check if it's isolated: off-block rows/cols should be zero
+            off_block = matrix[i : i + size, i + size :]
+            off_block_T = matrix[i + size :, i : i + size]
 
-                if np.all(np.abs(off_block) < tol) and np.all(np.abs(off_block_T) < tol):
-                    # Check if next row/col introduces new coupling
-                    if i + size == n:
-                        blocks.append((i, size))
-                        i += size
-                        block_found = True
-                        break
-                    next_col = matrix[i:i+size, i+size]
-                    next_row = matrix[i+size, i:i+size]
-                    if np.all(np.abs(next_col) < tol) and np.all(np.abs(next_row) < tol):
-                        blocks.append((i, size))
-                        i += size
-                        block_found = True
-                        break
-            if not block_found:
-                # Fallback: treat single diagonal element as a block
-                blocks.append((i, 1))
-                i += 1
+            if np.all(np.abs(off_block) < tol) and np.all(np.abs(off_block_T) < tol):
+                # Check if next row/col introduces new coupling
+                if i + size == n:
+                    blocks.append((i, size))
+                    i += size
+                    block_found = True
+                    break
+                next_col = matrix[i : i + size, i + size]
+                next_row = matrix[i + size, i : i + size]
+                if np.all(np.abs(next_col) < tol) and np.all(np.abs(next_row) < tol):
+                    blocks.append((i, size))
+                    i += size
+                    block_found = True
+                    break
+        if not block_found:
+            # Fallback: treat single diagonal element as a block
+            blocks.append((i, 1))
+            i += 1
 
-        return blocks
+    return blocks
+
+
 def simultaneous_real_block_diagonalization(matrices):
     """
     Block-diagonalize a set of mutually commuting real matrices using a single real orthogonal basis.
-    
+
     The matrices are assumed to commute and be real-valued. This function finds a single
     real orthogonal matrix Q that transforms every matrix A in the input list into a
     block-diagonal matrix Q.T @ A @ Q. The blocks are 1x1 for real eigenvalues
@@ -433,10 +529,10 @@ def simultaneous_real_block_diagonalization(matrices):
     # The schur function returns an orthogonal matrix Q and a block-upper-triangular
     # matrix T (the "real Schur form") such that C = Q @ T @ Q.T.
     # This matrix Q is the transformation we need.
-    _, Q = schur(C, output='real')
+    _, Q = schur(C, output="real")
     return Q
-    
-    
+
+
 def getXYZRepresentation(symmetrylabel):
     """
     Return the 3 × 3 Cartesian (XYZ) matrix representation of a basic
@@ -502,49 +598,66 @@ def getXYZRepresentation(symmetrylabel):
            [ 0.,  1.,  0.],
            [ 0.,  0., -1.]])
     """
-    if symmetrylabel=="i":
-        return (-1.0)*np.eye(3)
-    elif symmetrylabel[0]=="C":
-        theta=2*np.pi/int(symmetrylabel.split("_")[1])
-        if symmetrylabel[1]=="x":
-            return np.array([[1, 0, 0],[0, np.cos(theta), -np.sin(theta)],[0, np.sin(theta),  np.cos(theta)]]).T
-        elif symmetrylabel[1]=="y":
-            return np.array([[np.cos(theta), 0, np.sin(theta)],[0, 1, 0],[-np.sin(theta), 0, np.cos(theta)]]).T
-        elif symmetrylabel[1]=="z":
-            return np.array([[np.cos(theta), -np.sin(theta), 0],[np.sin(theta),  np.cos(theta), 0],[0, 0, 1]]).T
-    elif symmetrylabel[0]=="S":
-        if symmetrylabel[1]=="x":
-            return np.array([[-1, 0, 0],[0, 1, 0],[0, 0, 1]])
-        elif symmetrylabel[1]=="y":
-            return  np.array([[1, 0, 0],[0, -1, 0],[0, 0, 1]])
-        elif symmetrylabel[1]=="z":
-            return np.array([[1, 0, 0],[0, 1, 0],[0, 0, -1]])
-    elif symmetrylabel[0]=="t":
+    if symmetrylabel == "i":
+        return (-1.0) * np.eye(3)
+    elif symmetrylabel[0] == "C":
+        theta = 2 * np.pi / int(symmetrylabel.split("_")[1])
+        if symmetrylabel[1] == "x":
+            return np.array(
+                [
+                    [1, 0, 0],
+                    [0, np.cos(theta), -np.sin(theta)],
+                    [0, np.sin(theta), np.cos(theta)],
+                ]
+            ).T
+        elif symmetrylabel[1] == "y":
+            return np.array(
+                [
+                    [np.cos(theta), 0, np.sin(theta)],
+                    [0, 1, 0],
+                    [-np.sin(theta), 0, np.cos(theta)],
+                ]
+            ).T
+        elif symmetrylabel[1] == "z":
+            return np.array(
+                [
+                    [np.cos(theta), -np.sin(theta), 0],
+                    [np.sin(theta), np.cos(theta), 0],
+                    [0, 0, 1],
+                ]
+            ).T
+    elif symmetrylabel[0] == "S":
+        if symmetrylabel[1] == "x":
+            return np.array([[-1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        elif symmetrylabel[1] == "y":
+            return np.array([[1, 0, 0], [0, -1, 0], [0, 0, 1]])
+        elif symmetrylabel[1] == "z":
+            return np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]])
+    elif symmetrylabel[0] == "t":
         return np.eye(3)
 
 
-
-
-
-
-
 def test_IrrepsProjector(name):
-    v=VibrationalStructure(name)
+    v = VibrationalStructure(name)
     SymSectors = v.Vibrational_Symmetry.SymSectors
     VIrr = v.Vibrational_Symmetry.IrrepsProjector
-    
+
     # 1. Sort symmetry labels alphabetically to ensure a consistent order.
     sorted_sym_labels = sorted(SymSectors.keys())
-    
+
     # 2. Build the reordering array based on the sorted labels.
     # This groups basis functions by symmetry, in a fixed order.
     reordering = np.concatenate([SymSectors[key] for key in sorted_sym_labels])
-    
+
     # 3. Reorder the projector matrix columns based on the sorted symmetry order.
     VIrr_reordered = VIrr[:, reordering]
     for sym in v.Vibrational_Symmetry.Symmetry_Generators:
-        symm=VIrr_reordered.T@v.Vibrational_Symmetry.Symmetry_Generators[sym]@VIrr_reordered
-        plt.imshow(symm, cmap='viridis', interpolation='nearest')
+        symm = (
+            VIrr_reordered.T
+            @ v.Vibrational_Symmetry.Symmetry_Generators[sym]
+            @ VIrr_reordered
+        )
+        plt.imshow(symm, cmap="viridis", interpolation="nearest")
         plt.colorbar()
         plt.title(sym)
         # Save the figure
