@@ -165,7 +165,7 @@ def compressCubefile(parentfolder="./"):
 
 
 def CompressFolder(writeexcludelist=False):
-    dirs = [x[0] for x in os.walk("./")]
+    dirs = [x[0] for x in os.walk("/")]
     dirs = dirs[1:]
     excludelist = []
     for it in progressbar(range(len(dirs)), "Compression Progress:", 40):

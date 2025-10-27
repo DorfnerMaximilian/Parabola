@@ -1,7 +1,6 @@
 from . import Read
 from .PhysConst import StandardAtomicWeights, ConversionFactors
 from .coordinate_tools import (
-    backtransform_iterative_refinement,
     getTransAndRotEigenvectors,
     get_principle_axis_coordinates,
     cartesian_to_internal_coordinates,

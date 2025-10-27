@@ -1,7 +1,6 @@
 from . import Read
 from . import Geometry
 from . import Symmetry
-from . import Util
 from . import Electronic_Structure
 from . import Vibrational_Structure
 import numpy as np
@@ -36,7 +35,7 @@ class MolecularStructure:
                 "MolecularStructure.__new__() missing 1 required keyword-only argument: 'name'"
             )
 
-        path = kwargs.get("path", ".")
+        path = kwargs.get("path", "")
         abs_path = os.path.abspath(path)
         pickle_filename = os.path.join(
             abs_path, f"{name}.{cls.__name__.lower()}.pickle"
@@ -87,7 +86,7 @@ class MolecularStructure:
             print(f"⌬ : Creating new Molecular Structure for {name} in:")
             print(os.path.abspath(self.path))
             print("▲ : Processing Geometric Structural Information")
-            xyz_filepath = Read.get_xyz_filename(path="./", verbose=True)
+            xyz_filepath = Read.get_xyz_filename(path="/", verbose=True)
             self.xyz_path = xyz_filepath
             coordinates, masses, atomic_symbols = Read.read_coordinates_and_masses(
                 xyz_filepath

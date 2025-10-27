@@ -9,3 +9,27 @@ Up to now this is tested for Linux Ubuntu
 The only really mandatory thing is to compile the c++ part of the program.
 Just install all requirements (via apt), and compile the file...
 
+## Setting up virtual environment
+```bash
+# install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh 
+source $HOME/.local/bin/env
+
+# setting up virtual environment
+uv sync --extra dev
+```
+
+## Additional Instructions for uv
+# How To: add python modules
+```bash
+uv add numpy scipy matplotlib
+```
+
+# Haw TO: rebuild parabola after making changes to C++ code:
+```bash
+uv sync --reinstall-package parabola
+uv run pybind11-stubgen -o src parabola._extension
+```bash
+
+
+

@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import scipy as sci
-from ctypes import c_char_p, cdll, POINTER, c_double, c_int
 from copy import deepcopy
 from . import Read
 from .PhysConst import ConversionFactors

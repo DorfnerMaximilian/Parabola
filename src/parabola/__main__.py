@@ -6,7 +6,7 @@ Usage: python3 -m parabola.run [arguments]
 import sys
 import argparse
 import os
-from parabola.Modules import cp2k_util
+from parabola import cp2k_util
 
 def main():
     """Main function to handle command line execution."""

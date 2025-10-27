@@ -37,7 +37,7 @@ from .Modules import Read
 from .Modules import Write
 EOF
 
-# Modules package __init__.py
+# parabola package __init__.py
 cat > "$TARGET_DIR/Modules/__init__.py" << 'EOF'
 # Modules package
 from . import PhysConst
