@@ -1111,7 +1111,7 @@ static std::vector<std::complex<double>> get_Phase_Operators(
     std::vector<Basisfunction> basisfunctions_set1;
     int arrayIndex_set1 = 0, alphasIndex_set1 = 0, contrCoefIndex_set1 = 0;
 
-    for (int i = 0; i < atoms_set1.size(); ++i) {
+    for (size_t i = 0; i < atoms_set1.size(); ++i) {
         std::string atom = atoms_set1[i];
         std::array<double,3> position = { positions_set1[arrayIndex_set1],
                                           positions_set1[arrayIndex_set1 + 1],
@@ -1136,7 +1136,7 @@ static std::vector<std::complex<double>> get_Phase_Operators(
     std::vector<Basisfunction> basisfunctions_set2;
     int arrayIndex_set2 = 0, alphasIndex_set2 = 0, contrCoefIndex_set2 = 0;
 
-    for (int i = 0; i < atoms_set2.size(); ++i) {
+    for (size_t i = 0; i < atoms_set2.size(); ++i) {
         std::string atom = atoms_set2[i];
         std::array<double,3> position = { positions_set2[arrayIndex_set2],
                                           positions_set2[arrayIndex_set2 + 1],
@@ -1161,8 +1161,8 @@ static std::vector<std::complex<double>> get_Phase_Operators(
 
     // Compute phase operator matrix elements
     #pragma omp parallel for collapse(2)
-    for (int i = 0; i < atoms_set1.size(); ++i) {
-        for (int j = 0; j < atoms_set2.size(); ++j) {
+    for (size_t i = 0; i < atoms_set1.size(); ++i) {
+        for (size_t j = 0; j < atoms_set2.size(); ++j) {
             OLPasArray[i * atoms_set2.size() + j] =
                 get_phase_Matrix_Element(
                     basisfunctions_set1[i].position,
@@ -1187,11 +1187,118 @@ static std::vector<std::complex<double>> get_Phase_Operators(
 PYBIND11_MODULE(_extension, m) {
     m.doc() = "Atomic Basis cpp extension module";
 
-    m.def("get_T_Matrix", &get_T_Matrix, "Get transformation matrix");
-    m.def("get_WFN_On_Grid", &get_WFN_On_Grid, "Get wavefunction on grid");
-    m.def("get_Local_Potential_On_Grid", &get_Local_Potential_On_Grid, "Get local potential on grid");
-    m.def("get_Position_Operators", &get_Position_Operators, "Get position operator matrix elements");
-    m.def("get_Momentum_Operators", &get_Momentum_Operators, "Get momentum operator matrix elements");
-    m.def("get_Phase_Operators", &get_Phase_Operators, "Get phase operator matrix elements");
+    m.def(
+        "get_T_Matrix",
+        &get_T_Matrix,
+        py::arg("atoms_set1"),
+        py::arg("positions_set1"),
+        py::arg("alphas_set1"),
+        py::arg("alphasLengths_set1"),
+        py::arg("contr_coef_set1"),
+        py::arg("contr_coefLengths_set1"),
+        py::arg("lms_set1"),
+        py::arg("atoms_set2"),
+        py::arg("positions_set2"),
+        py::arg("alphas_set2"),
+        py::arg("alphasLengths_set2"),
+        py::arg("contr_coef_set2"),
+        py::arg("contr_coefLengths_set2"),
+        py::arg("lms_set2"),
+        py::arg("cell_vectors"),
+        "Get transformation matrix"
+    );
+    m.def(
+        "get_WFN_On_Grid",
+        &get_WFN_On_Grid,
+        py::arg("xyzgrid"),
+        py::arg("WFNcoefficients"),
+        py::arg("atoms_set"),
+        py::arg("positions_set"),
+        py::arg("alphas_set"),
+        py::arg("alphasLengths_set"),
+        py::arg("contr_coef_set"),
+        py::arg("contr_coefLengths_set"),
+        py::arg("lms_set"),
+        py::arg("cell_vectors"),
+        "Get wavefunction on grid"
+    );
+    m.def(
+        "get_Local_Potential_On_Grid",
+        &get_Local_Potential_On_Grid,
+        py::arg("xyzgrid"),
+        py::arg("MatrixElements"),
+        py::arg("atoms_set"),
+        py::arg("positions_set"),
+        py::arg("alphas_set"),
+        py::arg("alphasLengths_set"),
+        py::arg("contr_coef_set"),
+        py::arg("contr_coefLengths_set"),
+        py::arg("lms_set"),
+        py::arg("cell_vectors"),
+        "Get local potential on grid"
+    );
+    m.def(
+        "get_Position_Operators",
+        &get_Position_Operators,
+        py::arg("atoms_set1"),
+        py::arg("positions_set1"),
+        py::arg("alphas_set1"),
+        py::arg("alphasLengths_set1"),
+        py::arg("contr_coef_set1"),
+        py::arg("contr_coefLengths_set1"),
+        py::arg("lms_set1"),
+        py::arg("atoms_set2"),
+        py::arg("positions_set2"),
+        py::arg("alphas_set2"),
+        py::arg("alphasLengths_set2"),
+        py::arg("contr_coef_set2"),
+        py::arg("contr_coefLengths_set2"),
+        py::arg("lms_set2"),
+        py::arg("cell_vectors"),
+        py::arg("direction"),
+        "Get position operator matrix elements"
+    );
+    m.def(
+        "get_Momentum_Operators",
+        &get_Momentum_Operators,
+        py::arg("atoms_set1"),
+        py::arg("positions_set1"),
+        py::arg("alphas_set1"),
+        py::arg("alphasLengths_set1"),
+        py::arg("contr_coef_set1"),
+        py::arg("contr_coefLengths_set1"),
+        py::arg("lms_set1"),
+        py::arg("atoms_set2"),
+        py::arg("positions_set2"),
+        py::arg("alphas_set2"),
+        py::arg("alphasLengths_set2"),
+        py::arg("contr_coef_set2"),
+        py::arg("contr_coefLengths_set2"),
+        py::arg("lms_set2"),
+        py::arg("cell_vectors"),
+        py::arg("direction"),
+        "Get momentum operator matrix elements"
+    );
+    m.def(
+        "get_Phase_Operators",
+        &get_Phase_Operators,
+        py::arg("atoms_set1"),
+        py::arg("positions_set1"),
+        py::arg("alphas_set1"),
+        py::arg("alphasLengths_set1"),
+        py::arg("contr_coef_set1"),
+        py::arg("contr_coefLengths_set1"),
+        py::arg("lms_set1"),
+        py::arg("atoms_set2"),
+        py::arg("positions_set2"),
+        py::arg("alphas_set2"),
+        py::arg("alphasLengths_set2"),
+        py::arg("contr_coef_set2"),
+        py::arg("contr_coefLengths_set2"),
+        py::arg("lms_set2"),
+        py::arg("cell_vectors"),
+        py::arg("q"),
+        "Get phase operator matrix elements"
+    );
 }
 
