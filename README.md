@@ -29,7 +29,7 @@ uv sync --extra dev
 # How To: add python modules
 ```bash
 uv add numpy scipy matplotlib
-```
+```bash
 
 # Haw TO: rebuild parabola after making changes to C++ code:
 ```bash
