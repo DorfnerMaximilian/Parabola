@@ -311,7 +311,7 @@ def CheckConvergence(quantity, path="./"):
     ## output:  -               (void)
 
     if quantity == "PW_Cutoff":
-        Cutoff_dirs = [f for f in os.listdir("") if f.endswith("Ry")]
+        Cutoff_dirs = [f for f in os.listdir("./") if f.endswith("Ry")]
         Cutoffs = []
         Energies = []
         xyzfile = [f for f in os.listdir(path) if f.endswith(".xyz")]
@@ -381,7 +381,7 @@ def CheckConvergence(quantity, path="./"):
         plt.grid()
         plt.show()
     elif quantity == "Rel_Cutoff":
-        Cutoff_dirs = [f for f in os.listdir("") if f.endswith("Ry")]
+        Cutoff_dirs = [f for f in os.listdir("./") if f.endswith("Ry")]
         Cutoffs = []
         Energies = []
         xyzfile = [f for f in os.listdir(path) if f.endswith(".xyz")]
@@ -454,7 +454,7 @@ def CheckConvergence(quantity, path="./"):
         plt.grid()
         plt.show()
     elif quantity == "Cutoff_Radius":
-        Cutoff_dirs = [f for f in os.listdir("") if f.endswith("A")]
+        Cutoff_dirs = [f for f in os.listdir("./") if f.endswith("A")]
         Cutoffs = []
         Energies = []
         xyzfile = [f for f in os.listdir(path) if f.endswith(".xyz")]
@@ -524,7 +524,7 @@ def CheckConvergence(quantity, path="./"):
         plt.grid()
         plt.show()
     elif quantity == "Cell_Size":
-        folders = [f for f in os.listdir("") if f.endswith("A")]
+        folders = [f for f in os.listdir("./") if f.endswith("A")]
         cellsizes = []
         absre = []
         SameSizeFlag = False
