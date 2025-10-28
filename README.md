@@ -14,6 +14,12 @@ Just install all requirements (via apt), and compile the file...
 # install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh 
 source $HOME/.local/bin/env
+```bash
+
+# Now add uv to your PATH in your .bashrc
+```bash
+source path_to_your_parabola/.venv/bin/activate
+```bash
 
 # setting up virtual environment
 uv sync --extra dev
