@@ -53,7 +53,7 @@ find_package(pybind11 CONFIG REQUIRED)
 # -----------------------------
 # Build the extension
 # -----------------------------
-pybind11_add_module(parabola_ext src/parabola/AtomicBasis.cpp)
+pybind11_add_module(parabola_ext src/CPP_Extension/AtomicBasis.cpp)
 
 # OpenMP libraries
 target_link_libraries(parabola_ext PRIVATE ${OPENMP_LIBS})
