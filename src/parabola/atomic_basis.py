@@ -9,7 +9,7 @@ from ._extension import *
 
 # get the environmental variable
 pathtocp2k = os.environ["cp2kpath"]
-# Get the directory of the current file (AtomicBasis.py)
+# Get the directory of the current file (atomic_basis.py)
 
 # TODO: Remove - no longer needed with Pybind11
 _module_dir = os.path.dirname(__file__)
@@ -941,6 +941,7 @@ def WFNonxyzGrid(
     # Make the grid
     xyz_grid = (
         np.array(np.meshgrid(grid1, grid2, grid3, indexing="ij")).flatten("F").tolist()
+        #np.array(np.meshgrid(grid1, grid2, grid3, indexing="ij")).ravel(order="C").tolist()
     )
 
     # Initialize the python lists for Basis Set
@@ -981,10 +982,11 @@ def WFNonxyzGrid(
         xyzgrid=xyz_grid,
         WFNcoefficients=Coefficients,
         atoms_set=atoms_set,
+        positions_set=positions_set,
         alphas_set=alphas_set,
-        alphas_lengths_set=alphas_lengths_set,
+        alphasLengths_set=alphas_lengths_set,
         contr_coef_set=contr_coef_set,
-        contr_coef_lengths_set=contr_coef_lengths_set,
+        contr_coefLengths_set=contr_coef_lengths_set,
         lms_set=lms_set,
         cell_vectors=cell_vectors,
     )
@@ -1077,14 +1079,14 @@ def LocalPotentialonxyzGrid(
         atoms_set=atoms_set,
         positions_set=positions_set,
         alphas_set=alphas_set,
-        alphas_lengths_set=alphas_lengths_set,
+        alphasLengths_set=alphas_lengths_set,
         contr_coef_set=contr_coef_set,
-        contr_coef_lengths_set=contr_coef_lengths_set,
+        contr_coefLengths_set=contr_coef_lengths_set,
         lms_set=lms_set,
         cell_vectors=cell_vectors,
     )
 
-    LocalPotentialonGrid = np.array(LocalPotentialonGrid)
+    LocalPotentialonGrid = np.array(LocalPotentialonGrid, dtype=float)
 
     return LocalPotentialonGrid
 
