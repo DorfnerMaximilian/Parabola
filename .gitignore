@@ -1,0 +1,8 @@
+*.pyc
+*.inp
+*.out
+*.xyz
+*.lock
+.idea
+*/__pycache__
+
