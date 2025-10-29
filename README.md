@@ -26,7 +26,10 @@ uv sync --extra dev
 source path_to_your_parabola/.venv/bin/activate
 ```
 
-### Now either reload your .bashrc or open a new terminal
+### Now either reload your .bashrc or open a new terminal, e.g.
+```bash
+source ~/.bashrc
+```
 
 ## Additional Instructions for uv
 ### How To: add python modules
@@ -40,5 +43,9 @@ uv sync --reinstall-package parabola
 uv run pybind11-stubgen -o src parabola._extension
 ```
 
+## Run tests
+```bash
+python -m unittest
+``` 
 
 
