@@ -5,7 +5,7 @@ from copy import deepcopy
 from . import Read
 from .PhysConst import ConversionFactors
 from . import Util
-from . import AtomicBasis
+from . import atomic_basis
 
 pathtocpp_lib = "./CPP_Extension/bin/AtomicBasis.so"
 
@@ -198,7 +198,7 @@ def getTransitionDipoleMomentsAnalytic(
     for it in range(np.shape(A)[1]):
         A[:, it] *= getPhaseOfMO(A[:, it])
     Atoms = Read.read_atomic_coordinates(pathtoExcitedstates)
-    Basis = AtomicBasis.getBasis(pathtoExcitedstates)
+    Basis = atomic_basis.getBasis(pathtoExcitedstates)
     Rx = np.zeros(np.shape(Sm12))
     Ry = np.zeros(np.shape(Sm12))
     Rz = np.zeros(np.shape(Sm12))
@@ -241,13 +241,13 @@ def getTransitionDipoleMomentsAnalytic(
                     state2 = B2[itBasis2]
                     dalpha2 = state2[3:]
                     lm2 = state2[2][1:]
-                    dx[it1][it2] = AtomicBasis.getContribution(
+                    dx[it1][it2] = atomic_basis.getContribution(
                         R1, lm1, dalpha1, R2, lm2, dalpha2, 0
                     )
-                    dy[it1][it2] = AtomicBasis.getContribution(
+                    dy[it1][it2] = atomic_basis.getContribution(
                         R1, lm1, dalpha1, R2, lm2, dalpha2, 1
                     )
-                    dz[it1][it2] = AtomicBasis.getContribution(
+                    dz[it1][it2] = atomic_basis.getContribution(
                         R1, lm1, dalpha1, R2, lm2, dalpha2, 2
                     )
                     it2 += 1
@@ -533,7 +533,7 @@ def WFNonGrid(id=0, N1=200, N2=200, N3=200, parentfolder="./"):
     a *= getPhaseOfMO(A[:, id + Homoid])
 
     Atoms = Read.read_atomic_coordinates(parentfolder)
-    Basis = AtomicBasis.getBasis(parentfolder)
+    Basis = atomic_basis.getBasis(parentfolder)
     Cellvectors = Read.read_cell_vectors(parentfolder)
     # Convert to atomic units
     cellvector1 = Cellvectors[0] * 1.88972613288564
@@ -585,7 +585,7 @@ def WFNsOnGrid(
         a = Sm12 @ A[:, id + Homoid]
         a *= getPhaseOfMO(A[:, id + Homoid])
         Atoms = Read.read_atomic_coordinates(parentfolder)
-        Basis = AtomicBasis.getBasis(parentfolder)
+        Basis = atomic_basis.getBasis(parentfolder)
         Cellvectors = Read.read_cell_vectors(parentfolder)
         # Convert to atomic units
         cellvector1 = Cellvectors[0] * 1.88972613288564
@@ -602,7 +602,7 @@ def WFNsOnGrid(
         grid1 = length1 * np.arange(N1)
         grid2 = length2 * np.arange(N2)
         grid3 = length3 * np.arange(N3)
-        f = AtomicBasis.WFNonxyzGrid(grid1, grid2, grid3, a, Atoms, Basis, cell_vectors)
+        f = atomic_basis.WFNonxyzGrid(grid1, grid2, grid3, a, Atoms, Basis, cell_vectors)
         print(voxelvolume * np.sum(np.sum(np.sum(f**2))))
         f /= np.sqrt(voxelvolume * np.sum(np.sum(np.sum(f**2))))
         data.append(f)
@@ -615,6 +615,7 @@ def WFNsOnGrid(
 def LocalPotentialOnGrid(
     gridpoints, MatrixElements, cell_vectors=[0.0, 0.0, 0.0], parentfolder="./"
 ):
+    ## TODO: Wrong docstring
     """Function to represent the DFT eigenstate HOMO+id on a real space grid within the unit cell with Nx,Ny,Nz grid points
     input:   id:               (int)                   specifies the Orbital, id=0 is HOMO id=1 is LUMO id=-1 is HOMO-1 ect.
     (opt.)   parentfolder:     (str)                   path to the .inp file of the cp2k calculation to read in the cell dimensions
@@ -622,8 +623,8 @@ def LocalPotentialOnGrid(
     output:  f                 (Nx x Ny x Nz np.array) Wavefunction coefficients, where first index is x, second y and third z
     """
     Atoms = Read.read_atomic_coordinates(parentfolder)
-    Basis = AtomicBasis.getBasis(parentfolder)
-    data = AtomicBasis.LocalPotentialonxyzGrid(
+    Basis = atomic_basis.getBasis(parentfolder)
+    data = atomic_basis.LocalPotentialonxyzGrid(
         gridpoints, MatrixElements, Atoms, Basis, cell_vectors
     )
     return np.array(data)

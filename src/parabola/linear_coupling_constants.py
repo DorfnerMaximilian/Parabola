@@ -4,7 +4,7 @@ import time
 from . import Util
 from .PhysConst import ConversionFactors
 from . import Read
-from . import AtomicBasis
+from . import atomic_basis
 from . import TDDFT
 from . import VibAna
 
@@ -188,7 +188,7 @@ def getLCC_EIG(parentfolder="./", idmin=0, idmax=-1, cell_vectors=[0.0, 0.0, 0.0
     # get the Equilibrium Configuration
     Atoms_Eq = Read.read_atomic_coordinates(parentfolder + "/Equilibrium_Geometry/")
     # Construct Basis of the Equilibrium configuration
-    Basis_Eq = AtomicBasis.getBasis(parentfolder + "/Equilibrium_Geometry/")
+    Basis_Eq = atomic_basis.getBasis(parentfolder + "/Equilibrium_Geometry/")
     # Diagonalize to the KS Hamiltonian in the ortonormal Basis
     E_Eq, a_orth_Eq, Sm12_Eq = Util.Diagonalize_KS_Hamiltonian(
         parentfolder + "/Equilibrium_Geometry/"
@@ -268,7 +268,7 @@ def getLCC_EIG(parentfolder="./", idmin=0, idmax=-1, cell_vectors=[0.0, 0.0, 0.0
         EPlus, a_orth_Plus, Sm12_Plus = Util.Diagonalize_KS_Hamiltonian(
             parentfolder + "/" + folderplus + "/"
         )
-        T_Eq_Plus = AtomicBasis.getTransformationmatrix(
+        T_Eq_Plus = atomic_basis.getTransformationmatrix(
             Atoms_Eq, Atoms_Plus, Basis_Eq, cell_vectors
         )
         T_matrix_Plus = Sm12_Eq @ T_Eq_Plus @ Sm12_Plus
@@ -283,7 +283,7 @@ def getLCC_EIG(parentfolder="./", idmin=0, idmax=-1, cell_vectors=[0.0, 0.0, 0.0
             parentfolder + "/" + folderminus + "/"
         )
         # obtain the Basis Transformation Matrix
-        T_Eq_Minus = AtomicBasis.getTransformationmatrix(
+        T_Eq_Minus = atomic_basis.getTransformationmatrix(
             Atoms_Eq, Atoms_Minus, Basis_Eq, cell_vectors
         )
         T_Matrix_Minus = Sm12_Eq @ T_Eq_Minus @ Sm12_Minus
@@ -415,7 +415,7 @@ def getLCC_STATES(parentfolder="./", idmin=0, idmax=-1, cell_vectors=[0.0, 0.0, 
     # get the Equilibrium Configuration
     Atoms_Eq = Read.read_atomic_coordinates(xyz_filepath)
     # Construct Basis of the Equilibrium configuration
-    Basis_Eq = AtomicBasis.getBasis(parentfolder + "/Equilibrium_Geometry/")
+    Basis_Eq = atomic_basis.getBasis(parentfolder + "/Equilibrium_Geometry/")
     # Diagonalize to the KS Hamiltonian in the ortonormal Basis
     E_Eq, a_orth_Eq, Sm12_Eq = Util.Diagonalize_KS_Hamiltonian(
         parentfolder + "/Equilibrium_Geometry/"
@@ -530,7 +530,7 @@ def getLCC_STATES(parentfolder="./", idmin=0, idmax=-1, cell_vectors=[0.0, 0.0, 
         KSH_alpha_Plus, KSH_beta_Plus, OLM_Plus = Read.read_ks_matrices(
             parentfolder + "/" + folderplus
         )
-        T_Eq_Plus = AtomicBasis.getTransformationmatrix(
+        T_Eq_Plus = atomic_basis.getTransformationmatrix(
             Atoms_Eq, Atoms_Plus, Basis_Eq, cell_vectors
         )
         Sm1_Plus = Util.getSm1(OLM_Plus)
@@ -549,7 +549,7 @@ def getLCC_STATES(parentfolder="./", idmin=0, idmax=-1, cell_vectors=[0.0, 0.0, 
         KSH_alpha_Minus, KSH_beta_Minus, OLM_Minus = Read.read_ks_matrices(
             parentfolder + "/" + folderminus
         )
-        T_Eq_Minus = AtomicBasis.getTransformationmatrix(
+        T_Eq_Minus = atomic_basis.getTransformationmatrix(
             Atoms_Eq, Atoms_Minus, Basis_Eq, cell_vectors
         )
         Sm1_Minus = Util.getSm1(OLM_Minus)

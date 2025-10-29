@@ -1,5 +1,5 @@
 from . import Read
-from . import AtomicBasis
+from . import atomic_basis
 from . import Symmetry
 from . import Util
 from . import Geometry
@@ -303,7 +303,7 @@ class ElectronicStructure:
         if hasattr(mol, "KS_Hamiltonian_alpha"):
             return
         self.mol_path = mol.path
-        self.basis = AtomicBasis.getBasis(mol.electronic_structure_path)
+        self.basis = atomic_basis.getBasis(mol.electronic_structure_path)
         num_e, charge = Read.get_number_of_electrons(
             parentfolder=mol.electronic_structure_path
         )
@@ -551,7 +551,7 @@ def test_phase_op(mol):
         )
         atoms = Read.read_atomic_coordinates(mol.xyz_path)
         basis = mol.electronic_structure.basis
-        phi_q = AtomicBasis.get_phase_operators(
+        phi_q = atomic_basis.get_phase_operators(
             atoms, basis, q_vector=list(delta_q), cell_vectors=cellvectors
         )
         Sm12 = mol.electronic_structure.inverse_sqrt_OLM
@@ -624,7 +624,7 @@ def test_phase_op(mol):
     """
     """
     for q_point in q_points:
-        phi_q=AtomicBasis.get_phase_operators(atoms,basis,q_vector=q_point,cell_vectors=cellvectors)
+        phi_q=atomic_basis.get_phase_operators(atoms,basis,q_vector=q_point,cell_vectors=cellvectors)
         phase_1 = np.linalg.multi_dot([Sm12, phi_q, Sm12])
         s0_transformed = phase_1 @ s0.A
         print(q_point)
@@ -712,7 +712,7 @@ def band_index(mol, nh, nl, path="./", threshold=0.25):
         Sm12 = mol.electronic_structure.inverse_sqrt_OLM
         for q_point in q_points:
             print(q_point)
-            phi_q = AtomicBasis.get_phase_operators(
+            phi_q = atomic_basis.get_phase_operators(
                 atoms, basis, q_vector=q_point, cell_vectors=cellvectors
             )
             phase_1 = np.linalg.multi_dot([Sm12, phi_q, Sm12])

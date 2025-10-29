@@ -2,7 +2,7 @@ import os
 import numpy as np
 from . import Geometry
 from . import Read
-from . import AtomicBasis
+from . import atomic_basis
 import matplotlib.pyplot as plt
 
 # For standard Latex fonts
@@ -311,6 +311,7 @@ def CheckConvergence(quantity, path="./"):
     ## output:  -               (void)
 
     if quantity == "PW_Cutoff":
+        # TODO: can be replaced with glob("./*Ry")
         Cutoff_dirs = [f for f in os.listdir("./") if f.endswith("Ry")]
         Cutoffs = []
         Energies = []
@@ -540,12 +541,12 @@ def CheckConvergence(quantity, path="./"):
                 print("Reading in Overlapmatrix -> Done")
                 Atoms = Read.read_atomic_coordinates(path + folder)
                 print("Reading in Atomic Coordinates -> Done")
-                Basis = AtomicBasis.getBasis(path + folder)
+                Basis = atomic_basis.getBasis(path + folder)
                 print(
                     "Construct carthesian Basis and spherical to cartesian Transformations -> Done"
                 )
                 if OverlapMatrixFlag == False:
-                    Overlapmatrix = AtomicBasis.getTransformationmatrix(
+                    Overlapmatrix = atomic_basis.getTransformationmatrix(
                         Atoms, Atoms, Basis
                     )
                     OverlapMatrixFlag = True
@@ -558,12 +559,12 @@ def CheckConvergence(quantity, path="./"):
                 print("Reading in Overlapmatrix -> Done")
                 Atoms = Read.read_atomic_coordinates(path + folder)
                 print("Reading in Atomic Coordinates -> Done")
-                Basis = AtomicBasis.getBasis(path + folder)
+                Basis = atomic_basis.getBasis(path + folder)
                 print(
                     "Construct carthesian Basis and spherical to cartesian Transformations -> Done"
                 )
                 if OverlapMatrixFlag == False:
-                    Overlapmatrix = AtomicBasis.getTransformationmatrix(
+                    Overlapmatrix = atomic_basis.getTransformationmatrix(
                         Atoms, Atoms, Basis
                     )
                     OverlapMatrixFlag = True

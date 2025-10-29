@@ -5,7 +5,7 @@ import os
 from ctypes import c_char_p, cdll, POINTER, c_double, c_int, Structure
 from copy import deepcopy
 
-from ._extension import get_T_Matrix
+from ._extension import *
 
 # get the environmental variable
 pathtocp2k = os.environ["cp2kpath"]
@@ -1225,7 +1225,7 @@ def get_Position_Operators(
     # TODO: Nomenclature: get_Position_Operators returns an operator and not an overlap?
     # So the name is a bit misleading...
     # TODO: Reduce code duplication by iteration over directions
-    OLP_array = get_Position_Operators(
+    OLP_array = get_position_operators(
         atoms_set1=atoms_set1,
         positions_set1=positions_set1,
         alphas_set1=alphas_set1,
@@ -1247,7 +1247,7 @@ def get_Position_Operators(
     x_operator = np.array(OLP_array).reshape((len(atoms_set1), len(atoms_set2)))
 
     # Call the C++ function
-    OLP_array = get_Position_Operators(
+    OLP_array = get_position_operators(
         atoms_set1=atoms_set1,
         positions_set1=positions_set1,
         alphas_set1=alphas_set1,
@@ -1268,7 +1268,7 @@ def get_Position_Operators(
     y_operator = np.array(OLP_array).reshape((len(atoms_set1), len(atoms_set2)))
 
     # Call the C++ function
-    OLP_array = get_Position_Operators(
+    OLP_array = get_position_operators(
         atoms_set1=atoms_set1,
         positions_set1=positions_set1,
         alphas_set1=alphas_set1,
@@ -1439,11 +1439,11 @@ def get_momentum_operators(
 
 
 # Define a struct matching std::complex<double>
-class ComplexDouble(Structure):
-    _fields_ = [("real", c_double), ("imag", c_double)]
+#class ComplexDouble(Structure):
+#    _fields_ = [("real", c_double), ("imag", c_double)]
 
-    def __repr__(self):
-        return f"ComplexDouble(real={self.real}, imag={self.imag})"
+#    def __repr__(self):
+#        return f"ComplexDouble(real={self.real}, imag={self.imag})"
 
 
 def get_phase_operators(
@@ -1535,8 +1535,9 @@ def get_phase_operators(
         contr_coefLengths_set2=contr_coef_lengths_set2,
         lms_set2=lms_set2,
         cell_vectors=cell_vectors,
-        q_vector=q_vector,
+        q=q_vector,
     )
 
     phi_q = np.array(OLP_array, dtype=np.complex128).reshape((len(atoms_set1), len(atoms_set2)))
+
     return phi_q
