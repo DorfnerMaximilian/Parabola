@@ -238,7 +238,7 @@ class VibrationalStructure:
             ):
                 mode.istranslation = True
 
-        def isRotation(mode, projector_rot, tolerance=0.8):
+        def isRotation(mode, projector_rot, tolerance=0.3):
             if (
                 np.abs(
                     np.dot(
