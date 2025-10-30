@@ -498,6 +498,30 @@ def geo_opt(
         else:
             stall_counter = 0
             hessian_reset_active = False
+            force_history.append(
+                    (
+                        np.array(coordinates_bohr).flatten(),
+                        np.array(forces_Ha_bohr).flatten(),
+                    )
+                )
+            write_pos_file(
+                name=name,
+                atoms=atoms,
+                coordinates_bohr=coordinates_bohr,
+                cell_bohr=cell_bohr,
+                energy_Ha=energy_Ha,
+                forces_Ha_bohr=forces_Ha_bohr,
+                step=it,
+                path=os.path.join(geo_opt_path, f"{name}.pos"),
+            )
+            write_geo_log_file(
+                name=name,
+                atoms=atoms,
+                coordinates_bohr=coordinates_bohr,
+                energy_Ha=energy_Ha,
+                step=it,
+                path=os.path.join(geo_opt_path, f"{name}-pos.xyz"),
+            )
             force_max, drm_force = forces_summary(forces_Ha_bohr)
             print(
                 f"{it:4d} | {energy_Ha:12.8f} | {energy_Ha - energy_Ha_prev:12.8f} | "
