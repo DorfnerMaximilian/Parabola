@@ -53,7 +53,7 @@ find_package(pybind11 CONFIG REQUIRED)
 # -----------------------------
 # Build the extension
 # -----------------------------
-pybind11_add_module(parabola_ext ./CPP_Extension/src/AtomicBasis.cpp)
+pybind11_add_module(parabola_ext src/CPP_Extension/AtomicBasis.cpp)
 
 # OpenMP libraries
 target_link_libraries(parabola_ext PRIVATE ${OPENMP_LIBS})
@@ -63,4 +63,3 @@ set_target_properties(parabola_ext PROPERTIES OUTPUT_NAME "_extension")
 
 # Install
 install(TARGETS parabola_ext DESTINATION parabola)
-

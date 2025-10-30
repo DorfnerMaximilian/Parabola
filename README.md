@@ -10,32 +10,42 @@ The only really mandatory thing is to compile the c++ part of the program.
 Just install all requirements (via apt), and compile the file...
 
 ## Setting up virtual environment
-```bash
-# install uv
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.local/bin/env
-```bash
 
-# Now add uv to your PATH in your .bashrc
+### install uv
 ```bash
-source path_to_your_parabola/.venv/bin/activate
-```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh 
+```
 
-# setting up virtual environment
+### setting up virtual environment
+```bash
 uv sync --extra dev
 ```
 
+### Now add your path of your virtual environment to your .bashrc
+```bash
+source path_to_your_parabola/.venv/bin/activate
+```
+
+### Now either reload your .bashrc or open a new terminal, e.g.
+```bash
+source ~/.bashrc
+```
+
 ## Additional Instructions for uv
-# How To: add python modules
+### How To: add python modules
 ```bash
 uv add numpy scipy matplotlib
 ```
 
-# Haw TO: rebuild parabola after making changes to C++ code:
+### How To: rebuild parabola after making changes to C++ code:
 ```bash
 uv sync --reinstall-package parabola
 uv run pybind11-stubgen -o src parabola._extension
-```bash
+```
 
+## Run tests
+```bash
+python -m unittest
+``` 
 
 
