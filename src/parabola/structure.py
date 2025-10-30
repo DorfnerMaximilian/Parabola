@@ -1,8 +1,8 @@
 from . import Read
 from . import Geometry
 from . import Symmetry
-from . import Electronic_Structure
-from . import Vibrational_Structure
+from . import electronics
+from . import vibrations
 import numpy as np
 import pickle
 import os
@@ -66,15 +66,15 @@ class Molecular_Structure:
         *,
         name: str,
         path: str = ".",
-        electronic_path: str | None = None,
+        electronics_path: str | None = None,
         vibrational_path: str | None = None,
     ):
         """
         Initializes or updates the attributes of the instance.
 
         If the instance is newly created, all core attributes are initialized.
-        If the instance is loaded from a pickle, only electronic_structure
-        and vibrational_structure are updated based on the current
+        If the instance is loaded from a pickle, only electronics
+        and Vibrations are updated based on the current
         `electronic_path` and `vibrational_path` arguments.
         """
         # Determine if this is a newly created instance or a loaded one.
@@ -93,12 +93,12 @@ class Molecular_Structure:
             )
             self.coordinates = coordinates
             self.masses = masses
-            self.Geometric_Center_UC = np.zeros(3)
-            self.Geometric_UC_Centered_Coordinates = []
-            self.Geometric_UC_Principle_Axis = []
-            self.Center_of_Mass_UC = np.zeros(3)
-            self.Mass_UC_Centered_Coordinates = []
-            self.Mass_UC_Principle_Axis = []
+            self.geometric_center = np.zeros(3)
+            self.geometrically_centered_coordinates = []
+            self.geometric_principle_axis = []
+            self.center_of_mass = np.zeros(3)
+            self.mass_centered_coordinates = []
+            self.mass_principle_axis = []
             self.atoms = atomic_symbols
             if Read.read_periodicity(path):
                 self.periodicity = (1, 1, 1)
@@ -108,10 +108,10 @@ class Molecular_Structure:
             self.cellvectors = Read.read_cell_vectors(path)
             self.Molecular_Symmetry = Molecular_Symmetry(self)
             # Initialize paths and structures to None for a new instance
-            self.electronic_structure_path = None
-            self.vibrational_structure_path = None
-            self.electronic_structure = None
-            self.vibrational_structure = None
+            self.electronics_path = None
+            self.vibrations_path = None
+            self.Electronics = None
+            self.Vibrations = None
         else:
             print(
                 f"✔️ : Object for '{self.name}' is already initialized. Checking for path updates."
@@ -126,17 +126,17 @@ class Molecular_Structure:
 
         # Logic for electronic structure:
         # If electronic_path is provided in the current call, update the structure.
-        if electronic_path is not None:
+        if electronics_path is not None:
             # Recompute only if the path has changed or if the structure is currently None.
             if (
-                self.electronic_structure_path != electronic_path
-                or self.electronic_structure is None
+                self.electronics_path != electronics_path
+                or self.electronics is None
             ):
                 print(
                     f"🔄 : Electronic Structure path provided/changed. Computing/updating electronic structure."
                 )
-                self.electronic_structure_path = electronic_path
-                self.electronic_structure = self.determine_electronic_structure()
+                self.electronics_path = electronics_path
+                self.Electronics = self.determine_electronics()
             else:
                 print(
                     f"✔️ : Electronic path is the same and structure exists. No recomputation needed."
@@ -147,21 +147,21 @@ class Molecular_Structure:
         if vibrational_path is not None:
             # Recompute only if the path has changed or if the structure is currently None.
             if (
-                self.vibrational_structure_path != vibrational_path
-                or self.vibrational_structure is None
+                self.Vibrations_path != vibrational_path
+                or self.Vibrations is None
             ):
                 print(
                     f"🔄 : Vibrational Structure path provided/changed. Computing/updating vibrational structure."
                 )
-                self.vibrational_structure_path = vibrational_path
-                self.vibrational_structure = self.determine_vibrational_structure()
+                self.Vibrations_path = vibrational_path
+                self.Vibrations = self.determine_vibrations()
             else:
                 print(
                     f"✔️ : Vibrational Structure path is the same and structure exists. No recomputation needed."
                 )
         self.save()
 
-    def determine_electronic_structure(self):
+    def determine_electronics(self):
         """
         Lazy-load or compute the ElectronicStructure, only if a valid path is given.
         If no path is provided, raise an error (required data is missing).
@@ -169,13 +169,13 @@ class Molecular_Structure:
         print("\n" + "=" * 40)
         print("⚡ : ELECTRONIC STRUCTURE ")
         print("=" * 40)
-        full_path = os.path.abspath(self.electronic_structure_path)
+        full_path = os.path.abspath(self.electronics_path)
         print(f"Vibrational Structure data taken from:")
         print(full_path)
-        electronic_structure = Electronic_Structure.ElectronicStructure(self)
-        return electronic_structure
+        electronics = electronics.Electronics(self)
+        return electronics
 
-    def determine_vibrational_structure(self):
+    def determine_vibrations(self):
         """
         Lazy-load or compute the VibrationalStructure, only if a valid path is given.
         If no path is provided, raise an error (required data is missing).
@@ -184,10 +184,10 @@ class Molecular_Structure:
         print("\n" + "=" * 40)
         print("🎜 : VIBRATIONAL ANALYSIS  ")
         print("=" * 40)
-        full_path = os.path.abspath(self.vibrational_structure_path)
+        full_path = os.path.abspath(self.vibrations_path)
         print(f"Vibrational Structure data taken from:")
         print(full_path)
-        return Vibrational_Structure.VibrationalStructure(self)
+        return vibrations.Vibrations(self)
 
     def save(self, filename=None):
         if filename is None:
@@ -201,31 +201,98 @@ class Molecular_Structure:
             pickle.dump(self, f)
 
     def info(self):
-        print("===============================")
-        print("Molecular Structure Information")
-        print("===============================")
-        print(f"Name: {self.name}")
-        print(f"Relative Path: {self.path}")
-        print(f"Number of atoms: {len(self.atoms)}")
-        print("Atomic Symbols:")
-        print(", ".join(self.atoms))
-        print("\n Carthesian Coordinates [in Angstroms]:")
-        for i, coord in enumerate(self.coordinates):
-            print(f"  Atom {i+1} [{self.atoms[i]}]: {coord}")
-        print("\n Geometrically Centered Coordinates [in Angstroms]:")
-        for i, coord in enumerate(self.Geometric_UC_Centered_Coordinates):
-            print(f"  Atom {i+1} [{self.atoms[i]}]: {coord}")
-        print("\nCell Vectors (in Angstroms):")
-        for i, vec in enumerate(self.cellvectors):
-            print(f"  Vector {i+1}: {vec}")
-        print("\nPeriodicity:")
-        print(f"  {self.periodicity}")
-        print("\nSymmetry Information:")
-        if self.Molecular_Symmetry.Symmetry_Generators:
-            for sym_type in self.Molecular_Symmetry.Symmetry_Generators:
-                print(f"Symmetry Type: {sym_type}")
-        else:
-            print("  No symmetry information available.")
+        """
+        Nicely formatted molecular structure summary with attribute descriptions.
+        """
+
+        info = {
+            "name": {
+                "label": "Name",
+                "description": "The name identifier of the molecular structure",
+                "value": self.name,
+                "unit": None
+            },
+            "path": {
+                "label": "Path",
+                "description": "File or data source path for the molecular data",
+                "value": self.path,
+                "unit": None
+            },
+            "atoms": {
+                "label": "Number of atoms",
+                "description": "Total number of atoms in the structure",
+                "value": len(self.atoms),
+                "unit":None
+            },
+            "atomic_symbols": {
+                "label": "Atomic Symbols",
+                "description": "Chemical symbols of the constituent atoms",
+                "value": ", ".join(self.atoms),
+                "unit":None
+            },
+            "coordinates": {
+                "label": "Cartesian Coordinates",
+                "description": "Original coordinates",
+                "value": [
+                    f"Atom {i+1} [{self.atoms[i]}]: {np.round(coord,6)}"
+                    for i, coord in enumerate(self.coordinates)
+                ],
+                "unit":"Angström"
+            },
+            "geom_centered": {
+                "label": "Geometrically Centered Coordinates",
+                "description": "Coordinates centered to geometric_center and represented in the frame described by geometric_principle_axis",
+                "value": [
+                    f"Atom {i+1} [{self.atoms[i]}]: {np.round(coord,6)}"
+                    for i, coord in enumerate(self.geometrically_centered_coordinates)
+                ],
+                "unit":"Angström"
+            },
+            "cell_vectors": {
+                "label": "Cell Vectors",
+                "description": "Lattice or box vectors (in Angstroms)",
+                "value": [
+                    f"Vector {i+1}: {vec}"
+                    for i, vec in enumerate(self.cellvectors)
+                ],
+                "unit":"Angström"
+            },
+            "periodicity": {
+                "label": "Periodicity",
+                "description": "How many copies are detected along the cellvectors. 0: open boundary conditions, 1:periodic boundary conditions",
+                "value": self.periodicity,
+                "unit":None
+            },
+            "symmetry": {
+                "label": "Symmetry Information",
+                "description": "Symmetry generators or operations of the structure",
+                "value": (
+                    list(self.Molecular_Symmetry.Symmetry_Generators.keys())
+                    if self.Molecular_Symmetry.Symmetry_Generators.keys()
+                    else ["No symmetry information available."]
+                ),
+                "unit":None
+            }
+        }
+
+        print("=" * 40)
+        print(" Molecular Structure Information")
+        print("=" * 40)
+
+        for key, entry in info.items():
+            print(f"\n{entry['label']}:")
+            print(f"  Description: {entry['description']}")
+            if entry['unit'] is not None:
+                print(f"  Unit: {entry['unit']}")
+            value = entry["value"]
+
+            if isinstance(value, list):
+                for v in value:
+                    print(f"  {v}")
+            else:
+                print(f"  {value}")
+
+        print("\n" + "=" * 40)
 
 
 #### Define Symmetry Class ####
@@ -242,7 +309,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 np.array(Molecular_Structure.coordinates)[primitive_indices]
             )
         )
-        Molecular_Structure.Geometric_Center_UC = center
+        Molecular_Structure.geometric_center = center
         if len(primitive_indices) > 1:
             v1, v2, v3 = Geometry.getPrincipleAxis(
                 geometry_centered_coordinates, masses=None, tol=1e-3
@@ -251,14 +318,14 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             v1 = np.array([1.0, 0.0, 0.0])
             v2 = np.array([0.0, 1.0, 0.0])
             v3 = np.array([0.0, 0.0, 1.0])
-        Molecular_Structure.Geometric_UC_Principle_Axis = [v1, v2, v3]
+        Molecular_Structure.geometric_principle_axis = [v1, v2, v3]
         G_UC_CC = []
         for coor in geometry_centered_coordinates:
             x = np.dot(v1, coor)
             y = np.dot(v2, coor)
             z = np.dot(v3, coor)
             G_UC_CC.append(np.array([x, y, z]))
-        Molecular_Structure.Geometric_UC_Centered_Coordinates = G_UC_CC
+        Molecular_Structure.geometrically_centered_coordinates = G_UC_CC
         if len(primitive_indices) > 1:
             mass_centered_coordinates, center_of_mass = (
                 Geometry.ComputeCenterOfMassCoordinates(
@@ -266,24 +333,24 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                     np.array(Molecular_Structure.masses)[primitive_indices],
                 )
             )
-            Molecular_Structure.Center_of_Mass_UC = center_of_mass
+            Molecular_Structure.center_of_mass = center_of_mass
             v1, v2, v3 = Geometry.getPrincipleAxis(
                 mass_centered_coordinates,
                 masses=np.array(Molecular_Structure.masses)[primitive_indices],
                 tol=1e-3,
             )
-            Molecular_Structure.Mass_UC_Principle_Axis = [v1, v2, v3]
+            Molecular_Structure.mass_principle_axis = [v1, v2, v3]
             G_UC_CC = []
             for coor in geometry_centered_coordinates:
                 x = np.dot(v1, coor)
                 y = np.dot(v2, coor)
                 z = np.dot(v3, coor)
                 G_UC_CC.append(np.array([x, y, z]))
-            Molecular_Structure.Mass_UC_Centered_Coordinates = G_UC_CC
+            Molecular_Structure.mass_centered_coordinates = G_UC_CC
         else:
-            Molecular_Structure.Center_of_Mass_UC = center
-            Molecular_Structure.Mass_UC_Principle_Axis = [v1, v2, v3]
-            Molecular_Structure.Mass_UC_Centered_Coordinates = G_UC_CC
+            Molecular_Structure.center_of_mass = center
+            Molecular_Structure.mass_principle_axis = [v1, v2, v3]
+            Molecular_Structure.mass_centered_coordinates = G_UC_CC
         if len(primitive_indices) > 1:
             self._test_inversion(Molecular_Structure, tol_inversion=5 * 10 ** (-3))
             self._test_rotation(Molecular_Structure, tol_rotation=5 * 10 ** (-3))
@@ -352,7 +419,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         atomic_symbols = Molecular_Structure.atoms
         primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
         geometry_centered_coordinates = (
-            Molecular_Structure.Geometric_UC_Centered_Coordinates
+            Molecular_Structure.geometrically_centered_coordinates
         )
         has_symmetry, inversion_pairs = detect_inversion_symmetry(
             geometry_centered_coordinates,
@@ -373,15 +440,15 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             self.Symmetry_Generators["i"] = PrimitiveInversion
 
     def _test_rotation(self, Molecular_Structure, tol_rotation, nmax=10):
-        Geometric_UC_Centered_Coordinates = (
-            Molecular_Structure.Geometric_UC_Centered_Coordinates
+        geometrically_centered_coordinates = (
+            Molecular_Structure.geometrically_centered_coordinates
         )
         atomic_symbols = Molecular_Structure.atoms
         primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
         for axis in ["x", "y", "z"]:
             for n in range(nmax, 1, -1):
                 has_symmetry, rotation_pairs = detect_rotational_symmetry(
-                    Geometric_UC_Centered_Coordinates,
+                    geometrically_centered_coordinates,
                     np.array(atomic_symbols)[primitive_indices],
                     axis=axis,
                     n=n,
@@ -391,7 +458,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                     break
                 elif has_symmetry and n == nmax:
                     has_symmetry_2, _ = detect_rotational_symmetry(
-                        Geometric_UC_Centered_Coordinates,
+                        geometrically_centered_coordinates,
                         np.array(atomic_symbols)[primitive_indices],
                         axis=axis,
                         n=nmax + 1,
@@ -413,14 +480,14 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 self.Symmetry_Generators["C" + axis + "_" + str(n)] = PrimitiveRotation
 
     def _test_mirror(self, Molecular_Structure, tol_mirror):
-        Geometric_UC_Centered_Coordinates = (
-            Molecular_Structure.Geometric_UC_Centered_Coordinates
+        geometrically_centered_coordinates = (
+            Molecular_Structure.geometrically_centered_coordinates
         )
         atomic_symbols = Molecular_Structure.atoms
         primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
         for axis in ["x", "y", "z"]:
             has_symmetry, mirror_pairs = detect_mirror_symmetry(
-                Geometric_UC_Centered_Coordinates,
+                geometrically_centered_coordinates,
                 np.array(atomic_symbols)[primitive_indices],
                 axis=axis,
                 tolerance=tol_mirror,

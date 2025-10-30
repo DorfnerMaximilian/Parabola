@@ -1,9 +1,9 @@
 # Expose all modules from the parabola/ folder at the top level
 from . import PhysConst
 from . import structure
-from . import Vibrational_Structure
+from . import vibrations
 from . import coordinate_tools
-from . import Electronic_Structure
+from . import electronics
 from . import Molecular_Graph
 from . import cp2k_util
 from . import atomic_basis

@@ -295,7 +295,7 @@ def get_basis_transformation(O, P, atoms, basis):
     return basis_transformation
 
 
-class ElectronicStructure:
+class Electronics:
     def __init__(self, mol):
         print("    -> Initializing ElectronicStructure object...")
         # --- This is the Back-Reference ---
@@ -303,15 +303,15 @@ class ElectronicStructure:
         if hasattr(mol, "KS_Hamiltonian_alpha"):
             return
         self.mol_path = mol.path
-        self.basis = atomic_basis.getBasis(mol.electronic_structure_path)
+        self.basis = atomic_basis.getBasis(mol.electronics_path)
         num_e, charge = Read.get_number_of_electrons(
-            parentfolder=mol.electronic_structure_path
+            parentfolder=mol.electronics_path
         )
         self.num_e = num_e
         self.charge = charge
-        self.multiplicity = Read.read_multiplicity(path=mol.electronic_structure_path)
-        KS_alpha, KS_beta, OLM = Read.read_ks_matrices(mol.electronic_structure_path)
-        self.UKS = Read.check_uks(mol.electronic_structure_path)
+        self.multiplicity = Read.read_multiplicity(path=mol.electronics_path)
+        KS_alpha, KS_beta, OLM = Read.read_ks_matrices(mol.electronics_path)
+        self.UKS = Read.check_uks(mol.electronics_path)
         self.KS_Hamiltonian_alpha = KS_alpha
         self.KS_Hamiltonian_beta = KS_beta
         self.OLM = OLM
@@ -338,7 +338,7 @@ class ElectronicStructure:
             mol.Molecular_Symmetry, atoms, self.basis
         )
         name = mol.name
-        axes = mol.Geometric_UC_Principle_Axis
+        axes = mol.geometric_principle_axis
         self.get_real_electronic_eigenstates(name, atoms, axes)
         symmetry_labels = self.electronic_symmetry.Symmetry_Generators.keys()
         if (
@@ -550,11 +550,11 @@ def test_phase_op(mol):
             cell=mol.cellvectors, m=m, n=n, l=l
         )
         atoms = Read.read_atomic_coordinates(mol.xyz_path)
-        basis = mol.electronic_structure.basis
+        basis = mol.electronics.basis
         phi_q = atomic_basis.get_phase_operators(
             atoms, basis, q_vector=list(delta_q), cell_vectors=cellvectors
         )
-        Sm12 = mol.electronic_structure.inverse_sqrt_OLM
+        Sm12 = mol.electronics.inverse_sqrt_OLM
         phase_1 = np.linalg.multi_dot([Sm12, phi_q, Sm12])
 
         # get gamma point symmetry sectors
@@ -567,17 +567,17 @@ def test_phase_op(mol):
         gamma_sym_sectors = {}
         other_sym_sectors = {}
         # Closed Shell case
-        if len(mol.electronic_structure.real_eigenstates.keys()) == 1:
-            for sym_sector in mol.electronic_structure.real_eigenstates["alpha"].keys():
+        if len(mol.electronics.real_eigenstates.keys()) == 1:
+            for sym_sector in mol.electronics.real_eigenstates["alpha"].keys():
                 if len(sym_sector.split(gamma_label)) == 2:
                     gamma_sym_sectors[sym_sector] = np.array(
                         [
-                            mol.electronic_structure.real_eigenstates["alpha"][
+                            mol.electronics.real_eigenstates["alpha"][
                                 sym_sector
                             ][it].A
                             for it in range(
                                 len(
-                                    mol.electronic_structure.real_eigenstates["alpha"][
+                                    mol.electronics.real_eigenstates["alpha"][
                                         sym_sector
                                     ]
                                 )
@@ -587,12 +587,12 @@ def test_phase_op(mol):
                 else:
                     other_sym_sectors[sym_sector] = np.array(
                         [
-                            mol.electronic_structure.real_eigenstates["alpha"][
+                            mol.electronics.real_eigenstates["alpha"][
                                 sym_sector
                             ][it].A
                             for it in range(
                                 len(
-                                    mol.electronic_structure.real_eigenstates["alpha"][
+                                    mol.electronics.real_eigenstates["alpha"][
                                         sym_sector
                                     ]
                                 )
@@ -609,14 +609,14 @@ def test_phase_op(mol):
                     print(sym_sector1, sym_sector2, np.max(np.abs(OLP)))
 
     """
-    basis=mol.electronic_structure.basis
+    basis=mol.electronics.basis
     xyz_filepath=Read.get_xyz_filename("./")
     atoms=Read.read_atomic_coordinates(xyz_filepath)
     
     print(q_points)
     
-    s0=mol.electronic_structure.real_eigenstates["alpha"]["Id=1|t1=1|Sz=2"][0]
-    Sm12=mol.electronic_structure.inverse_sqrt_OLM
+    s0=mol.electronics.real_eigenstates["alpha"]["Id=1|t1=1|Sz=2"][0]
+    Sm12=mol.electronics.inverse_sqrt_OLM
       # Adjust this line as needed
     
     
@@ -628,8 +628,8 @@ def test_phase_op(mol):
         phase_1 = np.linalg.multi_dot([Sm12, phi_q, Sm12])
         s0_transformed = phase_1 @ s0.A
         print(q_point)
-        for sym_sector in mol.electronic_structure.real_eigenstates["alpha"]:
-            for it,state in enumerate(mol.electronic_structure.real_eigenstates["alpha"][sym_sector]):
+        for sym_sector in mol.electronics.real_eigenstates["alpha"]:
+            for it,state in enumerate(mol.electronics.real_eigenstates["alpha"][sym_sector]):
                 value=np.dot(state.A,s0_transformed)
                 if np.abs(value)>0.01:
                     print(sym_sector,it,value,np.abs(value)*np.sqrt(2))
@@ -649,7 +649,7 @@ def band_index(mol, nh, nl, path="./", threshold=0.25):
             translate.append("t" + str(dir + 1) + "=1")
 
     # Isolating Symmetry sectors that correspond to the primitive gamma point
-    symsecs = list(mol.electronic_structure.Electronic_Symmetry.SymSectors.keys())
+    symsecs = list(mol.electronics.Electronic_Symmetry.SymSectors.keys())
     prim_gam_sym = symsecs.copy()
     for sym in symsecs:
         if "Id=1" in sym:
@@ -663,7 +663,7 @@ def band_index(mol, nh, nl, path="./", threshold=0.25):
 
     # Isolating the states that correspond to the primitive gamma point
 
-    estate_dict = mol.electronic_structure.indexmap["alpha"]
+    estate_dict = mol.electronics.indexmap["alpha"]
     finalind = next(iter(estate_dict))
     occ_ind = -1 * np.arange(0, -1 * finalind + 1)
     occ_prim_gam_states = []
@@ -684,7 +684,7 @@ def band_index(mol, nh, nl, path="./", threshold=0.25):
 
     prim_gam_states = unocc_prim_gam_states + occ_prim_gam_states
 
-    basis = mol.electronic_structure.Basis
+    basis = mol.electronics.Basis
     xyz_filepath = Read.get_xyz_filename(path)
     atoms = Read.read_atomic_coordinates(xyz_filepath)
     q_points = get_q_points(mol.cellvectors, mol.periodicity)
@@ -700,16 +700,16 @@ def band_index(mol, nh, nl, path="./", threshold=0.25):
     for state in prim_gam_states:
         print(
             state,
-            mol.electronic_structure.ElectronicEigenstates["alpha"][state[0]][
+            mol.electronics.ElectronicEigenstates["alpha"][state[0]][
                 int(state[1])
             ].energy,
         )
         band = {}
         band[tuple(q_points[g_point])] = state
-        s0 = mol.electronic_structure.ElectronicEigenstates["alpha"][state[0]][
+        s0 = mol.electronics.ElectronicEigenstates["alpha"][state[0]][
             int(state[1])
         ]
-        Sm12 = mol.electronic_structure.inverse_sqrt_OLM
+        Sm12 = mol.electronics.inverse_sqrt_OLM
         for q_point in q_points:
             print(q_point)
             phi_q = atomic_basis.get_phase_operators(
@@ -720,7 +720,7 @@ def band_index(mol, nh, nl, path="./", threshold=0.25):
             q_state_list = []
             for sym_sector in non_prim_gam_sym:
                 for it, state in enumerate(
-                    mol.electronic_structure.ElectronicEigenstates["alpha"][sym_sector]
+                    mol.electronics.ElectronicEigenstates["alpha"][sym_sector]
                 ):
                     value = np.dot(state.A, s0_transformed)
                     if np.abs(value) > 0.25:

@@ -11,16 +11,16 @@ pathtobinaries = pathtocp2k + "/exe/local/"
 
 
 def getRotProjector(
-    Mass_UC_Centered_Coordinates,
-    Geometric_UC_Principle_Axis,
-    Mass_UC_Principle_Axis,
+    mass_centered_coordinates,
+    geometric_principle_axis,
+    mass_principle_axis,
     masses,
     periodicity,
 ):
     if periodicity == (0, 0, 0):
-        centerofmasscoordinates = Mass_UC_Centered_Coordinates
-        V = np.array(Geometric_UC_Principle_Axis)
-        U = np.array(Mass_UC_Principle_Axis)
+        centerofmasscoordinates = mass_centered_coordinates
+        V = np.array(geometric_principle_axis)
+        U = np.array(mass_principle_axis)
         T = V @ U.T
         Roteigenvectors = []
         for it in [0, 1, 2]:
@@ -57,14 +57,14 @@ def getTransProjector(masses):
     return trans_projector
 
 
-class VibrationalStructure:
+class Vibrations:
     def __init__(self, mol, disable_symmetry=False):
         # Parse the Data
-        vibrational_structure_path = mol.vibrational_structure_path
+        vibrations_path = mol.Vibrations_path
         masses = mol.masses
         molecular_symmetry = mol.Molecular_Symmetry
-        axes = mol.Geometric_UC_Principle_Axis
-        Hessian = Read.read_hessian(vibrational_structure_path)
+        axes = mol.geometric_principle_axis
+        Hessian = Read.read_hessian(vibrations_path)
         self.Hessian = Hessian
         self.inverse_sqrt_MassMatrix = np.sqrt(
             np.linalg.inv(np.kron(np.diag(masses), np.eye(3)))
@@ -88,9 +88,9 @@ class VibrationalStructure:
         self.getVibrationalModes(axes=axes)
         # Generate Projectors:
         rot_projector = getRotProjector(
-            mol.Mass_UC_Centered_Coordinates,
-            mol.Geometric_UC_Principle_Axis,
-            mol.Mass_UC_Principle_Axis,
+            mol.mass_centered_coordinates,
+            mol.geometric_principle_axis,
+            mol.mass_principle_axis,
             mol.masses,
             mol.periodicity,
         )
