@@ -1,7 +1,7 @@
 from . import Read
 from .PhysConst import StandardAtomicWeights, ConversionFactors
 from .coordinate_tools import (
-    getTransAndRotEigenvectors,
+    get_trans_and_rot_eigenvectors,
     get_principle_axis_coordinates,
     cartesian_to_internal_coordinates,
     generate_internal_representation,
@@ -358,7 +358,7 @@ def geo_opt(
                 hessian = []
                 print("No Hessian found, using initial guess.\n", flush=True)
 
-    trans_subspace, rot_subspace = getTransAndRotEigenvectors(
+    trans_subspace, rot_subspace = get_trans_and_rot_eigenvectors(
         coordinates=coordinates_bohr, masses=masses
     )
     rot_projector = np.eye(len(rot_subspace[0]))
@@ -424,7 +424,7 @@ def geo_opt(
                 runner="slurm" if cluster == "slurm" else "local",
             )
         )
-        trans_subspace, rot_subspace = getTransAndRotEigenvectors(
+        trans_subspace, rot_subspace = get_trans_and_rot_eigenvectors(
             coordinates=coordinates_bohr, masses=masses
         )
         rot_projector = np.eye(len(rot_subspace[0]))

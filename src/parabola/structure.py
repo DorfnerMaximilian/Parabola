@@ -689,11 +689,9 @@ def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols, tolerance=1e-8
             break
     # x3 divisor
     for itz in primes:
-        print(itz)
         iscell, _, _ = is_legitimate_scaled_cell(
             v1, v2, v3, coordinates, atomicsymbols, 1, 1, itz, tolerance=tolerance
         )
-        print(iscell)
         if iscell:
             break
     iscell, primitive_indices, scaled_lattice = is_legitimate_scaled_cell(
