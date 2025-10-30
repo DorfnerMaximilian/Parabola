@@ -591,7 +591,7 @@ def bfgs_step_coord_internal(
     if hessian_reset_active or fmax < 1.2e-3:
         # dq=solve_tr_subproblem_internal_coords(grad_q_k, hessian, B, delta, verbose=False)
         # dx = B_plus_T.T@dq
-        dx = 0.025 * forces_vec_cart_k / np.linalg.norm(forces_vec_cart_k)
+        dx = 0.075 * forces_vec_cart_k / np.linalg.norm(forces_vec_cart_k)
         delta_x = np.linalg.norm(dx)
         search_dir = dx / np.linalg.norm(dx)
 
@@ -679,9 +679,15 @@ def bfgs_step_coord_internal(
             scaling = real_roots[min_index]
         else:
             # Multiple positive curvatures — take the smallest positive root
-            positive_roots = real_roots[real_roots > 0]
-            if len(positive_roots) > 0:
-                scaling = np.min(positive_roots)
+            it0=0
+            E0=0
+            for it,root in enumerate(real_roots):
+                E=a*root**4+b*root**3+c*root**2+d*root
+                if E<E0:
+                    E0=E
+                    it0=it
+            if E0<0:
+                scaling = np.min(real_roots[it0])
             else:
                 # Fallback: take minimal absolute value
                 scaling = real_roots[np.argmin(np.abs(real_roots))]
