@@ -627,52 +627,55 @@ def read_cell_vectors(path="./", verbose=True):
     ## Function read out the cell size from the .inp file
     ## input: (opt.)   path   path to the folder of the calculation         (string)
     ## output:  -                                                           (void)
-
-    # Get the .inp file
-    inp_file = get_inp_filename(path=path, verbose=False)
-    if verbose:
-        print(f"ℹ️ : Reading cell information from file: {inp_file}")
-    cellvectors = [np.zeros((3, 1)), np.zeros((3, 1)), np.zeros((3, 1))]
-    with open(inp_file) as f:
-        lines = f.readlines()
-        Cellflag = False
-        for l in lines:
-            if len(l.split()) >= 1:
-                if l.split()[0] == "&CELL":
-                    Cellflag = True
-                if len(l.split()) >= 2:
-                    if l.split()[0] == "&END" and l.split()[1] == "CELL":
-                        Cellflag = False
-                if Cellflag:
-                    if l.split()[0] == "ABC":
-                        cellvectors[0] = np.array([float(l.split()[1]), 0.0, 0.0])
-                        cellvectors[1] = np.array([0.0, float(l.split()[2]), 0.0])
-                        cellvectors[2] = np.array([0.0, 0.0, float(l.split()[3])])
-                    if l.split()[0] == "A":
-                        cellvectors[0] = np.array(
-                            [
-                                float(l.split()[1]),
-                                float(l.split()[2]),
-                                float(l.split()[3]),
-                            ]
-                        )
-                    if l.split()[0] == "B":
-                        cellvectors[1] = np.array(
-                            [
-                                float(l.split()[1]),
-                                float(l.split()[2]),
-                                float(l.split()[3]),
-                            ]
-                        )
-                    if l.split()[0] == "C":
-                        cellvectors[2] = np.array(
-                            [
-                                float(l.split()[1]),
-                                float(l.split()[2]),
-                                float(l.split()[3]),
-                            ]
-                        )
-    # check cell volume
+    try:
+        cell_file=get_cell_filename(path=path)
+        cellvectors=read_cell(path=cell_file)
+    except:
+        # Get the .inp file
+        inp_file = get_inp_filename(path=path, verbose=False)
+        if verbose:
+            print(f"ℹ️ : Reading cell information from file: {inp_file}")
+        cellvectors = [np.zeros((3, 1)), np.zeros((3, 1)), np.zeros((3, 1))]
+        with open(inp_file) as f:
+            lines = f.readlines()
+            Cellflag = False
+            for l in lines:
+                if len(l.split()) >= 1:
+                    if l.split()[0] == "&CELL":
+                        Cellflag = True
+                    if len(l.split()) >= 2:
+                        if l.split()[0] == "&END" and l.split()[1] == "CELL":
+                            Cellflag = False
+                    if Cellflag:
+                        if l.split()[0] == "ABC":
+                            cellvectors[0] = np.array([float(l.split()[1]), 0.0, 0.0])
+                            cellvectors[1] = np.array([0.0, float(l.split()[2]), 0.0])
+                            cellvectors[2] = np.array([0.0, 0.0, float(l.split()[3])])
+                        if l.split()[0] == "A":
+                            cellvectors[0] = np.array(
+                                [
+                                    float(l.split()[1]),
+                                    float(l.split()[2]),
+                                    float(l.split()[3]),
+                                ]
+                            )
+                        if l.split()[0] == "B":
+                            cellvectors[1] = np.array(
+                                [
+                                    float(l.split()[1]),
+                                    float(l.split()[2]),
+                                    float(l.split()[3]),
+                                ]
+                            )
+                        if l.split()[0] == "C":
+                            cellvectors[2] = np.array(
+                                [
+                                    float(l.split()[1]),
+                                    float(l.split()[2]),
+                                    float(l.split()[3]),
+                                ]
+                            )
+        # check cell volume
     det = np.linalg.det(np.array(cellvectors))
     if np.abs(det) < 10 ** (-3):
         ValueError("Cell Vectors do not span a unit cell!")
