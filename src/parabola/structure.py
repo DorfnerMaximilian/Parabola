@@ -8,7 +8,7 @@ import pickle
 import os
 
 
-class MolecularStructure:
+class Molecular_Structure:
     # Class-level flag to manage pickling recursion
     _is_unpickling = False
 
@@ -29,10 +29,10 @@ class MolecularStructure:
         # Normal constructor call path: 'name' must be provided
         name = kwargs.get("name")
         if name is None:
-            # This handles cases where MolecularStructure() is called without 'name',
+            # This handles cases where Molecular_Structure() is called without 'name',
             # which is not allowed for normal instantiation.
             raise TypeError(
-                "MolecularStructure.__new__() missing 1 required keyword-only argument: 'name'"
+                "Molecular_Structure.__new__() missing 1 required keyword-only argument: 'name'"
             )
 
         path = kwargs.get("path", "")
@@ -230,19 +230,19 @@ class MolecularStructure:
 
 #### Define Symmetry Class ####
 class Molecular_Symmetry(Symmetry.Symmetry):
-    def __init__(self, MolecularStructure):
+    def __init__(self, Molecular_Structure):
         super().__init__()  # Initialize parent class
-        self.determine_symmetry(MolecularStructure)
+        self.determine_symmetry(Molecular_Structure)
 
-    def determine_symmetry(self, MolecularStructure):
-        self._test_translation(MolecularStructure, tol_translation=5 * 10 ** (-4))
-        primitive_indices = MolecularStructure.unitcells[(0, 0, 0)]
+    def determine_symmetry(self, Molecular_Structure):
+        self._test_translation(Molecular_Structure, tol_translation=5 * 10 ** (-4))
+        primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
         geometry_centered_coordinates, center = (
             Geometry.ComputeCenterOfGeometryCoordinates(
-                np.array(MolecularStructure.coordinates)[primitive_indices]
+                np.array(Molecular_Structure.coordinates)[primitive_indices]
             )
         )
-        MolecularStructure.Geometric_Center_UC = center
+        Molecular_Structure.Geometric_Center_UC = center
         if len(primitive_indices) > 1:
             v1, v2, v3 = Geometry.getPrincipleAxis(
                 geometry_centered_coordinates, masses=None, tol=1e-3
@@ -251,56 +251,56 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             v1 = np.array([1.0, 0.0, 0.0])
             v2 = np.array([0.0, 1.0, 0.0])
             v3 = np.array([0.0, 0.0, 1.0])
-        MolecularStructure.Geometric_UC_Principle_Axis = [v1, v2, v3]
+        Molecular_Structure.Geometric_UC_Principle_Axis = [v1, v2, v3]
         G_UC_CC = []
         for coor in geometry_centered_coordinates:
             x = np.dot(v1, coor)
             y = np.dot(v2, coor)
             z = np.dot(v3, coor)
             G_UC_CC.append(np.array([x, y, z]))
-        MolecularStructure.Geometric_UC_Centered_Coordinates = G_UC_CC
+        Molecular_Structure.Geometric_UC_Centered_Coordinates = G_UC_CC
         if len(primitive_indices) > 1:
             mass_centered_coordinates, center_of_mass = (
                 Geometry.ComputeCenterOfMassCoordinates(
-                    np.array(MolecularStructure.coordinates)[primitive_indices],
-                    np.array(MolecularStructure.masses)[primitive_indices],
+                    np.array(Molecular_Structure.coordinates)[primitive_indices],
+                    np.array(Molecular_Structure.masses)[primitive_indices],
                 )
             )
-            MolecularStructure.Center_of_Mass_UC = center_of_mass
+            Molecular_Structure.Center_of_Mass_UC = center_of_mass
             v1, v2, v3 = Geometry.getPrincipleAxis(
                 mass_centered_coordinates,
-                masses=np.array(MolecularStructure.masses)[primitive_indices],
+                masses=np.array(Molecular_Structure.masses)[primitive_indices],
                 tol=1e-3,
             )
-            MolecularStructure.Mass_UC_Principle_Axis = [v1, v2, v3]
+            Molecular_Structure.Mass_UC_Principle_Axis = [v1, v2, v3]
             G_UC_CC = []
             for coor in geometry_centered_coordinates:
                 x = np.dot(v1, coor)
                 y = np.dot(v2, coor)
                 z = np.dot(v3, coor)
                 G_UC_CC.append(np.array([x, y, z]))
-            MolecularStructure.Mass_UC_Centered_Coordinates = G_UC_CC
+            Molecular_Structure.Mass_UC_Centered_Coordinates = G_UC_CC
         else:
-            MolecularStructure.Center_of_Mass_UC = center
-            MolecularStructure.Mass_UC_Principle_Axis = [v1, v2, v3]
-            MolecularStructure.Mass_UC_Centered_Coordinates = G_UC_CC
+            Molecular_Structure.Center_of_Mass_UC = center
+            Molecular_Structure.Mass_UC_Principle_Axis = [v1, v2, v3]
+            Molecular_Structure.Mass_UC_Centered_Coordinates = G_UC_CC
         if len(primitive_indices) > 1:
-            self._test_inversion(MolecularStructure, tol_inversion=5 * 10 ** (-3))
-            self._test_rotation(MolecularStructure, tol_rotation=5 * 10 ** (-3))
-            self._test_mirror(MolecularStructure, tol_mirror=5 * 10 ** (-2))
+            self._test_inversion(Molecular_Structure, tol_inversion=5 * 10 ** (-3))
+            self._test_rotation(Molecular_Structure, tol_rotation=5 * 10 ** (-3))
+            self._test_mirror(Molecular_Structure, tol_mirror=5 * 10 ** (-2))
         if not self.Symmetry_Generators:
-            self.Symmetry_Generators["Id"] = np.eye(len(MolecularStructure.masses))
+            self.Symmetry_Generators["Id"] = np.eye(len(Molecular_Structure.masses))
 
-    def _test_translation(self, MolecularStructure, tol_translation):
-        if MolecularStructure.periodicity == (1, 1, 1):
-            coords = MolecularStructure.coordinates
-            cellvectors = MolecularStructure.cellvectors
-            atomic_symbols = MolecularStructure.atoms
+    def _test_translation(self, Molecular_Structure, tol_translation):
+        if Molecular_Structure.periodicity == (1, 1, 1):
+            coords = Molecular_Structure.coordinates
+            cellvectors = Molecular_Structure.cellvectors
+            atomic_symbols = Molecular_Structure.atoms
             supercell, primitive_indices, scaled_lattice = getPrimitiveUnitCell(
                 cellvectors, coords, atomic_symbols, tolerance=tol_translation
             )
-            MolecularStructure.periodicity = supercell
-            MolecularStructure.primitive_indices = primitive_indices
+            Molecular_Structure.periodicity = supercell
+            Molecular_Structure.primitive_indices = primitive_indices
             relative_cell_coordinates, _ = getCellCoordinates(
                 scaled_lattice,
                 coords,
@@ -318,7 +318,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             if zFlag and np.sum(np.abs(Tz - np.eye(np.shape(Tz)[0]))) > 10 ** (-10):
                 self.Symmetry_Generators["t3"] = Tz
             # Compute the unit cells
-            p0, p1, p2 = MolecularStructure.periodicity
+            p0, p1, p2 = Molecular_Structure.periodicity
             primitive_indices = np.array(primitive_indices)
             dim = Tx.shape[0]
 
@@ -342,17 +342,17 @@ class Molecular_Symmetry(Symmetry.Symmetry):
 
                         # Get index of max in each transformed vector
                         indices = np.argmax(transformed, axis=0)
-                        MolecularStructure.unitcells[(n, m, k)] = indices.tolist()
+                        Molecular_Structure.unitcells[(n, m, k)] = indices.tolist()
         else:
-            MolecularStructure.unitcells[(0, 0, 0)] = [
-                it for it in range(len(MolecularStructure.atoms))
+            Molecular_Structure.unitcells[(0, 0, 0)] = [
+                it for it in range(len(Molecular_Structure.atoms))
             ]
 
-    def _test_inversion(self, MolecularStructure, tol_inversion):
-        atomic_symbols = MolecularStructure.atoms
-        primitive_indices = MolecularStructure.unitcells[(0, 0, 0)]
+    def _test_inversion(self, Molecular_Structure, tol_inversion):
+        atomic_symbols = Molecular_Structure.atoms
+        primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
         geometry_centered_coordinates = (
-            MolecularStructure.Geometric_UC_Centered_Coordinates
+            Molecular_Structure.Geometric_UC_Centered_Coordinates
         )
         has_symmetry, inversion_pairs = detect_inversion_symmetry(
             geometry_centered_coordinates,
@@ -363,8 +363,8 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             # Generate the Original Pairs
             pairs = {}
             for idx, inv_idx in inversion_pairs.items():
-                for uc in MolecularStructure.unitcells:
-                    ucindex = MolecularStructure.unitcells[uc]
+                for uc in Molecular_Structure.unitcells:
+                    ucindex = Molecular_Structure.unitcells[uc]
                     pairs[ucindex[idx]] = ucindex[inv_idx]
                 pairs[primitive_indices[idx]] = primitive_indices[inv_idx]
             # Add the remaining pairs on the diagonal
@@ -372,12 +372,12 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             PrimitiveInversion = get_Inversion_Symmetry_Generator(pairs, nAtoms)
             self.Symmetry_Generators["i"] = PrimitiveInversion
 
-    def _test_rotation(self, MolecularStructure, tol_rotation, nmax=10):
+    def _test_rotation(self, Molecular_Structure, tol_rotation, nmax=10):
         Geometric_UC_Centered_Coordinates = (
-            MolecularStructure.Geometric_UC_Centered_Coordinates
+            Molecular_Structure.Geometric_UC_Centered_Coordinates
         )
-        atomic_symbols = MolecularStructure.atoms
-        primitive_indices = MolecularStructure.unitcells[(0, 0, 0)]
+        atomic_symbols = Molecular_Structure.atoms
+        primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
         for axis in ["x", "y", "z"]:
             for n in range(nmax, 1, -1):
                 has_symmetry, rotation_pairs = detect_rotational_symmetry(
@@ -404,20 +404,20 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 # Generate the Original Pairs
                 pairs = {}
                 for idx, rot_idx in rotation_pairs.items():
-                    for uc in MolecularStructure.unitcells:
-                        ucindex = MolecularStructure.unitcells[uc]
+                    for uc in Molecular_Structure.unitcells:
+                        ucindex = Molecular_Structure.unitcells[uc]
                         pairs[ucindex[idx]] = ucindex[rot_idx]
                 # Add the remaining pairs on the diagonal
                 nAtoms = len(atomic_symbols)
                 PrimitiveRotation = get_Inversion_Symmetry_Generator(pairs, nAtoms)
                 self.Symmetry_Generators["C" + axis + "_" + str(n)] = PrimitiveRotation
 
-    def _test_mirror(self, MolecularStructure, tol_mirror):
+    def _test_mirror(self, Molecular_Structure, tol_mirror):
         Geometric_UC_Centered_Coordinates = (
-            MolecularStructure.Geometric_UC_Centered_Coordinates
+            Molecular_Structure.Geometric_UC_Centered_Coordinates
         )
-        atomic_symbols = MolecularStructure.atoms
-        primitive_indices = MolecularStructure.unitcells[(0, 0, 0)]
+        atomic_symbols = Molecular_Structure.atoms
+        primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
         for axis in ["x", "y", "z"]:
             has_symmetry, mirror_pairs = detect_mirror_symmetry(
                 Geometric_UC_Centered_Coordinates,
@@ -429,8 +429,8 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 # Generate the Original Pairs
                 pairs = {}
                 for idx, rot_idx in mirror_pairs.items():
-                    for uc in MolecularStructure.unitcells:
-                        ucindex = MolecularStructure.unitcells[uc]
+                    for uc in Molecular_Structure.unitcells:
+                        ucindex = Molecular_Structure.unitcells[uc]
                         pairs[ucindex[idx]] = ucindex[rot_idx]
                 nAtoms = len(atomic_symbols)
                 PrimitiveMirror = get_Inversion_Symmetry_Generator(pairs, nAtoms)
