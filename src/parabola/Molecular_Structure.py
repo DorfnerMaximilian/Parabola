@@ -86,7 +86,7 @@ class MolecularStructure:
             print(f"⌬ : Creating new Molecular Structure for {name} in:")
             print(os.path.abspath(self.path))
             print("▲ : Processing Geometric Structural Information")
-            xyz_filepath = Read.get_xyz_filename(path="/", verbose=True)
+            xyz_filepath = Read.get_xyz_filename(path="./", verbose=True)
             self.xyz_path = xyz_filepath
             coordinates, masses, atomic_symbols = Read.read_coordinates_and_masses(
                 xyz_filepath
