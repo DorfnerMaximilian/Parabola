@@ -691,7 +691,7 @@ def getCellCoordinates(lattice, coordinates, primitive_indices, supercell, toler
 
 def getTranslationOps(relative_cell_coordinates, supercell):
     """
-    Computes the translation operators \( T_x \), \( T_y \), and \( T_z \) for a given set
+    Computes the translation operators ( T_x ), ( T_y ), and ( T_z ) for a given set
     of relative cell coordinates in a supercell. These operators represent translations
     by one unit along the x, y, and z directions in the supercell.
 
@@ -701,16 +701,16 @@ def getTranslationOps(relative_cell_coordinates, supercell):
         the relative coordinates `(x, y, z)` of an atom in the supercell and its
         corresponding index in the primitive cell.
     - supercell (array-like, shape (3,)):
-        The dimensions of the supercell `[Nx, Ny, Nz]`, where \( Nx, Ny, Nz \) are the
+        The dimensions of the supercell `[Nx, Ny, Nz]`, where ( Nx, Ny, Nz ) are the
         number of units along the x, y, and z directions, respectively.
 
     Returns:
     - Tx, Ty, Tz (numpy arrays, shape (n, n)):
         Translation matrices along the x, y, and z directions, respectively. Each matrix
-        has shape `(n, n)` where \( n \) is the number of elements in `relative_cell_coordinates`.
-        The element \( T_x[i, j] = 1 \) indicates that applying a translation along x to
-        the atom at index \( j \) results in the atom at index \( i \). Similar logic applies
-        to \( T_y \) and \( T_z \).
+        has shape `(n, n)` where ( n ) is the number of elements in `relative_cell_coordinates`.
+        The element ( T_x[i, j] = 1 ) indicates that applying a translation along x to
+        the atom at index ( j ) results in the atom at index ( i ). Similar logic applies
+        to ( T_y ) and ( T_z ).
 
     Raises:
     - ValueError:
