@@ -147,13 +147,13 @@ class Molecular_Structure:
         if vibrational_path is not None:
             # Recompute only if the path has changed or if the structure is currently None.
             if (
-                self.Vibrations_path != vibrational_path
+                self.vibrations_path != vibrational_path
                 or self.Vibrations is None
             ):
                 print(
                     f"🔄 : Vibrational Structure path provided/changed. Computing/updating vibrational structure."
                 )
-                self.Vibrations_path = vibrational_path
+                self.vibrations_path = vibrational_path
                 self.Vibrations = self.determine_vibrations()
             else:
                 print(
@@ -302,7 +302,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         self.determine_symmetry(Molecular_Structure)
 
     def determine_symmetry(self, Molecular_Structure):
-        self._test_translation(Molecular_Structure, tol_translation=5 * 10 ** (-4))
+        self._test_translation(Molecular_Structure, tol_translation=0.0001)
         primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
         geometry_centered_coordinates, center = (
             Geometry.ComputeCenterOfGeometryCoordinates(
@@ -372,7 +372,6 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 scaled_lattice,
                 coords,
                 primitive_indices,
-                supercell,
                 tolerance=tol_translation,
             )
             Tx, Ty, Tz, xFlag, yFlag, zFlag = getTranslationOps(
@@ -396,7 +395,6 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             Tx_powers = [np.linalg.matrix_power(Tx, i) for i in range(p0)]
             Ty_powers = [np.linalg.matrix_power(Ty, i) for i in range(p1)]
             Tz_powers = [np.linalg.matrix_power(Tz, i) for i in range(p2)]
-
             # Loop through periodicity grid
             for n in range(p0):
                 for m in range(p1):
@@ -700,58 +698,122 @@ def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols, tolerance=1e-8
     return (itx, ity, itz), primitive_indices, scaled_lattice
 
 
-def getCellCoordinates(lattice, coordinates, primitive_indices, supercell, tolerance):
+def getCellCoordinates(lattice, coordinates, primitive_indices, tolerance=1e-5):
     """
-    Computes the relative cell coordinates and fractional coordinates of atoms within a unit cell.
+    Computes relative lattice translations and fractional coordinates.
+     Parameters:
 
-    Parameters:
     - lattice (array-like, shape (3, 3)):
-        The lattice vectors defining the crystal structure.
+
+    The lattice vectors (columns) defining the crystal structure.
+
     - coordinates (array-like, shape (n, 3)):
-        Cartesian coordinates of all atoms in the lattice.
-    - primitive_indices (list of ints):
-        Indices of atoms belonging to the primitive unit cell.
+
+    Cartesian coordinates of all atoms in the structure.
+
+    - primitive_indices (list[int]):
+
+    Indices of atoms belonging to the primitive unit cell.
+
+    - supercell (tuple[int, int, int]):
+
+    Supercell replication along each lattice vector (e.g., (2,2,2)).
+
+    - tolerance (float):
+
+    Numerical tolerance for position matching in fractional coordinates.
+
 
     Returns:
-    - relative_cell_coordinates (list of arrays):
-        List of relative cell coordinates [x_shift, y_shift, z_shift, primitive_index] for each atom.
-    - in_cell_coordinates (array-like, shape (len(primitive_indices), 3)):
-        Fractional coordinates of atoms in the primitive unit cell wrapped to [0, 1).
-    """
-    # Convert atom positions to fractional coordinates in the original lattice
-    fractional_positions = to_fractional(lattice, coordinates)
-    primitive_positions = fractional_positions[primitive_indices]
-    relative_cell_coordinates = []
-    translations = [
-        np.array([i, j, k])
-        for i in range(supercell[0])
-        for j in range(supercell[1])
-        for k in range(supercell[2])
-    ]
 
-    for frac_coord in fractional_positions:
-        for translation in translations:
-            translated_pos = frac_coord - translation  # Wrap within [0,1)
-            # Check if the translated position matches any point in the primitive cell
-            isclosearray = [
-                np.allclose(translated_pos, primitive_position, atol=tolerance)
-                for primitive_position in primitive_positions
-            ]
-            isclose = any(isclosearray)
-            whereisclose = np.where(isclosearray)
-            if isclose:
-                relative_cell_coordinates.append(
-                    np.array(
-                        [
-                            translation[0],
-                            translation[1],
-                            translation[2],
-                            whereisclose[0][0],
-                        ]
-                    )
-                )
-                break  # Found a match, no need to check other translations
-    return np.array(relative_cell_coordinates), np.array(primitive_positions)
+    - relative_cell_coordinates (ndarray, shape (n, 4)):
+
+    Array of [tx, ty, tz, primitive_index] for each atom,
+
+    where (tx, ty, tz) are integer lattice translations.
+
+    - in_cell_coordinates (ndarray, shape (len(primitive_indices), 3)):
+
+    Fractional coordinates of primitive atoms wrapped into [0,1).
+
+    """ 
+    # 1. Get all fractional coordinates
+    # (Assuming to_fractional is defined externally as before)
+    fractional_positions = to_fractional(lattice, coordinates)
+    
+    # 2. Get reference primitive coordinates
+    # We do NOT apply floor() here. We compare raw values.
+    primitive_frac_coords = fractional_positions[primitive_indices]
+    
+    # 3. Calculate differences between ALL pairs (Broadcasting)
+    # Shape: (n_atoms, n_prim, 3)
+    # raw_diff represents (Atom_Position - Primitive_Position)
+    raw_diffs = fractional_positions[:, None, :] - primitive_frac_coords[None, :, :]
+    
+    # 4. Find the deviation from the nearest integer translation
+    # If atom matches primitive, raw_diff should be like 0.0, 1.0, -1.0, 2.0, etc.
+    # np.round(raw_diff) gives us the "Translation Integer candidate"
+    closest_integer_translation = np.round(raw_diffs)
+    
+    # residual is the distance from that integer translation
+    residual = raw_diffs - closest_integer_translation
+    
+    # 5. Check matches
+    # We check if the residual is effectively zero
+    is_match = np.all(np.abs(residual) < tolerance, axis=2)
+
+    # 6. Error Handling (Uniqueness check)
+    match_count = np.sum(is_match, axis=1)
+    
+    if np.any(match_count == 0):
+        first_bad = np.flatnonzero(match_count == 0)[0]
+        # --- DIAGNOSTIC BLOCK ---
+        # Find the "best" failure to tell the user how far off they are
+        # We look at the residual for the bad atom against all primitive atoms
+        bad_atom_residuals = np.abs(residual[first_bad]) # Shape: (n_prim, 3)
+        
+        # Find the maximum deviation in (x,y,z) for each primitive candidate
+        max_dev_per_prim = np.max(bad_atom_residuals, axis=1)
+        
+        # Find the primitive atom that came closest
+        closest_prim_idx_local = np.argmin(max_dev_per_prim)
+        closest_prim_global = primitive_indices[closest_prim_idx_local]
+        min_deviation = max_dev_per_prim[closest_prim_idx_local]
+        
+        raise ValueError(
+            f"Atom {first_bad} at {fractional_positions[first_bad]} could not be matched.\n"
+            f"Closest candidate was Primitive Atom {closest_prim_global}.\n"
+            f"Deviation: {min_deviation:.2e} (Tolerance: {tolerance}).\n"
+            f"-> Suggestion: Increase tolerance to at least {min_deviation*1.1:.1e}"
+        )
+        # ------------------------
+    
+    if np.any(match_count > 1):
+        first_bad = np.flatnonzero(match_count > 1)[0]
+        raise ValueError(f"Atom {first_bad} matches multiple primitive atoms. "
+                         "Decrease tolerance or check structure.")
+
+    # 7. Extract Results
+    # Get the index of the primitive atom (0 to n_prim-1)
+    prim_indices_map = np.argmax(is_match, axis=1)
+    
+    # Retrieve the correct translation vector for that specific match
+    # We pick the specific translation integer we found in step 4
+    # Fancy indexing: [range(n), prim_indices_map] selects the matching column for each row
+    n_atoms = len(fractional_positions)
+    t_integers = closest_integer_translation[np.arange(n_atoms), prim_indices_map].astype(int)
+
+    # 8. Format output
+    relative_cell_coordinates = np.hstack((
+        t_integers,
+        prim_indices_map[:, None]
+    ))
+    
+    # For the return value of `in_cell_coordinates`, we usually want them wrapped [0, 1)
+    # strictly for display/reference purposes.
+    in_cell_coordinates = primitive_frac_coords - np.floor(primitive_frac_coords)
+
+    return relative_cell_coordinates, in_cell_coordinates
 
 
 def getTranslationOps(relative_cell_coordinates, supercell):
@@ -810,6 +872,8 @@ def getTranslationOps(relative_cell_coordinates, supercell):
     print(Tz)
     ```
     """
+    supercell = np.asarray(supercell, dtype=int)
+
     Tx = np.zeros((len(relative_cell_coordinates), len(relative_cell_coordinates)))
     Ty = np.zeros((len(relative_cell_coordinates), len(relative_cell_coordinates)))
     Tz = np.zeros((len(relative_cell_coordinates), len(relative_cell_coordinates)))

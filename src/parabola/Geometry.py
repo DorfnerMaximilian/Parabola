@@ -331,6 +331,32 @@ def get_Geometric_Principle_Axis_Coordinates(path="./"):
     )
     centerMolecule(path)
 
+def wrap_to_unit_cell(xyz, cell):
+    """
+    Wrap atomic coordinates back into the primary unit cell.
+    
+    Parameters
+    ----------
+    xyz : (N, 3) numpy.ndarray
+        Atomic Cartesian coordinates.
+    cell : (3, 3) numpy.ndarray
+        Lattice vectors as rows of the cell matrix.
+    
+    Returns
+    -------
+    wrapped_xyz : (N, 3) numpy.ndarray
+        Wrapped Cartesian coordinates.
+    """
+    # Convert to fractional coordinates
+    frac = np.linalg.solve(cell.T, xyz.T).T  # Solve cell.T * frac = xyz.T
+    
+    # Wrap fractional coordinates to [0, 1)
+    frac_wrapped = frac % 1.0
+    
+    # Convert back to Cartesian
+    wrapped_xyz = np.dot(frac_wrapped, cell)
+    
+    return wrapped_xyz
 
 def getNeibouringCellVectors(cell, m=1, n=1, l=1):
     """
