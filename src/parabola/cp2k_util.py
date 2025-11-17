@@ -275,7 +275,7 @@ def forces_summary(forces):
 def geo_opt(
     cluster="local",
     path="./",
-    tol_max=7e-4,
+    tol_max=6e-4,
     tol_drm=4e-4,
     max_iter=200,  # Add a maximum iteration limit
     stall_patience=2,  # Number of steps with no progress before declaring a stall
@@ -856,6 +856,98 @@ def bfgs_step_coord_internal(
     # MODIFIED: Removed stall_counter from the return statement
     return coordinates_out, forces_out, energy_out, hessian, delta_new, accepted, info
 
+def cell_opt(
+     cluster="local",
+    path="./",
+    tol_max=6e-4,
+    tol_drm=4e-4,
+    max_iter=200,  # Add a maximum iteration limit
+    stall_patience=2,  # Number of steps with no progress before declaring a stall
+    stall_energy_thresh=1e-7,  # Energy change threshold for stalling
+):
+    """
+    Geometry optimization wrapper with robust stall handling.
+    """
+    # ... (Your existing setup code remains the same) ...
+    # -------------------------------
+    # 1. Input & setup
+    # -------------------------------
+    cell_opt_path = os.path.join(path, "Cell_Optimization")
+    xyz_filepath = Read.get_xyz_filename(path, verbose=True)
+
+    with open(xyz_filepath, "r") as f:
+        input_data = f.readlines()
+
+    config = parse_cp2k_config(input_data)
+    cp2k_exec = get_cp2k_exec(cluster=cluster)
+
+    # -------------------------------
+    # 2. Initialization / Restart
+    # -------------------------------
+    if not os.path.exists(cell_opt_path):
+        os.makedirs(cell_opt_path, exist_ok=True)
+        config = prepare_force_eval(path=cell_opt_path, config=config)
+        energy_Ha, forces_Ha_bohr = run_energy_force_eval(
+            path=cell_opt_path,
+            cp2k_exec=cp2k_exec,
+            runner="slurm" if cluster == "slurm" else "local",
+        )
+        name = config["name"]
+        atoms = config["atoms"]
+        masses = config["masses"]
+        coordinates_A = config["coordinates_A"]
+        coordinates_bohr = ConversionFactors["A->a.u."] * coordinates_A
+        cell_A = config["cell_A"]
+        cell_bohr = ConversionFactors["A->a.u."] * cell_A
+        it = 0
+        hessian = []
+        write_pos_file(
+            name,
+            atoms,
+            coordinates_bohr,
+            cell_bohr,
+            energy_Ha,
+            forces_Ha_bohr,
+            step=it,
+            path=os.path.join(cell_opt_path, f"{name}.pos"),
+        )
+        write_geo_log_file(
+            name,
+            atoms,
+            coordinates_bohr,
+            energy_Ha,
+            step=it,
+            path=os.path.join(cell_opt_path, f"{name}-pos.xyz"),
+        )
+        print(f"Starting fresh cell optimization for {name}\n", flush=True)
+
+    else:
+        name = config["name"]
+        atoms = config["atoms"]
+        masses = config["masses"]
+        results = parse_last_optimization_step(
+            path=os.path.join(cell_opt_path, f"{name}.pos")
+        )
+        if results["name"] == name:
+            it = results["step"]
+            forces_Ha_bohr = results["forces_Ha_bohr"]
+            energy_Ha = results["energy_Ha"]
+            coordinates_bohr = results["coordinates_bohr"]
+            cell_bohr = results["cell_bohr"]
+            print(f"Continuing optimization from step {it}\n", flush=True)
+            try:
+                hessian = np.load(os.path.join(cell_opt_path, "Hessian.npy"))
+                print("Loaded Hessian from checkpoint\n", flush=True)
+            except:
+                hessian = []
+                print("No Hessian found, using initial guess.\n", flush=True)
+
+    
+
+    # ... (Your finalization code remains the same) ...
+    # -------------------------------
+    # 4. Finalize optimized structure
+    # -------------------------------
 
 def solve_tr_subproblem_internal_coords(g_q, H_q, B, delta, verbose=False):
     """
