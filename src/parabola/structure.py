@@ -546,7 +546,7 @@ def to_fractional(lattice, positions):
     - This function assumes the lattice is invertible.
     """
     inv_lattice = np.linalg.inv(lattice)
-    fractional_positions = [inv_lattice @ pos for pos in positions]
+    fractional_positions = positions@inv_lattice
     return np.array(fractional_positions)
 
 
@@ -587,7 +587,7 @@ def is_legitimate_scaled_cell(
     comparing positions and atomic symbols within the specified tolerance.
     """
     # Scale the lattice vectors
-    scaled_lattice = np.column_stack((v1 / N1, v2 / N2, v3 / N3))
+    scaled_lattice = np.row_stack((v1 / N1, v2 / N2, v3 / N3))
     # Convert atom positions to fractional coordinates in the original lattice
     fractional_positions = to_fractional(scaled_lattice, coordinates)
     # Scale and wrap fractional positions into [0,1) range for periodicity
