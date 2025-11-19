@@ -335,7 +335,7 @@ class Electronics:
         # Attach method dynamically
         atoms = mol.atoms
         self.electronic_symmetry = electronic_symmetry(
-            mol.Molecular_Symmetry, atoms, self.basis
+            mol.molecular_symmetry, atoms, self.basis
         )
         name = mol.name
         axes = mol.geometric_principle_axis
