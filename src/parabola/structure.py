@@ -1,11 +1,10 @@
-from . import Read
-from . import Geometry
-from . import Symmetry
-from . import electronics
-from . import vibrations
-import numpy as np
-import pickle
 import os
+import pickle
+
+import numpy as np
+import spglib.spglib
+
+from . import Geometry, Read, Symmetry, electronics, vibrations
 
 
 class Molecular_Structure:
@@ -31,15 +30,11 @@ class Molecular_Structure:
         if name is None:
             # This handles cases where Molecular_Structure() is called without 'name',
             # which is not allowed for normal instantiation.
-            raise TypeError(
-                "Molecular_Structure.__new__() missing 1 required keyword-only argument: 'name'"
-            )
+            raise TypeError("Molecular_Structure.__new__() missing 1 required keyword-only argument: 'name'")
 
         path = kwargs.get("path", "")
         abs_path = os.path.abspath(path)
-        pickle_filename = os.path.join(
-            abs_path, f"{name}.{cls.__name__.lower()}.pickle"
-        )
+        pickle_filename = os.path.join(abs_path, f"{name}.{cls.__name__.lower()}.pickle")
 
         if os.path.isfile(pickle_filename):
             print(f"🔄 : Found file. Loading from: {pickle_filename}")
@@ -65,9 +60,10 @@ class Molecular_Structure:
         self,
         *,
         name: str,
-        path: str = ".",
+        path: str = "./",
         electronics_path: str | None = None,
         vibrational_path: str | None = None,
+        save: bool = False,
     ):
         """
         Initializes or updates the attributes of the instance.
@@ -86,11 +82,9 @@ class Molecular_Structure:
             print(f"⌬ : Creating new Molecular Structure for {name} in:")
             print(os.path.abspath(self.path))
             print("▲ : Processing Geometric Structural Information")
-            xyz_filepath = Read.get_xyz_filename(path="./", verbose=True)
+            xyz_filepath = Read.get_xyz_filename(path=path, verbose=True)
             self.xyz_path = xyz_filepath
-            coordinates, masses, atomic_symbols = Read.read_coordinates_and_masses(
-                xyz_filepath
-            )
+            coordinates, masses, atomic_symbols = Read.read_coordinates_and_masses(xyz_filepath)
             self.coordinates = coordinates
             self.masses = masses
             self.geometric_center = np.zeros(3)
@@ -100,26 +94,24 @@ class Molecular_Structure:
             self.mass_centered_coordinates = []
             self.mass_principle_axis = []
             self.atoms = atomic_symbols
+            self.atomic_numbers = self._get_atomic_numbers()
             if Read.read_periodicity(path):
                 self.periodicity = (1, 1, 1)
             else:
                 self.periodicity = (0, 0, 0)
             self.unitcells = {}
             self.cellvectors = Read.read_cell_vectors(path)
-            self.Molecular_Symmetry = Molecular_Symmetry(self)
+            self.primitive_cellvectors = self.cellvectors / np.array(self.periodicity)
+            self.molecular_symmetry = Molecular_Symmetry(self)
             # Initialize paths and structures to None for a new instance
             self.electronics_path = None
             self.vibrations_path = None
             self.Electronics = None
             self.Vibrations = None
         else:
-            print(
-                f"✔️ : Object for '{self.name}' is already initialized. Checking for path updates."
-            )
+            print(f"✔️ : Object for '{self.name}' is already initialized. Checking for path updates.")
             # If loaded, ensure the base path reflects the current call's path if it's different.
-            current_abs_path = (
-                os.path.abspath(path) if path == "." else os.path.abspath(path)
-            )
+            current_abs_path = os.path.abspath(path) if path == "." else os.path.abspath(path)
             if self.path != current_abs_path:
                 print(f"🔄 : Base path updated from {self.path} to {current_abs_path}")
                 self.path = current_abs_path
@@ -128,38 +120,80 @@ class Molecular_Structure:
         # If electronic_path is provided in the current call, update the structure.
         if electronics_path is not None:
             # Recompute only if the path has changed or if the structure is currently None.
-            if (
-                self.electronics_path != electronics_path
-                or self.electronics is None
-            ):
-                print(
-                    f"🔄 : Electronic Structure path provided/changed. Computing/updating electronic structure."
-                )
+            if self.electronics_path != electronics_path or self.electronics is None:
+                print("🔄 : Electronic Structure path provided/changed. Computing/updating electronic structure.")
                 self.electronics_path = electronics_path
                 self.Electronics = self.determine_electronics()
             else:
-                print(
-                    f"✔️ : Electronic path is the same and structure exists. No recomputation needed."
-                )
+                print("✔️ : Electronic path is the same and structure exists. No recomputation needed.")
 
         # Logic for vibrational structure:
         # If vibrational_path is provided in the current call, update the structure.
         if vibrational_path is not None:
             # Recompute only if the path has changed or if the structure is currently None.
-            if (
-                self.Vibrations_path != vibrational_path
-                or self.Vibrations is None
-            ):
-                print(
-                    f"🔄 : Vibrational Structure path provided/changed. Computing/updating vibrational structure."
-                )
+            if self.Vibrations_path != vibrational_path or self.Vibrations is None:
+                print("🔄 : Vibrational Structure path provided/changed. Computing/updating vibrational structure.")
                 self.Vibrations_path = vibrational_path
                 self.Vibrations = self.determine_vibrations()
             else:
-                print(
-                    f"✔️ : Vibrational Structure path is the same and structure exists. No recomputation needed."
-                )
-        self.save()
+                print("✔️ : Vibrational Structure path is the same and structure exists. No recomputation needed.")
+        if save:
+            self.save()
+
+    @property
+    def n_atoms(self):
+        return len(self.atoms)
+
+    def _get_atomic_numbers(self):
+        """
+        Convert atomic symbols to atomic numbers using a predefined mapping.
+        """
+        periodic_table = {
+            "H": 1,
+            "He": 2,
+            "Li": 3,
+            "Be": 4,
+            "B": 5,
+            "C": 6,
+            "N": 7,
+            "O": 8,
+            "F": 9,
+            "Ne": 10,
+            "Na": 11,
+            "Mg": 12,
+            "Al": 13,
+            "Si": 14,
+            "P": 15,
+            "S": 16,
+            "Cl": 17,
+            "Ar": 18,
+            "K": 19,
+            "Ca": 20,
+            "Sc": 21,
+            "Ti": 22,
+            "V": 23,
+            "Cr": 24,
+            "Mn": 25,
+            "Fe": 26,
+            "Co": 27,
+            "Ni": 28,
+            "Cu": 29,
+            "Zn": 30,
+            "Ga": 31,
+            "Ge": 32,
+            "As": 33,
+            "Se": 34,
+            "Br": 35,
+            "Kr": 36,
+            # Add more elements as needed
+        }
+        atomic_numbers = []
+        for symbol in self.atoms:
+            atomic_number = periodic_table.get(symbol)
+            if atomic_number is None:
+                raise ValueError(f"Unknown atomic symbol: {symbol}")
+            atomic_numbers.append(atomic_number)
+        return atomic_numbers
 
     def determine_electronics(self):
         """
@@ -170,10 +204,10 @@ class Molecular_Structure:
         print("⚡ : ELECTRONIC STRUCTURE ")
         print("=" * 40)
         full_path = os.path.abspath(self.electronics_path)
-        print(f"Vibrational Structure data taken from:")
+        print("Vibrational Structure data taken from:")
         print(full_path)
-        electronics = electronics.Electronics(self)
-        return electronics
+        electronic_structure = electronics.Electronics(self)
+        return electronic_structure
 
     def determine_vibrations(self):
         """
@@ -185,7 +219,7 @@ class Molecular_Structure:
         print("🎜 : VIBRATIONAL ANALYSIS  ")
         print("=" * 40)
         full_path = os.path.abspath(self.vibrations_path)
-        print(f"Vibrational Structure data taken from:")
+        print("Vibrational Structure data taken from:")
         print(full_path)
         return vibrations.Vibrations(self)
 
@@ -200,6 +234,7 @@ class Molecular_Structure:
         with open(full_path, "wb") as f:
             pickle.dump(self, f)
 
+    @property
     def info(self):
         """
         Nicely formatted molecular structure summary with attribute descriptions.
@@ -210,69 +245,65 @@ class Molecular_Structure:
                 "label": "Name",
                 "description": "The name identifier of the molecular structure",
                 "value": self.name,
-                "unit": None
+                "unit": None,
             },
             "path": {
                 "label": "Path",
                 "description": "File or data source path for the molecular data",
                 "value": self.path,
-                "unit": None
+                "unit": None,
             },
             "atoms": {
                 "label": "Number of atoms",
                 "description": "Total number of atoms in the structure",
                 "value": len(self.atoms),
-                "unit":None
+                "unit": None,
             },
             "atomic_symbols": {
                 "label": "Atomic Symbols",
                 "description": "Chemical symbols of the constituent atoms",
                 "value": ", ".join(self.atoms),
-                "unit":None
+                "unit": None,
             },
             "coordinates": {
                 "label": "Cartesian Coordinates",
                 "description": "Original coordinates",
                 "value": [
-                    f"Atom {i+1} [{self.atoms[i]}]: {np.round(coord,6)}"
-                    for i, coord in enumerate(self.coordinates)
+                    f"Atom {i + 1} [{self.atoms[i]}]: {np.round(coord, 6)}" for i, coord in enumerate(self.coordinates)
                 ],
-                "unit":"Angström"
+                "unit": "Angström",
             },
             "geom_centered": {
                 "label": "Geometrically Centered Coordinates",
                 "description": "Coordinates centered to geometric_center and represented in the frame described by geometric_principle_axis",
                 "value": [
-                    f"Atom {i+1} [{self.atoms[i]}]: {np.round(coord,6)}"
+                    f"Atom {i + 1} [{self.atoms[i]}]: {np.round(coord, 6)}"
                     for i, coord in enumerate(self.geometrically_centered_coordinates)
                 ],
-                "unit":"Angström"
+                "unit": "Angström",
             },
             "cell_vectors": {
                 "label": "Cell Vectors",
                 "description": "Lattice or box vectors (in Angstroms)",
-                "value": [
-                    f"Vector {i+1}: {vec}"
-                    for i, vec in enumerate(self.cellvectors)
-                ],
-                "unit":"Angström"
+                "value": [f"Vector {i + 1}: {vec}" for i, vec in enumerate(self.cellvectors)],
+                "unit": "Angström",
             },
             "periodicity": {
                 "label": "Periodicity",
                 "description": "How many copies are detected along the cellvectors. 0: open boundary conditions, 1:periodic boundary conditions",
                 "value": self.periodicity,
-                "unit":None
+                "unit": None,
             },
             "symmetry": {
                 "label": "Symmetry Information",
                 "description": "Symmetry generators or operations of the structure",
                 "value": (
-                    list(self.Molecular_Symmetry.Symmetry_Generators.keys())
-                    if self.Molecular_Symmetry.Symmetry_Generators.keys()
+                    list(self.molecular_symmetry.Symmetry_Generators.keys())
+                    if self.molecular_symmetry.Symmetry_Generators.keys()
                     else ["No symmetry information available."]
                 ),
-                "unit":None
-            }
+                "unit": None,
+            },
         }
 
         print("=" * 40)
@@ -282,7 +313,7 @@ class Molecular_Structure:
         for key, entry in info.items():
             print(f"\n{entry['label']}:")
             print(f"  Description: {entry['description']}")
-            if entry['unit'] is not None:
+            if entry["unit"] is not None:
                 print(f"  Unit: {entry['unit']}")
             value = entry["value"]
 
@@ -297,95 +328,106 @@ class Molecular_Structure:
 
 #### Define Symmetry Class ####
 class Molecular_Symmetry(Symmetry.Symmetry):
-    def __init__(self, Molecular_Structure):
+    def __init__(self, molecular_structure: "Molecular_Structure"):
         super().__init__()  # Initialize parent class
-        self.determine_symmetry(Molecular_Structure)
+        self.molecular_structure = molecular_structure
+        self.determine_symmetry()
 
-    def determine_symmetry(self, Molecular_Structure):
-        self._test_translation(Molecular_Structure, tol_translation=5 * 10 ** (-4))
-        primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
-        geometry_centered_coordinates, center = (
-            Geometry.ComputeCenterOfGeometryCoordinates(
-                np.array(Molecular_Structure.coordinates)[primitive_indices]
-            )
+    def determine_symmetry(self):
+        self._test_translation(tol_translation=5 * 10 ** (-4))
+        primitive_indices = self._find_indices_in_primitive_cell()
+
+        geometry_centered_coordinates, center = Geometry.ComputeCenterOfGeometryCoordinates(
+            np.array(self.molecular_structure.coordinates)[primitive_indices]
         )
-        Molecular_Structure.geometric_center = center
+        self.molecular_structure.geometric_center = center
         if len(primitive_indices) > 1:
-            v1, v2, v3 = Geometry.getPrincipleAxis(
-                geometry_centered_coordinates, masses=None, tol=1e-3
-            )
+            v1, v2, v3 = Geometry.getPrincipleAxis(geometry_centered_coordinates, masses=None, tol=1e-3)
         else:
             v1 = np.array([1.0, 0.0, 0.0])
             v2 = np.array([0.0, 1.0, 0.0])
             v3 = np.array([0.0, 0.0, 1.0])
-        Molecular_Structure.geometric_principle_axis = [v1, v2, v3]
+        self.molecular_structure.geometric_principle_axis = [v1, v2, v3]
         G_UC_CC = []
         for coor in geometry_centered_coordinates:
             x = np.dot(v1, coor)
             y = np.dot(v2, coor)
             z = np.dot(v3, coor)
             G_UC_CC.append(np.array([x, y, z]))
-        Molecular_Structure.geometrically_centered_coordinates = G_UC_CC
+        self.molecular_structure.geometrically_centered_coordinates = G_UC_CC
         if len(primitive_indices) > 1:
-            mass_centered_coordinates, center_of_mass = (
-                Geometry.ComputeCenterOfMassCoordinates(
-                    np.array(Molecular_Structure.coordinates)[primitive_indices],
-                    np.array(Molecular_Structure.masses)[primitive_indices],
-                )
+            mass_centered_coordinates, center_of_mass = Geometry.ComputeCenterOfMassCoordinates(
+                np.array(self.molecular_structure.coordinates)[primitive_indices],
+                np.array(self.molecular_structure.masses)[primitive_indices],
             )
-            Molecular_Structure.center_of_mass = center_of_mass
+            self.molecular_structure.center_of_mass = center_of_mass
             v1, v2, v3 = Geometry.getPrincipleAxis(
                 mass_centered_coordinates,
-                masses=np.array(Molecular_Structure.masses)[primitive_indices],
+                masses=np.array(self.molecular_structure.masses)[primitive_indices],
                 tol=1e-3,
             )
-            Molecular_Structure.mass_principle_axis = [v1, v2, v3]
+            self.molecular_structure.mass_principle_axis = [v1, v2, v3]
             G_UC_CC = []
             for coor in geometry_centered_coordinates:
                 x = np.dot(v1, coor)
                 y = np.dot(v2, coor)
                 z = np.dot(v3, coor)
                 G_UC_CC.append(np.array([x, y, z]))
-            Molecular_Structure.mass_centered_coordinates = G_UC_CC
+            self.molecular_structure.mass_centered_coordinates = G_UC_CC
         else:
-            Molecular_Structure.center_of_mass = center
-            Molecular_Structure.mass_principle_axis = [v1, v2, v3]
-            Molecular_Structure.mass_centered_coordinates = G_UC_CC
+            self.molecular_structure.center_of_mass = center
+            self.molecular_structure.mass_principle_axis = [v1, v2, v3]
+            self.molecular_structure.mass_centered_coordinates = G_UC_CC
         if len(primitive_indices) > 1:
-            self._test_inversion(Molecular_Structure, tol_inversion=5 * 10 ** (-3))
-            self._test_rotation(Molecular_Structure, tol_rotation=5 * 10 ** (-3))
-            self._test_mirror(Molecular_Structure, tol_mirror=5 * 10 ** (-2))
+            self._test_inversion(tol_inversion=5 * 10 ** (-3))
+            self._test_rotation(tol_rotation=5 * 10 ** (-3))
+            self._test_mirror(tol_mirror=5 * 10 ** (-2))
         if not self.Symmetry_Generators:
-            self.Symmetry_Generators["Id"] = np.eye(len(Molecular_Structure.masses))
+            self.Symmetry_Generators["Id"] = np.eye(len(self.molecular_structure.masses))
 
-    def _test_translation(self, Molecular_Structure, tol_translation):
-        if Molecular_Structure.periodicity == (1, 1, 1):
-            coords = Molecular_Structure.coordinates
-            cellvectors = Molecular_Structure.cellvectors
-            atomic_symbols = Molecular_Structure.atoms
-            supercell, primitive_indices, scaled_lattice = getPrimitiveUnitCell(
+    def _test_translation(self, tol_translation):
+        """
+        This function tests for translation symmetry in the molecular structure.
+        Attributes which will be updated when this function is called:
+        - molecular_structure.periodicity: tuple
+            Updated periodicity of the molecular structure.
+        - molecular_structure.unitcells: dict
+        - Symmetry_Generators: dict
+
+        Parameters
+        ----------
+            tol_translation: float
+                Tolerance for translation symmetry detection.
+        Returns
+        -------
+            None
+        """
+        if self.molecular_structure.periodicity == (1, 1, 1):
+            cellvectors = self.molecular_structure.cellvectors
+            coords = self.molecular_structure.coordinates
+            atomic_symbols = self.molecular_structure.atoms
+            supercell, primitive_indices, scaled_lattice = get_primitive_unit_cell(
                 cellvectors, coords, atomic_symbols, tolerance=tol_translation
             )
-            Molecular_Structure.periodicity = supercell
-            Molecular_Structure.primitive_indices = primitive_indices
-            relative_cell_coordinates, _ = getCellCoordinates(
+            self.molecular_structure.periodicity = supercell
+
+            relative_cell_coordinates, _ = get_cell_coordinates(
                 scaled_lattice,
                 coords,
                 primitive_indices,
-                supercell,
                 tolerance=tol_translation,
             )
-            Tx, Ty, Tz, xFlag, yFlag, zFlag = getTranslationOps(
-                relative_cell_coordinates, supercell
-            )
+
+            Tx, Ty, Tz, xFlag, yFlag, zFlag = get_translation_ops(relative_cell_coordinates, supercell)
             if xFlag and np.sum(np.abs(Tx - np.eye(np.shape(Tx)[0]))) > 10 ** (-10):
                 self.Symmetry_Generators["t1"] = Tx
             if yFlag and np.sum(np.abs(Ty - np.eye(np.shape(Ty)[0]))) > 10 ** (-10):
                 self.Symmetry_Generators["t2"] = Ty
             if zFlag and np.sum(np.abs(Tz - np.eye(np.shape(Tz)[0]))) > 10 ** (-10):
                 self.Symmetry_Generators["t3"] = Tz
+
             # Compute the unit cells
-            p0, p1, p2 = Molecular_Structure.periodicity
+            p0, p1, p2 = self.molecular_structure.periodicity
             primitive_indices = np.array(primitive_indices)
             dim = Tx.shape[0]
 
@@ -403,24 +445,19 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                     for k in range(p2):
                         # Combined transformation matrix
                         M = Tx_powers[n] @ Ty_powers[m] @ Tz_powers[k]
-
                         # Transform selected primitive basis vectors
                         transformed = M @ identity[:, primitive_indices]
-
                         # Get index of max in each transformed vector
                         indices = np.argmax(transformed, axis=0)
-                        Molecular_Structure.unitcells[(n, m, k)] = indices.tolist()
-        else:
-            Molecular_Structure.unitcells[(0, 0, 0)] = [
-                it for it in range(len(Molecular_Structure.atoms))
-            ]
+                        self.molecular_structure.unitcells[(n, m, k)] = indices.tolist()
 
-    def _test_inversion(self, Molecular_Structure, tol_inversion):
-        atomic_symbols = Molecular_Structure.atoms
-        primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
-        geometry_centered_coordinates = (
-            Molecular_Structure.geometrically_centered_coordinates
-        )
+        else:
+            self.molecular_structure.unitcells[(0, 0, 0)] = [it for it in range(len(self.molecular_structure.atoms))]
+
+    def _test_inversion(self, tol_inversion):
+        atomic_symbols = self.molecular_structure.atoms
+        primitive_indices = self.molecular_structure.unitcells[(0, 0, 0)]
+        geometry_centered_coordinates = self.molecular_structure.geometrically_centered_coordinates
         has_symmetry, inversion_pairs = detect_inversion_symmetry(
             geometry_centered_coordinates,
             np.array(atomic_symbols)[primitive_indices],
@@ -430,21 +467,19 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             # Generate the Original Pairs
             pairs = {}
             for idx, inv_idx in inversion_pairs.items():
-                for uc in Molecular_Structure.unitcells:
-                    ucindex = Molecular_Structure.unitcells[uc]
+                for uc in self.molecular_structure.unitcells:
+                    ucindex = self.molecular_structure.unitcells[uc]
                     pairs[ucindex[idx]] = ucindex[inv_idx]
                 pairs[primitive_indices[idx]] = primitive_indices[inv_idx]
             # Add the remaining pairs on the diagonal
             nAtoms = len(atomic_symbols)
-            PrimitiveInversion = get_Inversion_Symmetry_Generator(pairs, nAtoms)
+            PrimitiveInversion = get_inversion_symmetry_generator(pairs, nAtoms)
             self.Symmetry_Generators["i"] = PrimitiveInversion
 
-    def _test_rotation(self, Molecular_Structure, tol_rotation, nmax=10):
-        geometrically_centered_coordinates = (
-            Molecular_Structure.geometrically_centered_coordinates
-        )
-        atomic_symbols = Molecular_Structure.atoms
-        primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
+    def _test_rotation(self, tol_rotation, nmax=10):
+        geometrically_centered_coordinates = self.molecular_structure.geometrically_centered_coordinates
+        atomic_symbols = self.molecular_structure.atoms
+        primitive_indices = self.molecular_structure.unitcells[(0, 0, 0)]
         for axis in ["x", "y", "z"]:
             for n in range(nmax, 1, -1):
                 has_symmetry, rotation_pairs = detect_rotational_symmetry(
@@ -471,20 +506,18 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 # Generate the Original Pairs
                 pairs = {}
                 for idx, rot_idx in rotation_pairs.items():
-                    for uc in Molecular_Structure.unitcells:
-                        ucindex = Molecular_Structure.unitcells[uc]
+                    for uc in self.molecular_structure.unitcells:
+                        ucindex = self.molecular_structure.unitcells[uc]
                         pairs[ucindex[idx]] = ucindex[rot_idx]
                 # Add the remaining pairs on the diagonal
                 nAtoms = len(atomic_symbols)
-                PrimitiveRotation = get_Inversion_Symmetry_Generator(pairs, nAtoms)
+                PrimitiveRotation = get_inversion_symmetry_generator(pairs, nAtoms)
                 self.Symmetry_Generators["C" + axis + "_" + str(n)] = PrimitiveRotation
 
-    def _test_mirror(self, Molecular_Structure, tol_mirror):
-        geometrically_centered_coordinates = (
-            Molecular_Structure.geometrically_centered_coordinates
-        )
-        atomic_symbols = Molecular_Structure.atoms
-        primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
+    def _test_mirror(self, tol_mirror):
+        geometrically_centered_coordinates = self.molecular_structure.geometrically_centered_coordinates
+        atomic_symbols = self.molecular_structure.atoms
+        primitive_indices = self.molecular_structure.unitcells[(0, 0, 0)]
         for axis in ["x", "y", "z"]:
             has_symmetry, mirror_pairs = detect_mirror_symmetry(
                 geometrically_centered_coordinates,
@@ -496,12 +529,151 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 # Generate the Original Pairs
                 pairs = {}
                 for idx, rot_idx in mirror_pairs.items():
-                    for uc in Molecular_Structure.unitcells:
-                        ucindex = Molecular_Structure.unitcells[uc]
+                    for uc in self.molecular_structure.unitcells:
+                        ucindex = self.molecular_structure.unitcells[uc]
                         pairs[ucindex[idx]] = ucindex[rot_idx]
                 nAtoms = len(atomic_symbols)
-                PrimitiveMirror = get_Inversion_Symmetry_Generator(pairs, nAtoms)
+                PrimitiveMirror = get_inversion_symmetry_generator(pairs, nAtoms)
                 self.Symmetry_Generators["S" + axis] = PrimitiveMirror
+
+    def _find_indices_in_primitive_cell(self):
+        """
+        This function checks if the given structure is a primitive cell and returns the indices of the atoms
+        located in the primitive unit cell.
+        The primitive_cellvectors are also stored/updated in the molecular_structure object.
+        Returns
+        -------
+            primitive_indices: list
+                list of indices of the atoms in the primitive unit cell
+        """
+        # use spglib to find the primitive lattice vectors
+        primitive_cell = spglib.spglib.find_primitive(
+            (
+                self.molecular_structure.cellvectors,
+                self.molecular_structure.coordinates @ np.linalg.inv(self.molecular_structure.cellvectors),
+                self.molecular_structure.atomic_numbers,
+            )
+        )  # returns (cellvectors_of_primitive_cell, positions_in_fractional_coord, atomic_numbers)
+
+        # determine the multiplicity of the primitive cell in supercell
+        # if multiplicity == np.prod(self.molecular_structure.periodicity),
+        # then the found conventional cell is already primitive else, find the sublattice in the conventional cell
+        # SC_cellvectors = transformation_matrix @ PC_cellvectors
+        transformation_matrix = self.molecular_structure.cellvectors @ np.linalg.inv(primitive_cell[0])
+        multiplicity_of_primitive = np.linalg.det(transformation_matrix)
+
+        if np.isclose(multiplicity_of_primitive, np.round(multiplicity_of_primitive), atol=1e-6):
+            multiplicity_of_primitive = int(np.round(multiplicity_of_primitive))
+            self.molecular_structure.primitive_cellvectors = self.molecular_structure.cellvectors / np.array(
+                self.molecular_structure.periodicity
+            )
+
+            if multiplicity_of_primitive / np.prod(self.molecular_structure.periodicity) != 1:
+                print("ℹ️ : Sublattice detected in the conventional cell. Updating to primitive cell.")
+
+                # This translation vector is hardcoded for orthorhombic supercell to hexagonal unit cell conversion!
+                # However, it is generalized for orthorhomic supercells constructed from any multiplicity of the
+                # hexagonal primitive unit cell
+                translation_vector = np.array([1.0, 1.0, 0.0]) / (
+                    multiplicity_of_primitive / np.prod(self.molecular_structure.periodicity)
+                )
+                primitive_indices = self._find_sublattice(translation_vector=translation_vector)
+
+                # This 30 degree rotation is hardcoded for orthorhombic supercell to hexagonal unit cell conversion!
+                rotation = np.array(
+                    [[np.cos(np.pi / 6), -np.sin(np.pi / 6), 0], [np.sin(np.pi / 6), np.cos(np.pi / 6), 0], [0, 0, 1]]
+                )
+                self.molecular_structure.primitive_cellvectors = primitive_cell[0] @ rotation
+                self.molecular_structure.cellvectors = np.round(
+                    (
+                        self.molecular_structure.primitive_cellvectors
+                        * np.array(self.molecular_structure.periodicity)[:, None]
+                    ),
+                    decimals=6,
+                )
+                self.molecular_structure.cellvectors[0] *= multiplicity_of_primitive / np.prod(
+                    self.molecular_structure.periodicity
+                )
+
+                self.molecular_structure.coordinates = wrapping_coordinates(
+                    self.molecular_structure.coordinates, self.molecular_structure.cellvectors
+                )
+
+                # run _test_translation again with updated cell vectors
+                self.molecular_structure.periodicity = (1, 1, 1)  # resetting before calling _test_translation again
+                self._test_translation(tol_translation=1e-6)
+            else:
+                # there is no sublattice, the conventional cell is already primitive
+                primitive_indices = self.molecular_structure.unitcells[(0, 0, 0)]
+        else:
+            raise ValueError("Could not determine multiplicity of the primitive cell.")
+
+        return primitive_indices
+
+    def _find_sublattice(
+        self,
+        translation_vector: np.ndarray = [0.5, 0.5, 0],
+        tol_translation=1e-6,
+    ):
+        """
+        Find if there exists a sublattice in the given "conventional" primitive unit cell.
+        Implemented and tested for: Orthorhombic -> hexagonal symmetry
+
+        Parameters
+        ----------
+            translation_vector: translation vector, default [0.5, 0.5, 0] for hexagonal to orthorhombic cell
+            tol_translation: tolerance for translation symmetry detection, default 1e-6
+
+        Returns
+        -------
+            primitive_indices: list
+                list of indices of the atoms in the primitive unit cell
+        """
+        fractional_coordinates = to_fractional(
+            self.molecular_structure.primitive_cellvectors,
+            self.molecular_structure.coordinates,
+        )
+        relative_vectors = fractional_coordinates[None, :, :] - fractional_coordinates[:, None, :]
+        translation_vector = np.abs(translation_vector)  # make sure translation vector is positive
+        mask = (
+            np.isclose(np.abs(relative_vectors[..., 0]), translation_vector[0], atol=tol_translation)
+            & np.isclose(np.abs(relative_vectors[..., 1]), translation_vector[1], atol=tol_translation)
+            & np.isclose(np.abs(relative_vectors[..., 2]), translation_vector[2], atol=tol_translation)
+        )
+
+        mapping_indices = np.argwhere(mask)
+
+        # find the unique indices closest to (0,0,0) that map onto each other
+        parent = np.arange(self.molecular_structure.n_atoms)
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(x, y):
+            ix = find(x)
+            iy = find(y)
+            if ix < iy:
+                parent[iy] = ix
+            else:
+                parent[ix] = iy
+
+        # Find connected components
+        for i, j in mapping_indices:
+            union(i, j)
+
+        dists = np.linalg.norm(self.molecular_structure.coordinates, axis=1)
+
+        primitive_indices = np.zeros(len(set(parent)), dtype=int)
+
+        for i, unique_roots in enumerate(set(parent)):
+            mask = parent == unique_roots
+            idxs = np.where(mask)[0]
+            primitive_indices[i] = idxs[np.argmin(dists[idxs])]
+
+        return primitive_indices
 
 
 #### Translation Symmetry Helper Functions ####
@@ -523,8 +695,7 @@ def to_fractional(lattice, positions):
 
     Methodology:
     1. Compute the inverse of the lattice matrix using `np.linalg.inv`.
-    2. For each position in `positions`, compute its fractional coordinates by multiplying
-    the position vector with the inverse lattice matrix (`inv_lattice @ pos`).
+    2. compute the fractional coordinates by performing a matrix multiplication: positions @ inv_lattice.
     3. Return the resulting fractional coordinates as a NumPy array.
 
     Example:
@@ -548,13 +719,11 @@ def to_fractional(lattice, positions):
     - This function assumes the lattice is invertible.
     """
     inv_lattice = np.linalg.inv(lattice)
-    fractional_positions = [inv_lattice @ pos for pos in positions]
+    fractional_positions = positions @ inv_lattice
     return np.array(fractional_positions)
 
 
-def is_legitimate_scaled_cell(
-    v1, v2, v3, coordinates, atomicsymbols, N1, N2, N3, tolerance=1e-7
-):
+def is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, N1, N2, N3, tolerance=1e-7):
     """
     Checks if a scaled unit cell is legitimate by verifying that all atoms
     in the scaled lattice can be mapped into the primitive unit cell using
@@ -589,7 +758,7 @@ def is_legitimate_scaled_cell(
     comparing positions and atomic symbols within the specified tolerance.
     """
     # Scale the lattice vectors
-    scaled_lattice = np.column_stack((v1 / N1, v2 / N2, v3 / N3))
+    scaled_lattice = np.round(np.vstack((v1 / N1, v2 / N2, v3 / N3)) / tolerance) * tolerance
     # Convert atom positions to fractional coordinates in the original lattice
     fractional_positions = to_fractional(scaled_lattice, coordinates)
     # Scale and wrap fractional positions into [0,1) range for periodicity
@@ -602,9 +771,7 @@ def is_legitimate_scaled_cell(
     primitive_positions = fractional_positions[primitive_indices]
     primitive_symbols = np.array(atomicsymbols)[primitive_indices]
     # Generate all possible translation vectors within the periodic limits
-    translations = [
-        np.array([i, j, k]) for i in range(N1) for j in range(N2) for k in range(N3)
-    ]
+    translations = [np.array([i, j, k]) for i in range(N1) for j in range(N2) for k in range(N3)]
     # Check each translated position to confirm it maps into the unit cell
     for pos, symbol in zip(fractional_positions, atomicsymbols):
         # Check if the translated positions of `pos` map into the unit cell
@@ -613,15 +780,11 @@ def is_legitimate_scaled_cell(
             translated_pos = pos - translation  # Wrap within [0,1)
             # Check if the translated position matches any point in the primitive cell
             if any(
-                np.allclose(translated_pos, primitive_pos, atol=tolerance)
-                and primitive_symbol == symbol
-                for primitive_pos, primitive_symbol in zip(
-                    primitive_positions, primitive_symbols
-                )
+                np.allclose(translated_pos, primitive_pos, atol=tolerance) and primitive_symbol == symbol
+                for primitive_pos, primitive_symbol in zip(primitive_positions, primitive_symbols)
             ):
                 found_match = True
                 break  # Found a match, no need to check other translations
-
         # If no match found for this atom, the cell is not legitimate
         if not found_match:
             return False, primitive_indices, scaled_lattice
@@ -629,7 +792,7 @@ def is_legitimate_scaled_cell(
     return True, primitive_indices, scaled_lattice
 
 
-def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols, tolerance=1e-8):
+def get_primitive_unit_cell(cellvectors, coordinates, atomicsymbols, tolerance=1e-8):
     """
     Identifies the primitive unit cell of a crystal lattice by determining the
     smallest valid scaling factors along each lattice vector direction.
@@ -675,25 +838,17 @@ def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols, tolerance=1e-8
     primes = range(30, 0, -1)
     # x1 divisor
     for itx in primes:
-        iscell, _, _ = is_legitimate_scaled_cell(
-            v1, v2, v3, coordinates, atomicsymbols, itx, 1, 1, tolerance=tolerance
-        )
+        iscell, _, _ = is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, itx, 1, 1, tolerance=tolerance)
         if iscell:
             break
     # x2 divisor
     for ity in primes:
-        iscell, _, _ = is_legitimate_scaled_cell(
-            v1, v2, v3, coordinates, atomicsymbols, 1, ity, 1, tolerance=tolerance
-        )
+        iscell, _, _ = is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, 1, ity, 1, tolerance=tolerance)
         if iscell:
             break
     # x3 divisor
     for itz in primes:
-        print(itz)
-        iscell, _, _ = is_legitimate_scaled_cell(
-            v1, v2, v3, coordinates, atomicsymbols, 1, 1, itz, tolerance=tolerance
-        )
-        print(iscell)
+        iscell, _, _ = is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, 1, 1, itz, tolerance=tolerance)
         if iscell:
             break
     iscell, primitive_indices, scaled_lattice = is_legitimate_scaled_cell(
@@ -702,61 +857,103 @@ def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols, tolerance=1e-8
     return (itx, ity, itz), primitive_indices, scaled_lattice
 
 
-def getCellCoordinates(lattice, coordinates, primitive_indices, supercell, tolerance):
+def get_cell_coordinates(lattice, coordinates, primitive_indices, tolerance):
     """
-    Computes the relative cell coordinates and fractional coordinates of atoms within a unit cell.
+    Computes the relative cell coordinates and fractional coordinates.
 
     Parameters:
     - lattice (array-like, shape (3, 3)):
         The lattice vectors defining the crystal structure.
     - coordinates (array-like, shape (n, 3)):
-        Cartesian coordinates of all atoms in the lattice.
-    - primitive_indices (list of ints):
+        Cartesian coordinates of all atoms in the structure.
+    - primitive_indices (list[int]):
         Indices of atoms belonging to the primitive unit cell.
+    - tolerance (float):
+        Numerical tolerance for position matching in fractional coordinates.
 
     Returns:
-    - relative_cell_coordinates (list of arrays):
+    - relative_cell_coordinates (ndarray, shape (n, 4)):
+        Array of [tx, ty, tz, primitive_index] for each atom, where (tx, ty, tz) are integer lattice translations.
         List of relative cell coordinates [x_shift, y_shift, z_shift, primitive_index] for each atom.
-    - in_cell_coordinates (array-like, shape (len(primitive_indices), 3)):
-        Fractional coordinates of atoms in the primitive unit cell wrapped to [0, 1).
+    - in_cell_coordinates (ndarray, shape (len(primitive_indices), 3)):
+        Fractional coordinates of primitive atoms wrapped into [0,1).
     """
-    # Convert atom positions to fractional coordinates in the original lattice
+    # 1. Get all fractional coordinates
+    # (Assuming to_fractional is defined externally as before)
     fractional_positions = to_fractional(lattice, coordinates)
-    primitive_positions = fractional_positions[primitive_indices]
-    relative_cell_coordinates = []
-    translations = [
-        np.array([i, j, k])
-        for i in range(supercell[0])
-        for j in range(supercell[1])
-        for k in range(supercell[2])
-    ]
 
-    for frac_coord in fractional_positions:
-        for translation in translations:
-            translated_pos = frac_coord - translation  # Wrap within [0,1)
-            # Check if the translated position matches any point in the primitive cell
-            isclosearray = [
-                np.allclose(translated_pos, primitive_position, atol=tolerance)
-                for primitive_position in primitive_positions
-            ]
-            isclose = any(isclosearray)
-            whereisclose = np.where(isclosearray)
-            if isclose:
-                relative_cell_coordinates.append(
-                    np.array(
-                        [
-                            translation[0],
-                            translation[1],
-                            translation[2],
-                            whereisclose[0][0],
-                        ]
-                    )
-                )
-                break  # Found a match, no need to check other translations
-    return np.array(relative_cell_coordinates), np.array(primitive_positions)
+    # 2. Get reference primitive coordinates
+    # We do NOT apply floor() here. We compare raw values.
+    primitive_frac_coords = fractional_positions[primitive_indices]
+
+    # 3. Calculate differences between ALL pairs (Broadcasting)
+    # Shape: (n_atoms, n_prim, 3)
+    # raw_diff represents (Atom_Position - Primitive_Position)
+    raw_diffs = fractional_positions[:, None, :] - primitive_frac_coords[None, :, :]
+
+    # 4. Find the deviation from the nearest integer translation
+    # If atom matches primitive, raw_diff should be like 0.0, 1.0, -1.0, 2.0, etc.
+    # np.round(raw_diff) gives us the "Translation Integer candidate"
+    closest_integer_translation = np.round(raw_diffs)
+
+    # residual is the distance from that integer translation
+    residual = raw_diffs - closest_integer_translation
+
+    # 5. Check matches
+    # We check if the residual is effectively zero
+    is_match = np.all(np.abs(residual) < tolerance, axis=2)
+
+    # 6. Error Handling (Uniqueness check)
+    match_count = np.sum(is_match, axis=1)
+
+    if np.any(match_count == 0):
+        first_bad = np.flatnonzero(match_count == 0)[0]
+        # --- DIAGNOSTIC BLOCK ---
+        # Find the "best" failure to tell the user how far off they are
+        # We look at the residual for the bad atom against all primitive atoms
+        bad_atom_residuals = np.abs(residual[first_bad])  # Shape: (n_prim, 3)
+
+        # Find the maximum deviation in (x,y,z) for each primitive candidate
+        max_dev_per_prim = np.max(bad_atom_residuals, axis=1)
+
+        # Find the primitive atom that came closest
+        closest_prim_idx_local = np.argmin(max_dev_per_prim)
+        closest_prim_global = primitive_indices[closest_prim_idx_local]
+        min_deviation = max_dev_per_prim[closest_prim_idx_local]
+
+        raise ValueError(
+            f"Atom {first_bad} at {fractional_positions[first_bad]} could not be matched.\n"
+            f"Closest candidate was Primitive Atom {closest_prim_global}.\n"
+            f"Deviation: {min_deviation:.2e} (Tolerance: {tolerance}).\n"
+            f"-> Suggestion: Increase tolerance to at least {min_deviation * 1.1:.1e}"
+        )
+        # ------------------------
+
+    if np.any(match_count > 1):
+        first_bad = np.flatnonzero(match_count > 1)[0]
+        raise ValueError(f"Atom {first_bad} matches multiple primitive atoms. Decrease tolerance or check structure.")
+
+    # 7. Extract Results
+    # Get the index of the primitive atom (0 to n_prim-1)
+    prim_indices_map = np.argmax(is_match, axis=1)
+
+    # Retrieve the correct translation vector for that specific match
+    # We pick the specific translation integer we found in step 4
+    # Fancy indexing: [range(n), prim_indices_map] selects the matching column for each row
+    n_atoms = len(fractional_positions)
+    t_integers = closest_integer_translation[np.arange(n_atoms), prim_indices_map].astype(int)
+
+    # 8. Format output
+    relative_cell_coordinates = np.hstack((t_integers, prim_indices_map[:, None]))
+
+    # For the return value of `in_cell_coordinates`, we usually want them wrapped [0, 1)
+    # strictly for display/reference purposes.
+    in_cell_coordinates = primitive_frac_coords % 1.0
+
+    return relative_cell_coordinates, in_cell_coordinates
 
 
-def getTranslationOps(relative_cell_coordinates, supercell):
+def get_translation_ops(relative_cell_coordinates, supercell):
     """
     Computes the translation operators ( T_x ), ( T_y ), and ( T_z ) for a given set
     of relative cell coordinates in a supercell. These operators represent translations
@@ -901,9 +1098,7 @@ def detect_inversion_symmetry(centered_coords, atomic_symbols, tolerance=1e-5):
 
     for idx, coord in enumerate(centered_coords):
         # Check if the negated coordinates are in the list
-        negation_found, neg_idx = find_negated_vector(
-            centered_coords, coord, tolerance=tolerance
-        )
+        negation_found, neg_idx = find_negated_vector(centered_coords, coord, tolerance=tolerance)
 
         # Verify the atomic symbols match for symmetry
         if negation_found and atomic_symbols[idx] == atomic_symbols[neg_idx]:
@@ -914,7 +1109,7 @@ def detect_inversion_symmetry(centered_coords, atomic_symbols, tolerance=1e-5):
     return True, inversion_pairs
 
 
-def get_Inversion_Symmetry_Generator(pairs_pairs, n_atoms):
+def get_inversion_symmetry_generator(pairs_pairs, n_atoms):
     """
     Generates a permutation matrix based on detected inversion pairs.
 
@@ -951,9 +1146,7 @@ def rotate_coords(coords, axis, angle_rad):
     return [R @ coord for coord in coords]
 
 
-def detect_rotational_symmetry(
-    centered_coords, atomic_symbols, axis="z", n=2, tolerance=1e-5
-):
+def detect_rotational_symmetry(centered_coords, atomic_symbols, axis="z", n=2, tolerance=1e-5):
     """
     Checks for Cn rotational symmetry about a specified axis.
 
@@ -970,9 +1163,7 @@ def detect_rotational_symmetry(
     """
     angle_rad = 2 * np.pi / n
     rotated_coords = rotate_coords(centered_coords, axis, angle_rad)
-    return find_rotated_match(
-        rotated_coords, centered_coords, atomic_symbols, tolerance=tolerance
-    )
+    return find_rotated_match(rotated_coords, centered_coords, atomic_symbols, tolerance=tolerance)
 
 
 def find_rotated_match(rotated_coords, original_coords, atomic_symbols, tolerance=1e-5):
@@ -985,9 +1176,7 @@ def find_rotated_match(rotated_coords, original_coords, atomic_symbols, toleranc
 
     for i, (rot_coord, symbol) in enumerate(zip(rotated_coords, atomic_symbols)):
         matched = False
-        for j, (orig_coord, orig_symbol) in enumerate(
-            zip(original_coords, atomic_symbols)
-        ):
+        for j, (orig_coord, orig_symbol) in enumerate(zip(original_coords, atomic_symbols)):
             if j in used_indices:
                 continue
             if orig_symbol != symbol:
@@ -1035,6 +1224,25 @@ def detect_mirror_symmetry(centered_coords, atomic_symbols, axis="z", tolerance=
         dict: Mapping of original atom indices to reflected counterparts if symmetry exists.
     """
     reflected_coords = reflect_coords(centered_coords, axis)
-    return find_rotated_match(
-        reflected_coords, centered_coords, atomic_symbols, tolerance=tolerance
-    )
+    return find_rotated_match(reflected_coords, centered_coords, atomic_symbols, tolerance=tolerance)
+
+
+def wrapping_coordinates(coordinates, cellvectors):
+    """
+    Wraps atomic coordinates into the unit cell defined by the given cell vectors.
+
+    Parameters:
+    - coordinates (array-like, shape (n, 3)):
+        Cartesian coordinates of atoms.
+    - cellvectors (array-like, shape (3, 3)):
+        Lattice vectors defining the unit cell.
+
+    Returns:
+    - wrapped_coordinates (numpy array, shape (n, 3)):
+        Coordinates wrapped into the unit cell.
+    """
+    inv_cell = np.linalg.inv(cellvectors)
+    fractional_coords = coordinates @ inv_cell
+    wrapped_fractional_coords = fractional_coords % 1.0
+    wrapped_coordinates = wrapped_fractional_coords @ cellvectors
+    return np.round(wrapped_coordinates, decimals=6)
