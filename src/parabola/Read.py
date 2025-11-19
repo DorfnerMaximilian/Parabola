@@ -217,7 +217,7 @@ def read_coordinates_and_masses(filename):
         atomicsymbols.append(coords[1])
         masses.append(mass)
         coordinates.append(np.array([coords[2], coords[3], coords[4]]))
-    return coordinates, masses, atomicsymbols
+    return np.array(coordinates), masses, atomicsymbols
 
 
 "####################################################################################"
