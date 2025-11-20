@@ -63,7 +63,7 @@ class Molecular_Structure:
         path: str = "./",
         electronics_path: str | None = None,
         vibrational_path: str | None = None,
-        save: bool = False,
+        save: bool = True,
     ):
         """
         Initializes or updates the attributes of the instance.
@@ -334,8 +334,9 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         self.determine_symmetry()
 
     def determine_symmetry(self):
-        self._test_translation(tol_translation=5 * 10 ** (-4))
-        primitive_indices = self._find_indices_in_primitive_cell()
+        tol_tolerance = 5 * 10 ** (-4)
+        self._test_translation(tol_translation=tol_tolerance)
+        primitive_indices = self._find_indices_in_primitive_cell(tol_translation=tol_translation)
 
         geometry_centered_coordinates, center = Geometry.ComputeCenterOfGeometryCoordinates(
             np.array(self.molecular_structure.coordinates)[primitive_indices]
@@ -536,7 +537,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 PrimitiveMirror = get_inversion_symmetry_generator(pairs, nAtoms)
                 self.Symmetry_Generators["S" + axis] = PrimitiveMirror
 
-    def _find_indices_in_primitive_cell(self):
+    def _find_indices_in_primitive_cell(self, tol_translation=1e-6):
         """
         This function checks if the given structure is a primitive cell and returns the indices of the atoms
         located in the primitive unit cell.
@@ -552,7 +553,8 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 self.molecular_structure.cellvectors,
                 self.molecular_structure.coordinates @ np.linalg.inv(self.molecular_structure.cellvectors),
                 self.molecular_structure.atomic_numbers,
-            )
+            ),
+            symprec=,
         )  # returns (cellvectors_of_primitive_cell, positions_in_fractional_coord, atomic_numbers)
 
         # determine the multiplicity of the primitive cell in supercell
@@ -601,7 +603,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
 
                 # run _test_translation again with updated cell vectors
                 self.molecular_structure.periodicity = (1, 1, 1)  # resetting before calling _test_translation again
-                self._test_translation(tol_translation=1e-6)
+                self._test_translation(tol_translation=tol_translation)
             else:
                 # there is no sublattice, the conventional cell is already primitive
                 primitive_indices = self.molecular_structure.unitcells[(0, 0, 0)]
