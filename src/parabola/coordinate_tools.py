@@ -424,7 +424,7 @@ def get_principle_axis_coordinates(xyzcoordinates, masses=None, axis=None):
     return principleaxiscoordinates, center
 
 
-def getTransAndRotEigenvectors(coordinates, masses):
+def get_trans_and_rot_eigenvectors(coordinates, masses):
     """
     Computes the translational and rotational eigenvectors according to "Vibrational Analysis in Gaussian,"
     Joseph W. Ochterski (1999).
@@ -450,36 +450,36 @@ def getTransAndRotEigenvectors(coordinates, masses):
 
     # Compute the Intertia Tensor
     I = get_inertia_tensor(coordinates, masses)
-    centerofmasscoordinates, _ = compute_center_of_mass_coordinates(coordinates, masses)
+    center_of_mass_coordinates, _ = compute_center_of_mass_coordinates(coordinates, masses)
 
     # Get the principle Axis
-    _, principleAxis = np.linalg.eigh(I)
-    numofatoms = int(len(masses))
-    Roteigenvectors = []
+    _, principle_axis = np.linalg.eigh(I)
+    num_of_atoms = int(len(masses))
+    rot_eigenvectors = []
 
     for it in [0, 1, 2]:
         # Define the RotEigenvector
-        RotEigenvector = np.zeros(3 * numofatoms)
+        rot_eigenvector = np.zeros(3 * num_of_atoms)
         # generate the vector X along the principle axis
-        X = principleAxis[:, it]
-        for s in range(numofatoms):
-            rvector = np.cross(X, centerofmasscoordinates[s])
-            RotEigenvector[3 * s] = rvector[0]
-            RotEigenvector[3 * s + 1] = rvector[1]
-            RotEigenvector[3 * s + 2] = rvector[2]
+        X = principle_axis[:, it]
+        for s in range(num_of_atoms):
+            rvector = np.cross(X, center_of_mass_coordinates[s])
+            rot_eigenvector[3 * s] = rvector[0]
+            rot_eigenvector[3 * s + 1] = rvector[1]
+            rot_eigenvector[3 * s + 2] = rvector[2]
         # Normalize the generated Eigenvector
-        RotEigenvector /= np.linalg.norm(RotEigenvector)
-        Roteigenvectors.append(RotEigenvector)
-    Transeigenvectors = []
+        rot_eigenvector /= np.linalg.norm(rot_eigenvector)
+        rot_eigenvectors.append(rot_eigenvector)
+    trans_eigenvectors = []
     for it in [0, 1, 2]:
         # Define the TransEigenvector
-        TransEigenvector = np.zeros(3 * numofatoms)
-        for s in range(numofatoms):
-            TransEigenvector[3 * s + it] = 1
+        trans_eigenvector = np.zeros(3 * num_of_atoms)
+        for s in range(num_of_atoms):
+            trans_eigenvector[3 * s + it] = 1
         # Normalize the generated Eigenvector
-        TransEigenvector /= np.linalg.norm(TransEigenvector)
-        Transeigenvectors.append(TransEigenvector)
-    return Transeigenvectors, Roteigenvectors
+        trans_eigenvector /= np.linalg.norm(trans_eigenvector)
+        trans_eigenvectors.append(trans_eigenvector)
+    return trans_eigenvectors, rot_eigenvectors
 
 
 def generate_internal_representation(
