@@ -2,6 +2,7 @@ import os
 import pickle
 
 import numpy as np
+import spglib
 
 from . import Geometry, Read, Symmetry, electronics, vibrations
 
@@ -59,7 +60,7 @@ class Molecular_Structure:
         self,
         *,
         name: str,
-        path: str = ".",
+        path: str = "./",
         electronics_path: str | None = None,
         vibrational_path: str | None = None,
         save: bool = True,
@@ -81,7 +82,7 @@ class Molecular_Structure:
             print(f"⌬ : Creating new Molecular Structure for {name} in:")
             print(os.path.abspath(self.path))
             print("▲ : Processing Geometric Structural Information")
-            xyz_filepath = Read.get_xyz_filename(path="./", verbose=True)
+            xyz_filepath = Read.get_xyz_filename(path=path, verbose=True)
             self.xyz_path = xyz_filepath
             coordinates, masses, atomic_symbols = Read.read_coordinates_and_masses(xyz_filepath)
             self.coordinates = coordinates
@@ -93,6 +94,7 @@ class Molecular_Structure:
             self.mass_centered_coordinates = []
             self.mass_principle_axis = []
             self.atoms = atomic_symbols
+            self.atomic_numbers = self._get_atomic_numbers()
             if Read.read_periodicity(path):
                 self.periodicity = (1, 1, 1)
             else:
@@ -176,6 +178,7 @@ class Molecular_Structure:
         with open(full_path, "wb") as f:
             pickle.dump(self, f)
 
+    @property
     def info(self):
         """
         Nicely formatted molecular structure summary with attribute descriptions.
@@ -266,76 +269,136 @@ class Molecular_Structure:
 
         print("\n" + "=" * 40)
 
+    @property
+    def n_atoms(self):
+        return len(self.atoms)
+
+    def _get_atomic_numbers(self):
+        """
+        Convert atomic symbols to atomic numbers using a predefined mapping.
+        """
+        periodic_table = {
+            "H": 1,
+            "He": 2,
+            "Li": 3,
+            "Be": 4,
+            "B": 5,
+            "C": 6,
+            "N": 7,
+            "O": 8,
+            "F": 9,
+            "Ne": 10,
+            "Na": 11,
+            "Mg": 12,
+            "Al": 13,
+            "Si": 14,
+            "P": 15,
+            "S": 16,
+            "Cl": 17,
+            "Ar": 18,
+            "K": 19,
+            "Ca": 20,
+            "Sc": 21,
+            "Ti": 22,
+            "V": 23,
+            "Cr": 24,
+            "Mn": 25,
+            "Fe": 26,
+            "Co": 27,
+            "Ni": 28,
+            "Cu": 29,
+            "Zn": 30,
+            "Ga": 31,
+            "Ge": 32,
+            "As": 33,
+            "Se": 34,
+            "Br": 35,
+            "Kr": 36,
+            # Add more elements as needed
+        }
+        atomic_numbers = []
+        for symbol in self.atoms:
+            atomic_number = periodic_table.get(symbol)
+            if atomic_number is None:
+                raise ValueError(f"Unknown atomic symbol: {symbol}")
+            atomic_numbers.append(atomic_number)
+        return atomic_numbers
+
 
 #### Define Symmetry Class ####
 class Molecular_Symmetry(Symmetry.Symmetry):
-    def __init__(self, Molecular_Structure):
+    def __init__(self, molecular_structure):
         super().__init__()  # Initialize parent class
-        self.determine_symmetry(Molecular_Structure)
+        self.determine_symmetry(molecular_structure=molecular_structure)
 
-    def determine_symmetry(self):
+    def determine_symmetry(
+        self,
+        molecular_structure: "Molecular_Structure",
+    ):
         tol_translation = 5 * 10 ** (-4)
-        self._test_translation(tol_translation=tol_translation)
-        primitive_indices = self._find_indices_in_primitive_cell(tol_translation=tol_translation)
+        self._test_translation(molecular_structure=molecular_structure, tol_translation=tol_translation)
+        primitive_indices = self._find_indices_in_primitive_cell(
+            molecular_structure=molecular_structure, tol_translation=tol_translation
+        )
 
         geometry_centered_coordinates, center = Geometry.ComputeCenterOfGeometryCoordinates(
-            np.array(self.molecular_structure.coordinates)[primitive_indices]
+            np.array(molecular_structure.coordinates)[primitive_indices]
         )
-        Molecular_Structure.geometric_center = center
+        molecular_structure.geometric_center = center
         if len(primitive_indices) > 1:
             v1, v2, v3 = Geometry.getPrincipleAxis(geometry_centered_coordinates, masses=None, tol=1e-3)
         else:
             v1 = np.array([1.0, 0.0, 0.0])
             v2 = np.array([0.0, 1.0, 0.0])
             v3 = np.array([0.0, 0.0, 1.0])
-        Molecular_Structure.geometric_principle_axis = [v1, v2, v3]
+        molecular_structure.geometric_principle_axis = [v1, v2, v3]
         G_UC_CC = []
         for coor in geometry_centered_coordinates:
             x = np.dot(v1, coor)
             y = np.dot(v2, coor)
             z = np.dot(v3, coor)
             G_UC_CC.append(np.array([x, y, z]))
-        Molecular_Structure.geometrically_centered_coordinates = G_UC_CC
+        molecular_structure.geometrically_centered_coordinates = G_UC_CC
         if len(primitive_indices) > 1:
             mass_centered_coordinates, center_of_mass = Geometry.ComputeCenterOfMassCoordinates(
-                np.array(Molecular_Structure.coordinates)[primitive_indices],
-                np.array(Molecular_Structure.masses)[primitive_indices],
+                np.array(molecular_structure.coordinates)[primitive_indices],
+                np.array(molecular_structure.masses)[primitive_indices],
             )
-            Molecular_Structure.center_of_mass = center_of_mass
+            molecular_structure.center_of_mass = center_of_mass
             v1, v2, v3 = Geometry.getPrincipleAxis(
                 mass_centered_coordinates,
-                masses=np.array(Molecular_Structure.masses)[primitive_indices],
+                masses=np.array(molecular_structure.masses)[primitive_indices],
                 tol=1e-3,
             )
-            Molecular_Structure.mass_principle_axis = [v1, v2, v3]
+            molecular_structure.mass_principle_axis = [v1, v2, v3]
             G_UC_CC = []
             for coor in geometry_centered_coordinates:
                 x = np.dot(v1, coor)
                 y = np.dot(v2, coor)
                 z = np.dot(v3, coor)
                 G_UC_CC.append(np.array([x, y, z]))
-            Molecular_Structure.mass_centered_coordinates = G_UC_CC
+            molecular_structure.mass_centered_coordinates = G_UC_CC
         else:
-            Molecular_Structure.center_of_mass = center
-            Molecular_Structure.mass_principle_axis = [v1, v2, v3]
-            Molecular_Structure.mass_centered_coordinates = G_UC_CC
+            molecular_structure.center_of_mass = center
+            molecular_structure.mass_principle_axis = [v1, v2, v3]
+            molecular_structure.mass_centered_coordinates = G_UC_CC
         if len(primitive_indices) > 1:
-            self._test_inversion(Molecular_Structure, tol_inversion=5 * 10 ** (-3))
-            self._test_rotation(Molecular_Structure, tol_rotation=5 * 10 ** (-3))
-            self._test_mirror(Molecular_Structure, tol_mirror=5 * 10 ** (-2))
+            self._test_inversion(molecular_structure, tol_inversion=5 * 10 ** (-3))
+            self._test_rotation(molecular_structure, tol_rotation=5 * 10 ** (-3))
+            self._test_mirror(molecular_structure, tol_mirror=5 * 10 ** (-2))
         if not self.Symmetry_Generators:
-            self.Symmetry_Generators["Id"] = np.eye(len(Molecular_Structure.masses))
+            self.Symmetry_Generators["Id"] = np.eye(len(molecular_structure.masses))
 
-    def _test_translation(self, Molecular_Structure, tol_translation):
-        if Molecular_Structure.periodicity == (1, 1, 1):
-            coords = Molecular_Structure.coordinates
-            cellvectors = Molecular_Structure.cellvectors
-            atomic_symbols = Molecular_Structure.atoms
+    def _test_translation(self, molecular_structure: "Molecular_Structure", tol_translation):
+        if molecular_structure.periodicity == (1, 1, 1):
+            coords = molecular_structure.coordinates
+            cellvectors = molecular_structure.cellvectors
+            atomic_symbols = molecular_structure.atoms
             supercell, primitive_indices, scaled_lattice = getPrimitiveUnitCell(
                 cellvectors, coords, atomic_symbols, tolerance=tol_translation
             )
-            Molecular_Structure.periodicity = supercell
-            Molecular_Structure.primitive_indices = primitive_indices
+            molecular_structure.periodicity = supercell
+            molecular_structure.primitive_indices = primitive_indices
             relative_cell_coordinates, _ = getCellCoordinates(
                 scaled_lattice,
                 coords,
@@ -350,7 +413,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             if zFlag and np.sum(np.abs(Tz - np.eye(np.shape(Tz)[0]))) > 10 ** (-10):
                 self.Symmetry_Generators["t3"] = Tz
             # Compute the unit cells
-            p0, p1, p2 = Molecular_Structure.periodicity
+            p0, p1, p2 = molecular_structure.periodicity
             primitive_indices = np.array(primitive_indices)
             dim = Tx.shape[0]
 
@@ -373,14 +436,14 @@ class Molecular_Symmetry(Symmetry.Symmetry):
 
                         # Get index of max in each transformed vector
                         indices = np.argmax(transformed, axis=0)
-                        Molecular_Structure.unitcells[(n, m, k)] = indices.tolist()
+                        molecular_structure.unitcells[(n, m, k)] = indices.tolist()
         else:
-            Molecular_Structure.unitcells[(0, 0, 0)] = [it for it in range(len(Molecular_Structure.atoms))]
+            molecular_structure.unitcells[(0, 0, 0)] = [it for it in range(len(Molecular_Structure.atoms))]
 
-    def _test_inversion(self, Molecular_Structure, tol_inversion):
-        atomic_symbols = Molecular_Structure.atoms
-        primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
-        geometry_centered_coordinates = Molecular_Structure.geometrically_centered_coordinates
+    def _test_inversion(self, molecular_structure: "Molecular_Structure", tol_inversion):
+        atomic_symbols = molecular_structure.atoms
+        primitive_indices = molecular_structure.unitcells[(0, 0, 0)]
+        geometry_centered_coordinates = molecular_structure.geometrically_centered_coordinates
         has_symmetry, inversion_pairs = detect_inversion_symmetry(
             geometry_centered_coordinates,
             np.array(atomic_symbols)[primitive_indices],
@@ -390,8 +453,8 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             # Generate the Original Pairs
             pairs = {}
             for idx, inv_idx in inversion_pairs.items():
-                for uc in Molecular_Structure.unitcells:
-                    ucindex = Molecular_Structure.unitcells[uc]
+                for uc in molecular_structure.unitcells:
+                    ucindex = molecular_structure.unitcells[uc]
                     pairs[ucindex[idx]] = ucindex[inv_idx]
                 pairs[primitive_indices[idx]] = primitive_indices[inv_idx]
             # Add the remaining pairs on the diagonal
@@ -399,10 +462,10 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             PrimitiveInversion = get_Inversion_Symmetry_Generator(pairs, nAtoms)
             self.Symmetry_Generators["i"] = PrimitiveInversion
 
-    def _test_rotation(self, Molecular_Structure, tol_rotation, nmax=10):
-        geometrically_centered_coordinates = Molecular_Structure.geometrically_centered_coordinates
-        atomic_symbols = Molecular_Structure.atoms
-        primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
+    def _test_rotation(self, molecular_structure: "Molecular_Structure", tol_rotation, nmax=10):
+        geometrically_centered_coordinates = molecular_structure.geometrically_centered_coordinates
+        atomic_symbols = molecular_structure.atoms
+        primitive_indices = molecular_structure.unitcells[(0, 0, 0)]
         for axis in ["x", "y", "z"]:
             for n in range(nmax, 1, -1):
                 has_symmetry, rotation_pairs = detect_rotational_symmetry(
@@ -429,18 +492,18 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 # Generate the Original Pairs
                 pairs = {}
                 for idx, rot_idx in rotation_pairs.items():
-                    for uc in Molecular_Structure.unitcells:
-                        ucindex = Molecular_Structure.unitcells[uc]
+                    for uc in molecular_structure.unitcells:
+                        ucindex = molecular_structure.unitcells[uc]
                         pairs[ucindex[idx]] = ucindex[rot_idx]
                 # Add the remaining pairs on the diagonal
                 nAtoms = len(atomic_symbols)
                 PrimitiveRotation = get_Inversion_Symmetry_Generator(pairs, nAtoms)
                 self.Symmetry_Generators["C" + axis + "_" + str(n)] = PrimitiveRotation
 
-    def _test_mirror(self, Molecular_Structure, tol_mirror):
-        geometrically_centered_coordinates = Molecular_Structure.geometrically_centered_coordinates
-        atomic_symbols = Molecular_Structure.atoms
-        primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
+    def _test_mirror(self, molecular_structure: "Molecular_Structure", tol_mirror):
+        geometrically_centered_coordinates = molecular_structure.geometrically_centered_coordinates
+        atomic_symbols = molecular_structure.atoms
+        primitive_indices = molecular_structure.unitcells[(0, 0, 0)]
         for axis in ["x", "y", "z"]:
             has_symmetry, mirror_pairs = detect_mirror_symmetry(
                 geometrically_centered_coordinates,
@@ -452,14 +515,14 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 # Generate the Original Pairs
                 pairs = {}
                 for idx, rot_idx in mirror_pairs.items():
-                    for uc in Molecular_Structure.unitcells:
-                        ucindex = Molecular_Structure.unitcells[uc]
+                    for uc in molecular_structure.unitcells:
+                        ucindex = molecular_structure.unitcells[uc]
                         pairs[ucindex[idx]] = ucindex[rot_idx]
                 nAtoms = len(atomic_symbols)
                 PrimitiveMirror = get_Inversion_Symmetry_Generator(pairs, nAtoms)
                 self.Symmetry_Generators["S" + axis] = PrimitiveMirror
 
-    def _find_indices_in_primitive_cell(self, tol_translation=1e-6):
+    def _find_indices_in_primitive_cell(self, molecular_structure: "Molecular_Structure", tol_translation=1e-6):
         """
         This function checks if the given structure is a primitive cell and returns the indices of the atoms
         located in the primitive unit cell.
@@ -472,63 +535,62 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         # use spglib to find the primitive lattice vectors
         primitive_cell = spglib.spglib.find_primitive(
             (
-                self.molecular_structure.cellvectors,
-                self.molecular_structure.coordinates @ np.linalg.inv(self.molecular_structure.cellvectors),
-                self.molecular_structure.atomic_numbers,
+                molecular_structure.cellvectors,
+                molecular_structure.coordinates @ np.linalg.inv(molecular_structure.cellvectors),
+                molecular_structure.atomic_numbers,
             ),
             symprec=tol_translation,
         )  # returns (cellvectors_of_primitive_cell, positions_in_fractional_coord, atomic_numbers)
 
         # determine the multiplicity of the primitive cell in supercell
-        # if multiplicity == np.prod(self.molecular_structure.periodicity),
+        # if multiplicity == np.prod(molecular_structure.periodicity),
         # then the found conventional cell is already primitive else, find the sublattice in the conventional cell
         # SC_cellvectors = transformation_matrix @ PC_cellvectors
-        transformation_matrix = self.molecular_structure.cellvectors @ np.linalg.inv(primitive_cell[0])
+        transformation_matrix = molecular_structure.cellvectors @ np.linalg.inv(primitive_cell[0])
         multiplicity_of_primitive = np.linalg.det(transformation_matrix)
 
         if np.isclose(multiplicity_of_primitive, np.round(multiplicity_of_primitive), atol=1e-6):
             multiplicity_of_primitive = int(np.round(multiplicity_of_primitive))
-            self.molecular_structure.primitive_cellvectors = self.molecular_structure.cellvectors / np.array(
-                self.molecular_structure.periodicity
+            molecular_structure.primitive_cellvectors = molecular_structure.cellvectors / np.array(
+                molecular_structure.periodicity
             )
 
-            if multiplicity_of_primitive / np.prod(self.molecular_structure.periodicity) != 1:
+            if multiplicity_of_primitive / np.prod(molecular_structure.periodicity) != 1:
                 print("ℹ️ : Sublattice detected in the conventional cell. Updating to primitive cell.")
 
                 # This translation vector is hardcoded for orthorhombic supercell to hexagonal unit cell conversion!
                 # However, it is generalized for orthorhomic supercells constructed from any multiplicity of the
                 # hexagonal primitive unit cell
                 translation_vector = np.array([1.0, 1.0, 0.0]) / (
-                    multiplicity_of_primitive / np.prod(self.molecular_structure.periodicity)
+                    multiplicity_of_primitive / np.prod(molecular_structure.periodicity)
                 )
-                primitive_indices = self._find_sublattice(translation_vector=translation_vector)
+                primitive_indices = self._find_sublattice(
+                    molecular_structure=molecular_structure, translation_vector=translation_vector
+                )
 
                 # This 30 degree rotation is hardcoded for orthorhombic supercell to hexagonal unit cell conversion!
                 rotation = np.array(
                     [[np.cos(np.pi / 6), -np.sin(np.pi / 6), 0], [np.sin(np.pi / 6), np.cos(np.pi / 6), 0], [0, 0, 1]]
                 )
-                self.molecular_structure.primitive_cellvectors = primitive_cell[0] @ rotation
-                self.molecular_structure.cellvectors = np.round(
-                    (
-                        self.molecular_structure.primitive_cellvectors
-                        * np.array(self.molecular_structure.periodicity)[:, None]
-                    ),
+                molecular_structure.primitive_cellvectors = primitive_cell[0] @ rotation
+                molecular_structure.cellvectors = np.round(
+                    (molecular_structure.primitive_cellvectors * np.array(molecular_structure.periodicity)[:, None]),
                     decimals=6,
                 )
-                self.molecular_structure.cellvectors[0] *= multiplicity_of_primitive / np.prod(
-                    self.molecular_structure.periodicity
+                molecular_structure.cellvectors[0] *= multiplicity_of_primitive / np.prod(
+                    molecular_structure.periodicity
                 )
 
-                self.molecular_structure.coordinates = wrapping_coordinates(
-                    self.molecular_structure.coordinates, self.molecular_structure.cellvectors
+                molecular_structure.coordinates = wrapping_coordinates(
+                    molecular_structure.coordinates, molecular_structure.cellvectors
                 )
 
                 # run _test_translation again with updated cell vectors
-                self.molecular_structure.periodicity = (1, 1, 1)  # resetting before calling _test_translation again
-                self._test_translation(tol_translation=tol_translation)
+                molecular_structure.periodicity = (1, 1, 1)  # resetting before calling _test_translation again
+                self._test_translation(molecular_structure=molecular_structure, tol_translation=tol_translation)
             else:
                 # there is no sublattice, the conventional cell is already primitive
-                primitive_indices = self.molecular_structure.unitcells[(0, 0, 0)]
+                primitive_indices = molecular_structure.unitcells[(0, 0, 0)]
         else:
             raise ValueError("Could not determine multiplicity of the primitive cell.")
 
@@ -536,6 +598,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
 
     def _find_sublattice(
         self,
+        molecular_structure: "Molecular_Structure",
         translation_vector: np.ndarray = [0.5, 0.5, 0],
         tol_translation=1e-6,
     ):
@@ -554,8 +617,8 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 list of indices of the atoms in the primitive unit cell
         """
         fractional_coordinates = to_fractional(
-            self.molecular_structure.primitive_cellvectors,
-            self.molecular_structure.coordinates,
+            molecular_structure.primitive_cellvectors,
+            molecular_structure.coordinates,
         )
         relative_vectors = fractional_coordinates[None, :, :] - fractional_coordinates[:, None, :]
         translation_vector = np.abs(translation_vector)  # make sure translation vector is positive
@@ -568,7 +631,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         mapping_indices = np.argwhere(mask)
 
         # find the unique indices closest to (0,0,0) that map onto each other
-        parent = np.arange(self.molecular_structure.n_atoms)
+        parent = np.arange(molecular_structure.n_atoms)
 
         def find(x):
             while parent[x] != x:
@@ -588,7 +651,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         for i, j in mapping_indices:
             union(i, j)
 
-        dists = np.linalg.norm(self.molecular_structure.coordinates, axis=1)
+        dists = np.linalg.norm(molecular_structure.coordinates, axis=1)
 
         primitive_indices = np.zeros(len(set(parent)), dtype=int)
 
@@ -1171,3 +1234,24 @@ def detect_mirror_symmetry(centered_coords, atomic_symbols, axis="z", tolerance=
     """
     reflected_coords = reflect_coords(centered_coords, axis)
     return find_rotated_match(reflected_coords, centered_coords, atomic_symbols, tolerance=tolerance)
+
+
+def wrapping_coordinates(coordinates, cellvectors):
+    """
+    Wraps atomic coordinates into the unit cell defined by the given cell vectors.
+
+    Parameters:
+    - coordinates (array-like, shape (n, 3)):
+        Cartesian coordinates of atoms.
+    - cellvectors (array-like, shape (3, 3)):
+        Lattice vectors defining the unit cell.
+
+    Returns:
+    - wrapped_coordinates (numpy array, shape (n, 3)):
+        Coordinates wrapped into the unit cell.
+    """
+    inv_cell = np.linalg.inv(cellvectors)
+    fractional_coords = coordinates @ inv_cell
+    wrapped_fractional_coords = fractional_coords % 1.0
+    wrapped_coordinates = wrapped_fractional_coords @ cellvectors
+    return np.round(wrapped_coordinates, decimals=6)
