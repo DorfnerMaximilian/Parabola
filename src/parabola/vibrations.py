@@ -62,7 +62,7 @@ class Vibrations:
         # Parse the Data
         vibrations_path = mol.Vibrations_path
         masses = mol.masses
-        molecular_symmetry = mol.molecular_symmetry
+        molecular_symmetry = mol.Molecular_Symmetry
         axes = mol.geometric_principle_axis
         Hessian = Read.read_hessian(vibrations_path)
         self.Hessian = Hessian
