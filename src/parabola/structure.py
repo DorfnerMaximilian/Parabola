@@ -1,11 +1,9 @@
-from . import Read
-from . import Geometry
-from . import Symmetry
-from . import electronics
-from . import vibrations
-import numpy as np
-import pickle
 import os
+import pickle
+
+import numpy as np
+
+from . import Geometry, Read, Symmetry, electronics, vibrations
 
 
 class Molecular_Structure:
@@ -31,15 +29,11 @@ class Molecular_Structure:
         if name is None:
             # This handles cases where Molecular_Structure() is called without 'name',
             # which is not allowed for normal instantiation.
-            raise TypeError(
-                "Molecular_Structure.__new__() missing 1 required keyword-only argument: 'name'"
-            )
+            raise TypeError("Molecular_Structure.__new__() missing 1 required keyword-only argument: 'name'")
 
         path = kwargs.get("path", "")
         abs_path = os.path.abspath(path)
-        pickle_filename = os.path.join(
-            abs_path, f"{name}.{cls.__name__.lower()}.pickle"
-        )
+        pickle_filename = os.path.join(abs_path, f"{name}.{cls.__name__.lower()}.pickle")
 
         if os.path.isfile(pickle_filename):
             print(f"🔄 : Found file. Loading from: {pickle_filename}")
@@ -89,9 +83,7 @@ class Molecular_Structure:
             print("▲ : Processing Geometric Structural Information")
             xyz_filepath = Read.get_xyz_filename(path="./", verbose=True)
             self.xyz_path = xyz_filepath
-            coordinates, masses, atomic_symbols = Read.read_coordinates_and_masses(
-                xyz_filepath
-            )
+            coordinates, masses, atomic_symbols = Read.read_coordinates_and_masses(xyz_filepath)
             self.coordinates = coordinates
             self.masses = masses
             self.geometric_center = np.zeros(3)
@@ -114,13 +106,9 @@ class Molecular_Structure:
             self.Electronics = None
             self.Vibrations = None
         else:
-            print(
-                f"✔️ : Object for '{self.name}' is already initialized. Checking for path updates."
-            )
+            print(f"✔️ : Object for '{self.name}' is already initialized. Checking for path updates.")
             # If loaded, ensure the base path reflects the current call's path if it's different.
-            current_abs_path = (
-                os.path.abspath(path) if path == "." else os.path.abspath(path)
-            )
+            current_abs_path = os.path.abspath(path) if path == "." else os.path.abspath(path)
             if self.path != current_abs_path:
                 print(f"🔄 : Base path updated from {self.path} to {current_abs_path}")
                 self.path = current_abs_path
@@ -129,38 +117,25 @@ class Molecular_Structure:
         # If electronic_path is provided in the current call, update the structure.
         if electronics_path is not None:
             # Recompute only if the path has changed or if the structure is currently None.
-            if (
-                self.electronics_path != electronics_path
-                or self.electronics is None
-            ):
-                print(
-                    f"🔄 : Electronic Structure path provided/changed. Computing/updating electronic structure."
-                )
+            if self.electronics_path != electronics_path or self.electronics is None:
+                print("🔄 : Electronic Structure path provided/changed. Computing/updating electronic structure.")
                 self.electronics_path = electronics_path
                 self.Electronics = self.determine_electronics()
             else:
-                print(
-                    f"✔️ : Electronic path is the same and structure exists. No recomputation needed."
-                )
+                print("✔️ : Electronic path is the same and structure exists. No recomputation needed.")
 
         # Logic for vibrational structure:
         # If vibrational_path is provided in the current call, update the structure.
         if vibrational_path is not None:
             # Recompute only if the path has changed or if the structure is currently None.
-            if (
-                self.vibrations_path != vibrational_path
-                or self.Vibrations is None
-            ):
-                print(
-                    f"🔄 : Vibrational Structure path provided/changed. Computing/updating vibrational structure."
-                )
+            if self.vibrations_path != vibrational_path or self.Vibrations is None:
+                print("🔄 : Vibrational Structure path provided/changed. Computing/updating vibrational structure.")
                 self.vibrations_path = vibrational_path
                 self.Vibrations = self.determine_vibrations()
             else:
-                print(
-                    f"✔️ : Vibrational Structure path is the same and structure exists. No recomputation needed."
-                )
-        self.save()
+                print("✔️ : Vibrational Structure path is the same and structure exists. No recomputation needed.")
+        if save:
+            self.save()
 
     def determine_electronics(self):
         """
@@ -171,7 +146,7 @@ class Molecular_Structure:
         print("⚡ : ELECTRONIC STRUCTURE ")
         print("=" * 40)
         full_path = os.path.abspath(self.electronics_path)
-        print(f"Vibrational Structure data taken from:")
+        print("Vibrational Structure data taken from:")
         print(full_path)
         electronics = electronics.Electronics(self)
         return electronics
@@ -186,7 +161,7 @@ class Molecular_Structure:
         print("🎜 : VIBRATIONAL ANALYSIS  ")
         print("=" * 40)
         full_path = os.path.abspath(self.vibrations_path)
-        print(f"Vibrational Structure data taken from:")
+        print("Vibrational Structure data taken from:")
         print(full_path)
         return vibrations.Vibrations(self)
 
@@ -211,58 +186,54 @@ class Molecular_Structure:
                 "label": "Name",
                 "description": "The name identifier of the molecular structure",
                 "value": self.name,
-                "unit": None
+                "unit": None,
             },
             "path": {
                 "label": "Path",
                 "description": "File or data source path for the molecular data",
                 "value": self.path,
-                "unit": None
+                "unit": None,
             },
             "atoms": {
                 "label": "Number of atoms",
                 "description": "Total number of atoms in the structure",
                 "value": len(self.atoms),
-                "unit":None
+                "unit": None,
             },
             "atomic_symbols": {
                 "label": "Atomic Symbols",
                 "description": "Chemical symbols of the constituent atoms",
                 "value": ", ".join(self.atoms),
-                "unit":None
+                "unit": None,
             },
             "coordinates": {
                 "label": "Cartesian Coordinates",
                 "description": "Original coordinates",
                 "value": [
-                    f"Atom {i+1} [{self.atoms[i]}]: {np.round(coord,6)}"
-                    for i, coord in enumerate(self.coordinates)
+                    f"Atom {i + 1} [{self.atoms[i]}]: {np.round(coord, 6)}" for i, coord in enumerate(self.coordinates)
                 ],
-                "unit":"Angström"
+                "unit": "Angström",
             },
             "geom_centered": {
                 "label": "Geometrically Centered Coordinates",
                 "description": "Coordinates centered to geometric_center and represented in the frame described by geometric_principle_axis",
                 "value": [
-                    f"Atom {i+1} [{self.atoms[i]}]: {np.round(coord,6)}"
+                    f"Atom {i + 1} [{self.atoms[i]}]: {np.round(coord, 6)}"
                     for i, coord in enumerate(self.geometrically_centered_coordinates)
                 ],
-                "unit":"Angström"
+                "unit": "Angström",
             },
             "cell_vectors": {
                 "label": "Cell Vectors",
                 "description": "Lattice or box vectors (in Angstroms)",
-                "value": [
-                    f"Vector {i+1}: {vec}"
-                    for i, vec in enumerate(self.cellvectors)
-                ],
-                "unit":"Angström"
+                "value": [f"Vector {i + 1}: {vec}" for i, vec in enumerate(self.cellvectors)],
+                "unit": "Angström",
             },
             "periodicity": {
                 "label": "Periodicity",
                 "description": "How many copies are detected along the cellvectors. 0: open boundary conditions, 1:periodic boundary conditions",
                 "value": self.periodicity,
-                "unit":None
+                "unit": None,
             },
             "symmetry": {
                 "label": "Symmetry Information",
@@ -272,8 +243,8 @@ class Molecular_Structure:
                     if self.Molecular_Symmetry.Symmetry_Generators.keys()
                     else ["No symmetry information available."]
                 ),
-                "unit":None
-            }
+                "unit": None,
+            },
         }
 
         print("=" * 40)
@@ -283,7 +254,7 @@ class Molecular_Structure:
         for key, entry in info.items():
             print(f"\n{entry['label']}:")
             print(f"  Description: {entry['description']}")
-            if entry['unit'] is not None:
+            if entry["unit"] is not None:
                 print(f"  Unit: {entry['unit']}")
             value = entry["value"]
 
@@ -303,8 +274,8 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         self.determine_symmetry(Molecular_Structure)
 
     def determine_symmetry(self):
-        tol_tolerance = 5 * 10 ** (-4)
-        self._test_translation(tol_translation=tol_tolerance)
+        tol_translation = 5 * 10 ** (-4)
+        self._test_translation(tol_translation=tol_translation)
         primitive_indices = self._find_indices_in_primitive_cell(tol_translation=tol_translation)
 
         geometry_centered_coordinates, center = Geometry.ComputeCenterOfGeometryCoordinates(
@@ -312,9 +283,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         )
         Molecular_Structure.geometric_center = center
         if len(primitive_indices) > 1:
-            v1, v2, v3 = Geometry.getPrincipleAxis(
-                geometry_centered_coordinates, masses=None, tol=1e-3
-            )
+            v1, v2, v3 = Geometry.getPrincipleAxis(geometry_centered_coordinates, masses=None, tol=1e-3)
         else:
             v1 = np.array([1.0, 0.0, 0.0])
             v2 = np.array([0.0, 1.0, 0.0])
@@ -328,11 +297,9 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             G_UC_CC.append(np.array([x, y, z]))
         Molecular_Structure.geometrically_centered_coordinates = G_UC_CC
         if len(primitive_indices) > 1:
-            mass_centered_coordinates, center_of_mass = (
-                Geometry.ComputeCenterOfMassCoordinates(
-                    np.array(Molecular_Structure.coordinates)[primitive_indices],
-                    np.array(Molecular_Structure.masses)[primitive_indices],
-                )
+            mass_centered_coordinates, center_of_mass = Geometry.ComputeCenterOfMassCoordinates(
+                np.array(Molecular_Structure.coordinates)[primitive_indices],
+                np.array(Molecular_Structure.masses)[primitive_indices],
             )
             Molecular_Structure.center_of_mass = center_of_mass
             v1, v2, v3 = Geometry.getPrincipleAxis(
@@ -375,9 +342,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 primitive_indices,
                 tolerance=tol_translation,
             )
-            Tx, Ty, Tz, xFlag, yFlag, zFlag = getTranslationOps(
-                relative_cell_coordinates, supercell
-            )
+            Tx, Ty, Tz, xFlag, yFlag, zFlag = getTranslationOps(relative_cell_coordinates, supercell)
             if xFlag and np.sum(np.abs(Tx - np.eye(np.shape(Tx)[0]))) > 10 ** (-10):
                 self.Symmetry_Generators["t1"] = Tx
             if yFlag and np.sum(np.abs(Ty - np.eye(np.shape(Ty)[0]))) > 10 ** (-10):
@@ -411,16 +376,12 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                         indices = np.argmax(transformed, axis=0)
                         Molecular_Structure.unitcells[(n, m, k)] = indices.tolist()
         else:
-            Molecular_Structure.unitcells[(0, 0, 0)] = [
-                it for it in range(len(Molecular_Structure.atoms))
-            ]
+            Molecular_Structure.unitcells[(0, 0, 0)] = [it for it in range(len(Molecular_Structure.atoms))]
 
     def _test_inversion(self, Molecular_Structure, tol_inversion):
         atomic_symbols = Molecular_Structure.atoms
         primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
-        geometry_centered_coordinates = (
-            Molecular_Structure.geometrically_centered_coordinates
-        )
+        geometry_centered_coordinates = Molecular_Structure.geometrically_centered_coordinates
         has_symmetry, inversion_pairs = detect_inversion_symmetry(
             geometry_centered_coordinates,
             np.array(atomic_symbols)[primitive_indices],
@@ -440,9 +401,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             self.Symmetry_Generators["i"] = PrimitiveInversion
 
     def _test_rotation(self, Molecular_Structure, tol_rotation, nmax=10):
-        geometrically_centered_coordinates = (
-            Molecular_Structure.geometrically_centered_coordinates
-        )
+        geometrically_centered_coordinates = Molecular_Structure.geometrically_centered_coordinates
         atomic_symbols = Molecular_Structure.atoms
         primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
         for axis in ["x", "y", "z"]:
@@ -480,9 +439,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 self.Symmetry_Generators["C" + axis + "_" + str(n)] = PrimitiveRotation
 
     def _test_mirror(self, Molecular_Structure, tol_mirror):
-        geometrically_centered_coordinates = (
-            Molecular_Structure.geometrically_centered_coordinates
-        )
+        geometrically_centered_coordinates = Molecular_Structure.geometrically_centered_coordinates
         atomic_symbols = Molecular_Structure.atoms
         primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
         for axis in ["x", "y", "z"]:
@@ -520,7 +477,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 self.molecular_structure.coordinates @ np.linalg.inv(self.molecular_structure.cellvectors),
                 self.molecular_structure.atomic_numbers,
             ),
-            symprec=,
+            symprec=tol_translation,
         )  # returns (cellvectors_of_primitive_cell, positions_in_fractional_coord, atomic_numbers)
 
         # determine the multiplicity of the primitive cell in supercell
@@ -688,13 +645,11 @@ def to_fractional(lattice, positions):
     - This function assumes the lattice is invertible.
     """
     inv_lattice = np.linalg.inv(lattice)
-    fractional_positions = positions@inv_lattice
+    fractional_positions = positions @ inv_lattice
     return np.array(fractional_positions)
 
 
-def is_legitimate_scaled_cell(
-    v1, v2, v3, coordinates, atomicsymbols, N1, N2, N3, tolerance=1e-7
-):
+def is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, N1, N2, N3, tolerance=1e-7):
     """
     Checks if a scaled unit cell is legitimate by verifying that all atoms
     in the scaled lattice can be mapped into the primitive unit cell using
@@ -742,9 +697,7 @@ def is_legitimate_scaled_cell(
     primitive_positions = fractional_positions[primitive_indices]
     primitive_symbols = np.array(atomicsymbols)[primitive_indices]
     # Generate all possible translation vectors within the periodic limits
-    translations = [
-        np.array([i, j, k]) for i in range(N1) for j in range(N2) for k in range(N3)
-    ]
+    translations = [np.array([i, j, k]) for i in range(N1) for j in range(N2) for k in range(N3)]
     # Check each translated position to confirm it maps into the unit cell
     for pos, symbol in zip(fractional_positions, atomicsymbols):
         # Check if the translated positions of `pos` map into the unit cell
@@ -753,11 +706,8 @@ def is_legitimate_scaled_cell(
             translated_pos = pos - translation  # Wrap within [0,1)
             # Check if the translated position matches any point in the primitive cell
             if any(
-                np.allclose(translated_pos, primitive_pos, atol=tolerance)
-                and primitive_symbol == symbol
-                for primitive_pos, primitive_symbol in zip(
-                    primitive_positions, primitive_symbols
-                )
+                np.allclose(translated_pos, primitive_pos, atol=tolerance) and primitive_symbol == symbol
+                for primitive_pos, primitive_symbol in zip(primitive_positions, primitive_symbols)
             ):
                 found_match = True
                 break  # Found a match, no need to check other translations
@@ -815,23 +765,17 @@ def getPrimitiveUnitCell(cellvectors, coordinates, atomicsymbols, tolerance=1e-8
     primes = range(30, 0, -1)
     # x1 divisor
     for itx in primes:
-        iscell, _, _ = is_legitimate_scaled_cell(
-            v1, v2, v3, coordinates, atomicsymbols, itx, 1, 1, tolerance=tolerance
-        )
+        iscell, _, _ = is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, itx, 1, 1, tolerance=tolerance)
         if iscell:
             break
     # x2 divisor
     for ity in primes:
-        iscell, _, _ = is_legitimate_scaled_cell(
-            v1, v2, v3, coordinates, atomicsymbols, 1, ity, 1, tolerance=tolerance
-        )
+        iscell, _, _ = is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, 1, ity, 1, tolerance=tolerance)
         if iscell:
             break
     # x3 divisor
     for itz in primes:
-        iscell, _, _ = is_legitimate_scaled_cell(
-            v1, v2, v3, coordinates, atomicsymbols, 1, 1, itz, tolerance=tolerance
-        )
+        iscell, _, _ = is_legitimate_scaled_cell(v1, v2, v3, coordinates, atomicsymbols, 1, 1, itz, tolerance=tolerance)
         if iscell:
             break
     iscell, primitive_indices, scaled_lattice = is_legitimate_scaled_cell(
@@ -877,67 +821,66 @@ def getCellCoordinates(lattice, coordinates, primitive_indices, tolerance=1e-5):
 
     Fractional coordinates of primitive atoms wrapped into [0,1).
 
-    """ 
+    """
     # 1. Get all fractional coordinates
     # (Assuming to_fractional is defined externally as before)
     fractional_positions = to_fractional(lattice, coordinates)
-    
+
     # 2. Get reference primitive coordinates
     # We do NOT apply floor() here. We compare raw values.
     primitive_frac_coords = fractional_positions[primitive_indices]
-    
+
     # 3. Calculate differences between ALL pairs (Broadcasting)
     # Shape: (n_atoms, n_prim, 3)
     # raw_diff represents (Atom_Position - Primitive_Position)
     raw_diffs = fractional_positions[:, None, :] - primitive_frac_coords[None, :, :]
-    
+
     # 4. Find the deviation from the nearest integer translation
     # If atom matches primitive, raw_diff should be like 0.0, 1.0, -1.0, 2.0, etc.
     # np.round(raw_diff) gives us the "Translation Integer candidate"
     closest_integer_translation = np.round(raw_diffs)
-    
+
     # residual is the distance from that integer translation
     residual = raw_diffs - closest_integer_translation
-    
+
     # 5. Check matches
     # We check if the residual is effectively zero
     is_match = np.all(np.abs(residual) < tolerance, axis=2)
 
     # 6. Error Handling (Uniqueness check)
     match_count = np.sum(is_match, axis=1)
-    
+
     if np.any(match_count == 0):
         first_bad = np.flatnonzero(match_count == 0)[0]
         # --- DIAGNOSTIC BLOCK ---
         # Find the "best" failure to tell the user how far off they are
         # We look at the residual for the bad atom against all primitive atoms
-        bad_atom_residuals = np.abs(residual[first_bad]) # Shape: (n_prim, 3)
-        
+        bad_atom_residuals = np.abs(residual[first_bad])  # Shape: (n_prim, 3)
+
         # Find the maximum deviation in (x,y,z) for each primitive candidate
         max_dev_per_prim = np.max(bad_atom_residuals, axis=1)
-        
+
         # Find the primitive atom that came closest
         closest_prim_idx_local = np.argmin(max_dev_per_prim)
         closest_prim_global = primitive_indices[closest_prim_idx_local]
         min_deviation = max_dev_per_prim[closest_prim_idx_local]
-        
+
         raise ValueError(
             f"Atom {first_bad} at {fractional_positions[first_bad]} could not be matched.\n"
             f"Closest candidate was Primitive Atom {closest_prim_global}.\n"
             f"Deviation: {min_deviation:.2e} (Tolerance: {tolerance}).\n"
-            f"-> Suggestion: Increase tolerance to at least {min_deviation*1.1:.1e}"
+            f"-> Suggestion: Increase tolerance to at least {min_deviation * 1.1:.1e}"
         )
         # ------------------------
-    
+
     if np.any(match_count > 1):
         first_bad = np.flatnonzero(match_count > 1)[0]
-        raise ValueError(f"Atom {first_bad} matches multiple primitive atoms. "
-                         "Decrease tolerance or check structure.")
+        raise ValueError(f"Atom {first_bad} matches multiple primitive atoms. Decrease tolerance or check structure.")
 
     # 7. Extract Results
     # Get the index of the primitive atom (0 to n_prim-1)
     prim_indices_map = np.argmax(is_match, axis=1)
-    
+
     # Retrieve the correct translation vector for that specific match
     # We pick the specific translation integer we found in step 4
     # Fancy indexing: [range(n), prim_indices_map] selects the matching column for each row
@@ -945,11 +888,8 @@ def getCellCoordinates(lattice, coordinates, primitive_indices, tolerance=1e-5):
     t_integers = closest_integer_translation[np.arange(n_atoms), prim_indices_map].astype(int)
 
     # 8. Format output
-    relative_cell_coordinates = np.hstack((
-        t_integers,
-        prim_indices_map[:, None]
-    ))
-    
+    relative_cell_coordinates = np.hstack((t_integers, prim_indices_map[:, None]))
+
     # For the return value of `in_cell_coordinates`, we usually want them wrapped [0, 1)
     # strictly for display/reference purposes.
     in_cell_coordinates = primitive_frac_coords - np.floor(primitive_frac_coords)
@@ -1102,9 +1042,7 @@ def detect_inversion_symmetry(centered_coords, atomic_symbols, tolerance=1e-5):
 
     for idx, coord in enumerate(centered_coords):
         # Check if the negated coordinates are in the list
-        negation_found, neg_idx = find_negated_vector(
-            centered_coords, coord, tolerance=tolerance
-        )
+        negation_found, neg_idx = find_negated_vector(centered_coords, coord, tolerance=tolerance)
 
         # Verify the atomic symbols match for symmetry
         if negation_found and atomic_symbols[idx] == atomic_symbols[neg_idx]:
@@ -1152,9 +1090,7 @@ def rotate_coords(coords, axis, angle_rad):
     return [R @ coord for coord in coords]
 
 
-def detect_rotational_symmetry(
-    centered_coords, atomic_symbols, axis="z", n=2, tolerance=1e-5
-):
+def detect_rotational_symmetry(centered_coords, atomic_symbols, axis="z", n=2, tolerance=1e-5):
     """
     Checks for Cn rotational symmetry about a specified axis.
 
@@ -1171,9 +1107,7 @@ def detect_rotational_symmetry(
     """
     angle_rad = 2 * np.pi / n
     rotated_coords = rotate_coords(centered_coords, axis, angle_rad)
-    return find_rotated_match(
-        rotated_coords, centered_coords, atomic_symbols, tolerance=tolerance
-    )
+    return find_rotated_match(rotated_coords, centered_coords, atomic_symbols, tolerance=tolerance)
 
 
 def find_rotated_match(rotated_coords, original_coords, atomic_symbols, tolerance=1e-5):
@@ -1186,9 +1120,7 @@ def find_rotated_match(rotated_coords, original_coords, atomic_symbols, toleranc
 
     for i, (rot_coord, symbol) in enumerate(zip(rotated_coords, atomic_symbols)):
         matched = False
-        for j, (orig_coord, orig_symbol) in enumerate(
-            zip(original_coords, atomic_symbols)
-        ):
+        for j, (orig_coord, orig_symbol) in enumerate(zip(original_coords, atomic_symbols)):
             if j in used_indices:
                 continue
             if orig_symbol != symbol:
@@ -1236,6 +1168,4 @@ def detect_mirror_symmetry(centered_coords, atomic_symbols, axis="z", tolerance=
         dict: Mapping of original atom indices to reflected counterparts if symmetry exists.
     """
     reflected_coords = reflect_coords(centered_coords, axis)
-    return find_rotated_match(
-        reflected_coords, centered_coords, atomic_symbols, tolerance=tolerance
-    )
+    return find_rotated_match(reflected_coords, centered_coords, atomic_symbols, tolerance=tolerance)
