@@ -68,6 +68,7 @@ class Molecular_Structure:
         path: str = ".",
         electronics_path: str | None = None,
         vibrational_path: str | None = None,
+        save: bool = True,
     ):
         """
         Initializes or updates the attributes of the instance.
@@ -301,13 +302,13 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         super().__init__()  # Initialize parent class
         self.determine_symmetry(Molecular_Structure)
 
-    def determine_symmetry(self, Molecular_Structure):
-        self._test_translation(Molecular_Structure, tol_translation=0.0001)
-        primitive_indices = Molecular_Structure.unitcells[(0, 0, 0)]
-        geometry_centered_coordinates, center = (
-            Geometry.ComputeCenterOfGeometryCoordinates(
-                np.array(Molecular_Structure.coordinates)[primitive_indices]
-            )
+    def determine_symmetry(self):
+        tol_tolerance = 5 * 10 ** (-4)
+        self._test_translation(tol_translation=tol_tolerance)
+        primitive_indices = self._find_indices_in_primitive_cell(tol_translation=tol_translation)
+
+        geometry_centered_coordinates, center = Geometry.ComputeCenterOfGeometryCoordinates(
+            np.array(self.molecular_structure.coordinates)[primitive_indices]
         )
         Molecular_Structure.geometric_center = center
         if len(primitive_indices) > 1:
@@ -501,6 +502,146 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 nAtoms = len(atomic_symbols)
                 PrimitiveMirror = get_Inversion_Symmetry_Generator(pairs, nAtoms)
                 self.Symmetry_Generators["S" + axis] = PrimitiveMirror
+
+    def _find_indices_in_primitive_cell(self, tol_translation=1e-6):
+        """
+        This function checks if the given structure is a primitive cell and returns the indices of the atoms
+        located in the primitive unit cell.
+        The primitive_cellvectors are also stored/updated in the molecular_structure object.
+        Returns
+        -------
+            primitive_indices: list
+                list of indices of the atoms in the primitive unit cell
+        """
+        # use spglib to find the primitive lattice vectors
+        primitive_cell = spglib.spglib.find_primitive(
+            (
+                self.molecular_structure.cellvectors,
+                self.molecular_structure.coordinates @ np.linalg.inv(self.molecular_structure.cellvectors),
+                self.molecular_structure.atomic_numbers,
+            ),
+            symprec=,
+        )  # returns (cellvectors_of_primitive_cell, positions_in_fractional_coord, atomic_numbers)
+
+        # determine the multiplicity of the primitive cell in supercell
+        # if multiplicity == np.prod(self.molecular_structure.periodicity),
+        # then the found conventional cell is already primitive else, find the sublattice in the conventional cell
+        # SC_cellvectors = transformation_matrix @ PC_cellvectors
+        transformation_matrix = self.molecular_structure.cellvectors @ np.linalg.inv(primitive_cell[0])
+        multiplicity_of_primitive = np.linalg.det(transformation_matrix)
+
+        if np.isclose(multiplicity_of_primitive, np.round(multiplicity_of_primitive), atol=1e-6):
+            multiplicity_of_primitive = int(np.round(multiplicity_of_primitive))
+            self.molecular_structure.primitive_cellvectors = self.molecular_structure.cellvectors / np.array(
+                self.molecular_structure.periodicity
+            )
+
+            if multiplicity_of_primitive / np.prod(self.molecular_structure.periodicity) != 1:
+                print("ℹ️ : Sublattice detected in the conventional cell. Updating to primitive cell.")
+
+                # This translation vector is hardcoded for orthorhombic supercell to hexagonal unit cell conversion!
+                # However, it is generalized for orthorhomic supercells constructed from any multiplicity of the
+                # hexagonal primitive unit cell
+                translation_vector = np.array([1.0, 1.0, 0.0]) / (
+                    multiplicity_of_primitive / np.prod(self.molecular_structure.periodicity)
+                )
+                primitive_indices = self._find_sublattice(translation_vector=translation_vector)
+
+                # This 30 degree rotation is hardcoded for orthorhombic supercell to hexagonal unit cell conversion!
+                rotation = np.array(
+                    [[np.cos(np.pi / 6), -np.sin(np.pi / 6), 0], [np.sin(np.pi / 6), np.cos(np.pi / 6), 0], [0, 0, 1]]
+                )
+                self.molecular_structure.primitive_cellvectors = primitive_cell[0] @ rotation
+                self.molecular_structure.cellvectors = np.round(
+                    (
+                        self.molecular_structure.primitive_cellvectors
+                        * np.array(self.molecular_structure.periodicity)[:, None]
+                    ),
+                    decimals=6,
+                )
+                self.molecular_structure.cellvectors[0] *= multiplicity_of_primitive / np.prod(
+                    self.molecular_structure.periodicity
+                )
+
+                self.molecular_structure.coordinates = wrapping_coordinates(
+                    self.molecular_structure.coordinates, self.molecular_structure.cellvectors
+                )
+
+                # run _test_translation again with updated cell vectors
+                self.molecular_structure.periodicity = (1, 1, 1)  # resetting before calling _test_translation again
+                self._test_translation(tol_translation=tol_translation)
+            else:
+                # there is no sublattice, the conventional cell is already primitive
+                primitive_indices = self.molecular_structure.unitcells[(0, 0, 0)]
+        else:
+            raise ValueError("Could not determine multiplicity of the primitive cell.")
+
+        return primitive_indices
+
+    def _find_sublattice(
+        self,
+        translation_vector: np.ndarray = [0.5, 0.5, 0],
+        tol_translation=1e-6,
+    ):
+        """
+        Find if there exists a sublattice in the given "conventional" primitive unit cell.
+        Implemented and tested for: Orthorhombic -> hexagonal symmetry
+
+        Parameters
+        ----------
+            translation_vector: translation vector, default [0.5, 0.5, 0] for hexagonal to orthorhombic cell
+            tol_translation: tolerance for translation symmetry detection, default 1e-6
+
+        Returns
+        -------
+            primitive_indices: list
+                list of indices of the atoms in the primitive unit cell
+        """
+        fractional_coordinates = to_fractional(
+            self.molecular_structure.primitive_cellvectors,
+            self.molecular_structure.coordinates,
+        )
+        relative_vectors = fractional_coordinates[None, :, :] - fractional_coordinates[:, None, :]
+        translation_vector = np.abs(translation_vector)  # make sure translation vector is positive
+        mask = (
+            np.isclose(np.abs(relative_vectors[..., 0]), translation_vector[0], atol=tol_translation)
+            & np.isclose(np.abs(relative_vectors[..., 1]), translation_vector[1], atol=tol_translation)
+            & np.isclose(np.abs(relative_vectors[..., 2]), translation_vector[2], atol=tol_translation)
+        )
+
+        mapping_indices = np.argwhere(mask)
+
+        # find the unique indices closest to (0,0,0) that map onto each other
+        parent = np.arange(self.molecular_structure.n_atoms)
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(x, y):
+            ix = find(x)
+            iy = find(y)
+            if ix < iy:
+                parent[iy] = ix
+            else:
+                parent[ix] = iy
+
+        # Find connected components
+        for i, j in mapping_indices:
+            union(i, j)
+
+        dists = np.linalg.norm(self.molecular_structure.coordinates, axis=1)
+
+        primitive_indices = np.zeros(len(set(parent)), dtype=int)
+
+        for i, unique_roots in enumerate(set(parent)):
+            mask = parent == unique_roots
+            idxs = np.where(mask)[0]
+            primitive_indices[i] = idxs[np.argmin(dists[idxs])]
+
+        return primitive_indices
 
 
 #### Translation Symmetry Helper Functions ####
