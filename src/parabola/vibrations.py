@@ -60,7 +60,7 @@ def getTransProjector(masses):
 class Vibrations:
     def __init__(self, mol, disable_symmetry=False):
         # Parse the Data
-        vibrations_path = mol.Vibrations_path
+        vibrations_path = mol.vibrations_path
         masses = mol.masses
         molecular_symmetry = mol.Molecular_Symmetry
         axes = mol.geometric_principle_axis

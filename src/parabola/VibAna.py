@@ -23,7 +23,7 @@ def Vib_Ana_inputs(
     deltasflag = False
     if len(deltas) == 0:
         deltasflag = True
-        print("Using Standardvalue of 0.05 a_0 for Displacements!")
+        print("Using Standardvalue of 0.1 a_0 for Displacements!")
     cartesianflag = False
     if len(vectors) == 0:
         cartesianflag = True
@@ -70,7 +70,7 @@ def Vib_Ana_inputs(
         for line in lines[2:]:
             if len(line.split()) > 0:
                 atomorder.append(line.split()[0])
-    if not bool(vectors):
+    if len(vectors) == 0:
         for it in range(3 * numberofatoms):
             vector = np.zeros(3 * numberofatoms)
             vector[it] = 1.0
@@ -82,7 +82,7 @@ def Vib_Ana_inputs(
             # do a second check based on SVD
             print("Warning: The set of vectors given do not form a basis!")
     if deltasflag:
-        deltas = 0.05 * np.ones(3 * numberofatoms)
+        deltas = 0.1 * np.ones(3 * numberofatoms)
     with open(parentpath + "BasisHessian", "w+") as g:
         if cartesianflag:
             g.write("delta=" + str(deltas[0]) + "\n")
@@ -318,7 +318,7 @@ def deflectAlongModes(parentfolder="./"):
     Vib_Ana_inputs(deltas, vectors, parentfolder)
 
 
-def getTransAndRotEigenvectors(coordinates, masses):
+def get_trans_and_rot_eigenvectors(coordinates, masses):
     """
     Computes the translational and rotational eigenvectors according to "Vibrational Analysis in Gaussian,"
     Joseph W. Ochterski (1999).
@@ -806,7 +806,7 @@ def CorrectNormalModeEnergies_Output(
         numofatoms = int(len(NormCarthesianDisplacements[0]) / 3)
 
         # Get translational and rotational eigenvectors
-        Transeigenvectors, Roteigenvectors = getTransAndRotEigenvectors(
+        Transeigenvectors, Roteigenvectors = get_trans_and_rot_eigenvectors(
             path_to_original_data, True
         )
         # Calculate orthogonal projector

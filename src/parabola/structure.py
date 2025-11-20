@@ -361,7 +361,6 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             Tx_powers = [np.linalg.matrix_power(Tx, i) for i in range(p0)]
             Ty_powers = [np.linalg.matrix_power(Ty, i) for i in range(p1)]
             Tz_powers = [np.linalg.matrix_power(Tz, i) for i in range(p2)]
-
             # Loop through periodicity grid
             for n in range(p0):
                 for m in range(p1):
@@ -789,9 +788,10 @@ def getCellCoordinates(lattice, coordinates, primitive_indices, tolerance=1e-5):
     Computes relative lattice translations and fractional coordinates.
      Parameters:
 
-    Parameters:
     - lattice (array-like, shape (3, 3)):
-        The lattice vectors defining the crystal structure.
+
+    The lattice vectors (columns) defining the crystal structure.
+
     - coordinates (array-like, shape (n, 3)):
 
     Cartesian coordinates of all atoms in the structure.
@@ -953,6 +953,8 @@ def getTranslationOps(relative_cell_coordinates, supercell):
     print(Tz)
     ```
     """
+    supercell = np.asarray(supercell, dtype=int)
+
     Tx = np.zeros((len(relative_cell_coordinates), len(relative_cell_coordinates)))
     Ty = np.zeros((len(relative_cell_coordinates), len(relative_cell_coordinates)))
     Tz = np.zeros((len(relative_cell_coordinates), len(relative_cell_coordinates)))
