@@ -1,14 +1,12 @@
-from . import Read
-from . import atomic_basis
-from . import Symmetry
-from . import Util
-from . import Geometry
-from .PhysConst import ConversionFactors
+import os
+from itertools import permutations
+
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.linalg import schur
-from itertools import permutations
-import matplotlib.pyplot as plt
-import os
+
+from . import Geometry, Read, Symmetry, Util, atomic_basis
+from .PhysConst import ConversionFactors
 
 pathtocp2k = os.environ["cp2kpath"]
 pathtobinaries = pathtocp2k + "/exe/local/"
@@ -157,9 +155,7 @@ def get_tensor_representation():
         if lm[0] == "s":
             representation_matrices[lm] = cs[lm][0][1]  # scalar
         elif lm[0] == "p":
-            representation_matrices[lm] = cs[lm][0][1] * np.array(
-                cs[lm][0][0]
-            )  # vector
+            representation_matrices[lm] = cs[lm][0][1] * np.array(cs[lm][0][0])  # vector
         elif lm[0] == "d":
             mat = np.zeros((3, 3))
             for mono in cs[lm]:
@@ -218,9 +214,7 @@ def get_basis_transformation_matrices_l_block(O):
     representation_matrices = get_tensor_representation()
     transformation_matrices = {}
     for l in ["s", "p", "d", "f", "g"]:
-        transformation_matrix = np.zeros(
-            (len(canonical_ordering[l]), len(canonical_ordering[l]))
-        )
+        transformation_matrix = np.zeros((len(canonical_ordering[l]), len(canonical_ordering[l])))
         for it1 in range(len(canonical_ordering[l])):
             for it2 in range(len(canonical_ordering[l])):
                 B1 = representation_matrices[canonical_ordering[l][it1]]
@@ -240,8 +234,7 @@ def get_l_ordering(Basis):
         ordering_atom.append(Basis[atom][0][2][0])
         for it in range(1, len(Basis[atom])):
             if (
-                Basis[atom][it][2][0] != Basis[atom][it - 1][2][0]
-                or Basis[atom][it][1] != Basis[atom][it - 1][1]
+                Basis[atom][it][2][0] != Basis[atom][it - 1][2][0] or Basis[atom][it][1] != Basis[atom][it - 1][1]
             ) or Basis[atom][it][0] != Basis[atom][it - 1][0]:
                 ordering_atom.append(Basis[atom][it][2][0])
         ordering[atom] = ordering_atom
@@ -304,9 +297,7 @@ class Electronics:
             return
         self.mol_path = mol.path
         self.basis = atomic_basis.getBasis(mol.electronics_path)
-        num_e, charge = Read.get_number_of_electrons(
-            parentfolder=mol.electronics_path
-        )
+        num_e, charge = Read.get_number_of_electrons(parentfolder=mol.electronics_path)
         self.num_e = num_e
         self.charge = charge
         self.multiplicity = Read.read_multiplicity(path=mol.electronics_path)
@@ -317,10 +308,7 @@ class Electronics:
         self.OLM = OLM
         cond_number = np.linalg.cond(OLM)
         if cond_number > 10 ** (6):
-            Warning(
-                "Large Condition number of the Overlap Matrix! Cond(OLM)="
-                + str(cond_number)
-            )
+            Warning("Large Condition number of the Overlap Matrix! Cond(OLM)=" + str(cond_number))
         self.inverse_sqrt_OLM = Util.LoewdinTransformation(OLM, algorithm="Schur-Pade")
         self.real_eigenstates = {}
         self.energies = {}
@@ -334,25 +322,17 @@ class Electronics:
             self.energies["beta"] = {}
         # Attach method dynamically
         atoms = mol.atoms
-        self.electronic_symmetry = electronic_symmetry(
-            mol.Molecular_Symmetry, atoms, self.basis
-        )
+        self.electronic_symmetry = electronic_symmetry(mol.Molecular_Symmetry, atoms, self.basis)
         name = mol.name
         axes = mol.geometric_principle_axis
         self.get_real_electronic_eigenstates(name, atoms, axes)
         symmetry_labels = self.electronic_symmetry.Symmetry_Generators.keys()
-        if (
-            "t1" in symmetry_labels
-            or "t2" in symmetry_labels
-            or "t3" in symmetry_labels
-        ):
+        if "t1" in symmetry_labels or "t2" in symmetry_labels or "t3" in symmetry_labels:
             self.bloch_states = {}
 
     def get_real_electronic_eigenstates(self, name, atoms, axes):
         def TransformHamiltonian(self, atoms, axes):
-            U = get_basis_transformation(
-                np.array(axes).T, np.eye(len(atoms)), atoms, self.basis
-            )
+            U = get_basis_transformation(np.array(axes).T, np.eye(len(atoms)), atoms, self.basis)
             if self.UKS:
                 KS_Hamiltonian_alpha = self.KS_Hamiltonian_alpha
                 KS_Hamiltonian_beta = self.KS_Hamiltonian_beta
@@ -366,9 +346,7 @@ class Electronics:
 
         print(f"ℹ️ : Calculating electronic eigenstates for {name}")
         # --- Setup and Hessian Transformation ---
-        KS_Hamiltonian_alpha, KS_Hamiltonian_beta, U = TransformHamiltonian(
-            self, atoms, axes
-        )
+        KS_Hamiltonian_alpha, KS_Hamiltonian_beta, U = TransformHamiltonian(self, atoms, axes)
         sqrtSm1 = self.inverse_sqrt_OLM
         sqrtSm1 = U.T @ sqrtSm1 @ U
         KS_Hamiltonian_alpha_orth = np.real(sqrtSm1 @ KS_Hamiltonian_alpha @ sqrtSm1)
@@ -383,9 +361,7 @@ class Electronics:
 
         if self.UKS:
             # (Optional) Visualize the original mass-weighted Hessian
-            plt.imshow(
-                KS_Hamiltonian_beta_orth, cmap="viridis", interpolation="nearest"
-            )
+            plt.imshow(KS_Hamiltonian_beta_orth, cmap="viridis", interpolation="nearest")
             plt.colorbar()
             plt.savefig("./Hamiltonian_beta_orth_Original.png")
             plt.close()
@@ -405,18 +381,12 @@ class Electronics:
         VIrr_reordered = VIrr[:, reordering]
 
         # 4. Create the block-diagonal Hessian. The blocks are now in a consistent order.
-        KS_Hamiltonian_alpha_orth_Sectors = (
-            VIrr_reordered.T @ KS_Hamiltonian_alpha_orth @ VIrr_reordered
-        )
+        KS_Hamiltonian_alpha_orth_Sectors = VIrr_reordered.T @ KS_Hamiltonian_alpha_orth @ VIrr_reordered
         if self.UKS:
-            KS_Hamiltonian_beta_orth_Sectors = (
-                VIrr_reordered.T @ KS_Hamiltonian_beta_orth @ VIrr_reordered
-            )
+            KS_Hamiltonian_beta_orth_Sectors = VIrr_reordered.T @ KS_Hamiltonian_beta_orth @ VIrr_reordered
 
         # (Optional) Visualize the block-diagonalized Hessian
-        plt.imshow(
-            KS_Hamiltonian_alpha_orth_Sectors, cmap="viridis", interpolation="nearest"
-        )
+        plt.imshow(KS_Hamiltonian_alpha_orth_Sectors, cmap="viridis", interpolation="nearest")
         plt.colorbar()
         plt.savefig("./Hamiltonian_alpha_orth_Sectors.png")
         plt.close()
@@ -431,7 +401,7 @@ class Electronics:
             plt.close()
 
         # --- BLOCK DIAGONALIZATION (IN CONSISTENT ORDER) ---
-        print(f"ℹ️ : Symmetry Sectors and Electronic Energies")
+        print("ℹ️ : Symmetry Sectors and Electronic Energies")
         current_index = 0
         # 5. Iterate through the sorted labels to process each block.
         label_alpha = []
@@ -455,40 +425,28 @@ class Electronics:
                 ]
 
             # Diagonalize the block to get eigenvalues and eigenvectors for this symmetry
-            eigenvalues_alpha, eigenvectors_alpha = np.linalg.eigh(
-                Block_Hamiltonian_alpha
-            )
+            eigenvalues_alpha, eigenvectors_alpha = np.linalg.eigh(Block_Hamiltonian_alpha)
 
             # energies in eV
             energies_alpha_eV = eigenvalues_alpha * 27.211
-            print(
-                f"Symmetry Sector for Spin Species ↑: {sym}, Energies (eV): \n {energies_alpha_eV}"
-            )
+            # print(
+            #    f"Symmetry Sector for Spin Species ↑: {sym}, Energies (eV): \n {energies_alpha_eV}"
+            # )
 
             # Transform eigenvectors from the symmetry basis back to the mass-weighted basis
-            V_mwh_alpha = (
-                U
-                @ VIrr_reordered[:, current_index : current_index + block_size]
-                @ eigenvectors_alpha
-            )
+            V_mwh_alpha = U @ VIrr_reordered[:, current_index : current_index + block_size] @ eigenvectors_alpha
             if self.UKS:
                 # Diagonalize the block to get eigenvalues and eigenvectors for this symmetry
-                eigenvalues_beta, eigenvectors_beta = np.linalg.eigh(
-                    Block_Hamiltonian_beta
-                )
+                eigenvalues_beta, eigenvectors_beta = np.linalg.eigh(Block_Hamiltonian_beta)
 
                 # energies (eV)
                 energies_beta_eV = eigenvalues_beta * 27.211
-                print(
-                    f"Symmetry Sector for Spin Species ↓: {sym}, Energies (eV): \n {energies_beta_eV}"
-                )
+                # print(
+                #    f"Symmetry Sector for Spin Species ↓: {sym}, Energies (eV): \n {energies_beta_eV}"
+                # )
 
                 # Transform eigenvectors from the symmetry basis back
-                V_mwh_beta = (
-                    U
-                    @ VIrr_reordered[:, current_index : current_index + block_size]
-                    @ eigenvectors_beta
-                )
+                V_mwh_beta = U @ VIrr_reordered[:, current_index : current_index + block_size] @ eigenvectors_beta
 
             V_mwh_alpha = fix_phases_states(V_mwh_alpha, threshold=1e-10)
             self.real_eigenstates["alpha"][sym] = V_mwh_alpha
@@ -546,14 +504,10 @@ def test_phase_op(mol):
             m = 0
             n = 0
             l = 2
-        cellvectors = Geometry.getNeibouringCellVectors(
-            cell=mol.cellvectors, m=m, n=n, l=l
-        )
+        cellvectors = Geometry.getNeibouringCellVectors(cell=mol.cellvectors, m=m, n=n, l=l)
         atoms = Read.read_atomic_coordinates(mol.xyz_path)
         basis = mol.electronics.basis
-        phi_q = atomic_basis.get_phase_operators(
-            atoms, basis, q_vector=list(delta_q), cell_vectors=cellvectors
-        )
+        phi_q = atomic_basis.get_phase_operators(atoms, basis, q_vector=list(delta_q), cell_vectors=cellvectors)
         Sm12 = mol.electronics.inverse_sqrt_OLM
         phase_1 = np.linalg.multi_dot([Sm12, phi_q, Sm12])
 
@@ -572,31 +526,15 @@ def test_phase_op(mol):
                 if len(sym_sector.split(gamma_label)) == 2:
                     gamma_sym_sectors[sym_sector] = np.array(
                         [
-                            mol.electronics.real_eigenstates["alpha"][
-                                sym_sector
-                            ][it].A
-                            for it in range(
-                                len(
-                                    mol.electronics.real_eigenstates["alpha"][
-                                        sym_sector
-                                    ]
-                                )
-                            )
+                            mol.electronics.real_eigenstates["alpha"][sym_sector][it].A
+                            for it in range(len(mol.electronics.real_eigenstates["alpha"][sym_sector]))
                         ]
                     ).T
                 else:
                     other_sym_sectors[sym_sector] = np.array(
                         [
-                            mol.electronics.real_eigenstates["alpha"][
-                                sym_sector
-                            ][it].A
-                            for it in range(
-                                len(
-                                    mol.electronics.real_eigenstates["alpha"][
-                                        sym_sector
-                                    ]
-                                )
-                            )
+                            mol.electronics.real_eigenstates["alpha"][sym_sector][it].A
+                            for it in range(len(mol.electronics.real_eigenstates["alpha"][sym_sector]))
                         ]
                     ).T
             # compute overlaps
@@ -637,7 +575,6 @@ def test_phase_op(mol):
 
 
 def band_index(mol, nh, nl, path="./", threshold=0.25):
-
     # Figuring out the translational symmetries in the structure:
     p_gamma_ind = []
     periodic = np.array(mol.periodicity) > 1
@@ -654,7 +591,7 @@ def band_index(mol, nh, nl, path="./", threshold=0.25):
     for sym in symsecs:
         if "Id=1" in sym:
             for t in translate:
-                if not t in sym:
+                if t not in sym:
                     prim_gam_sym.remove(sym)
         elif "Id=1" not in sym:
             prim_gam_sym.remove(str(sym))
@@ -689,9 +626,7 @@ def band_index(mol, nh, nl, path="./", threshold=0.25):
     atoms = Read.read_atomic_coordinates(xyz_filepath)
     q_points = get_q_points(mol.cellvectors, mol.periodicity)
 
-    cellvectors = Geometry.getNeibouringCellVectors(
-        cell=mol.cellvectors, m=periodic[0], n=periodic[1], l=periodic[2]
-    )
+    cellvectors = Geometry.getNeibouringCellVectors(cell=mol.cellvectors, m=periodic[0], n=periodic[1], l=periodic[2])
     # assuming the supercell is large enough so that just the first neighbouring cells are enough; otherwise a convergence check would be needed!
 
     all_connected_bands = []
@@ -700,28 +635,20 @@ def band_index(mol, nh, nl, path="./", threshold=0.25):
     for state in prim_gam_states:
         print(
             state,
-            mol.electronics.ElectronicEigenstates["alpha"][state[0]][
-                int(state[1])
-            ].energy,
+            mol.electronics.ElectronicEigenstates["alpha"][state[0]][int(state[1])].energy,
         )
         band = {}
         band[tuple(q_points[g_point])] = state
-        s0 = mol.electronics.ElectronicEigenstates["alpha"][state[0]][
-            int(state[1])
-        ]
+        s0 = mol.electronics.ElectronicEigenstates["alpha"][state[0]][int(state[1])]
         Sm12 = mol.electronics.inverse_sqrt_OLM
         for q_point in q_points:
             print(q_point)
-            phi_q = atomic_basis.get_phase_operators(
-                atoms, basis, q_vector=q_point, cell_vectors=cellvectors
-            )
+            phi_q = atomic_basis.get_phase_operators(atoms, basis, q_vector=q_point, cell_vectors=cellvectors)
             phase_1 = np.linalg.multi_dot([Sm12, phi_q, Sm12])
             s0_transformed = phase_1 @ s0.A
             q_state_list = []
             for sym_sector in non_prim_gam_sym:
-                for it, state in enumerate(
-                    mol.electronics.ElectronicEigenstates["alpha"][sym_sector]
-                ):
+                for it, state in enumerate(mol.electronics.ElectronicEigenstates["alpha"][sym_sector]):
                     value = np.dot(state.A, s0_transformed)
                     if np.abs(value) > 0.25:
                         print(
@@ -771,9 +698,7 @@ def get_reciprocal_lattice_vectors(a1, a2, a3):
     volume = np.dot(a1, np.cross(a2, a3))
 
     if np.abs(volume) < 1e-12:
-        raise ValueError(
-            "Lattice vectors are coplanar (volume = 0). Cannot form 3D lattice."
-        )
+        raise ValueError("Lattice vectors are coplanar (volume = 0). Cannot form 3D lattice.")
 
     # Calculate reciprocal lattice vectors
     b1 = 2 * np.pi * np.cross(a2, a3) / volume
@@ -848,8 +773,7 @@ def get_q_points(cellvectors, periodicity, return_format="combined"):
 
     else:
         raise ValueError(
-            f"Unknown return_format: {return_format}. "
-            "Choose from 'combined', 'separate', 'grid', or 'mesh'."
+            f"Unknown return_format: {return_format}. Choose from 'combined', 'separate', 'grid', or 'mesh'."
         )
 
 
@@ -911,16 +835,12 @@ class electronic_symmetry(Symmetry.Symmetry):
             self.Symmetry_Generators = generators
             self._iscommutative()
             if self.commutative:
-                self.IrrepsProjector = simultaneous_real_block_diagonalization(
-                    list(self.Symmetry_Generators.values())
-                )
+                self.IrrepsProjector = simultaneous_real_block_diagonalization(list(self.Symmetry_Generators.values()))
             else:
                 self._determineCentralizer()
                 self._determineIrrepsProjector()
         else:
-            self.IrrepsProjector = np.kron(
-                molecular_symmetry.Symmetry_Generators["Id"], np.eye(3)
-            )
+            self.IrrepsProjector = np.kron(molecular_symmetry.Symmetry_Generators["Id"], np.eye(3))
         self._determineSymmetrySectors()
 
 
@@ -1140,14 +1060,10 @@ def test_IrrepsProjector(name):
     # 3. Reorder the projector matrix columns based on the sorted symmetry order.
     VIrr_reordered = VIrr[:, reordering]
     for sym in el.electronic_symmetry.Symmetry_Generators:
-        symm = (
-            VIrr_reordered.T
-            @ el.electronic_symmetry.Symmetry_Generators[sym]
-            @ VIrr_reordered
-        )
+        symm = VIrr_reordered.T @ el.electronic_symmetry.Symmetry_Generators[sym] @ VIrr_reordered
         plt.imshow(symm, cmap="viridis", interpolation="nearest")
         plt.colorbar()
         plt.title(sym)
         # Save the figure
-        plt.savefig("./{}.png".format(sym))
+        plt.savefig(f"./{sym}.png")
         plt.close()

@@ -9,8 +9,6 @@ from . import (
     Symmetry,
     Util,
     VibAna,
-    Wannier,
-    Wannier_final,
     Write,
     atomic_basis,
     coordinate_tools,
@@ -19,4 +17,6 @@ from . import (
     linear_coupling_constants,
     structure,
     vibrations,
+    Wannier,
+    Wannier_final,
 )

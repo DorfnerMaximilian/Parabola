@@ -928,7 +928,8 @@ def testing_bloch(mol, path="./", name_of_file="general"):
                 plt.savefig(path + str(sym_sector) + "bloch_issues.png", dpi=1200)
 
         bloch_eigenstates_full = np.array(bloch_eigenstates_full)
-        np.save(path + "Bloch_states_" + name_of_file + ".npy", bloch_eigenstates_full)
+        # TODO: uncomment to save bloch states after debugging
+        # np.save(path + "Bloch_states_" + name_of_file + ".npy", bloch_eigenstates_full)
 
     return bloch_eigenstates_full
 
