@@ -1,6 +1,12 @@
-import numpy as np
+from __future__ import annotations
+
 import os
-from .PhysConst import StandardAtomicWeights, ConversionFactors
+import re
+
+import numpy as np
+from pydantic import BaseModel, ConfigDict
+
+from .PhysConst import ConversionFactors, StandardAtomicWeights
 
 "####################################################################################"
 "#########                            xyz-Read                           ############"
@@ -33,9 +39,7 @@ def get_xyz_filename(path="./", verbose=True):
             print(f"ℹ️ : Found and selected geometry from file: {filename}")
         return os.path.abspath(os.path.join(path, filename))
     elif len(opt_files) > 1:
-        raise ValueError(
-            f"AmbiguityError: Found {len(opt_files)} '*_opt.xyz' files in '{path}'. Please keep only one."
-        )
+        raise ValueError(f"AmbiguityError: Found {len(opt_files)} '*_opt.xyz' files in '{path}'. Please keep only one.")
     # 2. Next prioritize the temp '_tmp.xyz' file
     opt_files = [f for f in os.listdir(path) if f.endswith("_tmp.xyz")]
     if len(opt_files) == 1:
@@ -44,26 +48,18 @@ def get_xyz_filename(path="./", verbose=True):
             print(f"ℹ️ : Found and selected geometry from file: {filename}")
         return os.path.abspath(os.path.join(path, filename))
     elif len(opt_files) > 1:
-        raise ValueError(
-            f"AmbiguityError: Found {len(opt_files)} '*_tmp.xyz' files in '{path}'. Please keep only one."
-        )
+        raise ValueError(f"AmbiguityError: Found {len(opt_files)} '*_tmp.xyz' files in '{path}'. Please keep only one.")
 
     # 3. If no optimized file, fall back to standard '.xyz' file
     # Ensure we don't accidentally match an '_opt.xyz' file here
     xyz_files = [
-        f
-        for f in os.listdir(path)
-        if f.endswith(".xyz")
-        and not f.endswith("_opt.xyz")
-        and not f.endswith("_tmp.xyz")
+        f for f in os.listdir(path) if f.endswith(".xyz") and not f.endswith("_opt.xyz") and not f.endswith("_tmp.xyz")
     ]
 
     if len(xyz_files) == 1:
         filename = xyz_files[0]
         if verbose:
-            print(
-                f"ℹ️ : No optimized xyz file found. Selected standard file: {filename}"
-            )
+            print(f"ℹ️ : No optimized xyz file found. Selected standard file: {filename}")
         return os.path.abspath(os.path.join(path, filename))
     elif len(xyz_files) > 1:
         raise ValueError(
@@ -71,9 +67,7 @@ def get_xyz_filename(path="./", verbose=True):
         )
 
     # 3. If no files of either type are found
-    raise FileNotFoundError(
-        f"InputError: No suitable '*.xyz' or '*_opt.xyz' file found in '{path}'."
-    )
+    raise FileNotFoundError(f"InputError: No suitable '*.xyz' or '*_opt.xyz' file found in '{path}'.")
 
 
 def get_cell_filename(path="./", verbose=True):
@@ -108,18 +102,12 @@ def get_cell_filename(path="./", verbose=True):
 
     # 2. If no optimized file, fall back to standard '.xyz' file
     # Ensure we don't accidentally match an '_opt.xyz' file here
-    cell_files = [
-        f
-        for f in os.listdir(path)
-        if f.endswith(".cell") and not f.endswith("_opt.cell")
-    ]
+    cell_files = [f for f in os.listdir(path) if f.endswith(".cell") and not f.endswith("_opt.cell")]
 
     if len(cell_files) == 1:
         filename = cell_files[0]
         if verbose:
-            print(
-                f"ℹ️ : No optimized cell file found. Selected standard file: {filename}"
-            )
+            print(f"ℹ️ : No optimized cell file found. Selected standard file: {filename}")
         return os.path.abspath(os.path.join(path, filename))
     elif len(cell_files) > 1:
         raise ValueError(
@@ -127,9 +115,7 @@ def get_cell_filename(path="./", verbose=True):
         )
 
     # 3. If no files of either type are found
-    raise FileNotFoundError(
-        f"InputError: No suitable '*.cell' or '*_opt.cell' file found in '{path}'."
-    )
+    raise FileNotFoundError(f"InputError: No suitable '*.cell' or '*_opt.cell' file found in '{path}'.")
 
 
 def read_cell(path):
@@ -147,7 +133,7 @@ def read_cell(path):
             - h (3x3 numpy array, rows = lattice vectors A,B,C)
             - vol (float)
     """
-    with open(path, "r") as f:
+    with open(path) as f:
         line = f.readline()
     parts = line.split()
 
@@ -255,9 +241,7 @@ def get_inp_filename(path="./", verbose=True):
             print(f"ℹ️ : Selected input file: {filename}")
         return os.path.abspath(os.path.join(path, filename))
     elif len(inp_files) > 1:
-        raise ValueError(
-            f"AmbiguityError: Found {len(inp_files)} '*.inp' files in '{path}'. Please keep only one."
-        )
+        raise ValueError(f"AmbiguityError: Found {len(inp_files)} '*.inp' files in '{path}'. Please keep only one.")
     else:
         raise FileNotFoundError(f"InputError: No '*.inp' file found in '{path}'.")
 
@@ -285,9 +269,7 @@ def get_out_filename(path="./", verbose=True):
             print(f"ℹ️ : Selected output file: {filename}")
         return os.path.abspath(os.path.join(path, filename))
     elif len(out_files) > 1:
-        raise ValueError(
-            f"AmbiguityError: Found {len(out_files)} '*.out' files in '{path}'. Please keep only one."
-        )
+        raise ValueError(f"AmbiguityError: Found {len(out_files)} '*.out' files in '{path}'. Please keep only one.")
     else:
         raise FileNotFoundError(f"InputError: No '*.out' file found in '{path}'.")
 
@@ -305,7 +287,7 @@ def read_forces(folder):
     filename = folder + "/Forces"
     forces_blocks = []  # to keep all blocks
 
-    with open(filename, "r") as f:
+    with open(filename) as f:
         lines = f.readlines()
 
     reading = False
@@ -413,9 +395,7 @@ def read_basis_vectors(parentfolder="./"):
         if lines[1].startswith("unit="):
             unit = lines[1].split("=")[1].strip()
             if unit not in ["Bohr", "sqrt(u)*Bohr"]:
-                raise ValueError(
-                    "InputError: Unit must be either 'Bohr' or 'sqrt(u)*Bohr'"
-                )
+                raise ValueError("InputError: Unit must be either 'Bohr' or 'sqrt(u)*Bohr'")
         else:
             raise ValueError("InputError: Unit not provided in the expected format.")
 
@@ -434,9 +414,7 @@ def read_basis_vectors(parentfolder="./"):
                     elif vector_index < len(delta_values):
                         deltas.append(delta_values[vector_index])
                     else:
-                        raise ValueError(
-                            "InputError: Insufficient delta values provided for basis vectors."
-                        )
+                        raise ValueError("InputError: Insufficient delta values provided for basis vectors.")
 
                     it = 0
                 else:
@@ -471,9 +449,7 @@ def read_hessian(path="./"):
         Hessian = np.zeros((len(deltas), len(deltas)))
         subdirectories = [f for f in os.listdir(path) if f.startswith("vector=")]
         if len(subdirectories) != 2 * len(deltas):
-            raise ValueError(
-                "InputError: Number of subdirectories does not match the number of needed Ones!"
-            )
+            raise ValueError("InputError: Number of subdirectories does not match the number of needed Ones!")
 
         partialFpartialY = np.zeros((len(deltas), len(deltas)))
         for lambd in range(len(deltas)):
@@ -498,12 +474,7 @@ def read_hessian(path="./"):
             try:
                 diffofforces = (Fplus - Fminus) / (2 * deltas[lambd])
             except:
-                print(
-                    "Cannot take difference of Forces in: "
-                    + folderplus
-                    + " & "
-                    + folderminus
-                )
+                print("Cannot take difference of Forces in: " + folderplus + " & " + folderminus)
                 exit()
             for s1alpha1 in range(len(deltas)):
                 partialFpartialY[s1alpha1][lambd] = diffofforces.flatten()[s1alpha1]
@@ -515,18 +486,14 @@ def read_hessian(path="./"):
 def read_vibrations(parentfolder="./"):
     try:
         VibrationalFrequencies = np.load(parentfolder + "/Normal-Mode-Energies.npy")
-        CarthesianDisplacements = np.load(
-            parentfolder + "/normalized-Carthesian-Displacements.npy"
-        )
+        CarthesianDisplacements = np.load(parentfolder + "/normalized-Carthesian-Displacements.npy")
         normfactors = np.load(parentfolder + "/Norm-Factors.npy")
     except:
         # Open the Molden file
         mol_files = [f for f in os.listdir(parentfolder) if f.endswith(".mol")]
         if len(mol_files) != 1:
-            raise ValueError(
-                "InputError: There should be only one mol file in the current directory"
-            )
-        f = open(parentfolder + "/" + mol_files[0], "r")
+            raise ValueError("InputError: There should be only one mol file in the current directory")
+        f = open(parentfolder + "/" + mol_files[0])
         Frequencyflag = False
         Vibrationflag = False
         Normfactorsflag = False
@@ -540,17 +507,9 @@ def read_vibrations(parentfolder="./"):
                 Frequencyflag = True
             if line.split()[0] == "[NORM-FACTORS]":
                 Normfactorsflag = True
-            if (
-                line.split()[0][0] == "["
-                and Frequencyflag
-                and line.split()[0] != "[FREQ]"
-            ):
+            if line.split()[0][0] == "[" and Frequencyflag and line.split()[0] != "[FREQ]":
                 Frequencyflag = False
-            if (
-                line.split()[0][0] == "["
-                and Normfactorsflag
-                and line.split()[0] != "[NORM-FACTORS]"
-            ):
+            if line.split()[0][0] == "[" and Normfactorsflag and line.split()[0] != "[NORM-FACTORS]":
                 Normfactorsflag = False
             if line.split()[0] == "[FR-NORM-COORD]":
                 Vibrationflag = True
@@ -568,11 +527,7 @@ def read_vibrations(parentfolder="./"):
                     mode.append(float(line.split()[0]))
                     mode.append(float(line.split()[1]))
                     mode.append(float(line.split()[2]))
-            if (
-                line.split()[0][0] == "["
-                and Vibrationflag
-                and line.split()[0] != "[FR-NORM-COORD]"
-            ):
+            if line.split()[0][0] == "[" and Vibrationflag and line.split()[0] != "[FR-NORM-COORD]":
                 Vibrationflag = False
         f.close()
         CarthesianDisplacements.append(np.array(mode))
@@ -593,7 +548,7 @@ def read_stress(folder, filename="Stress_Tensor"):
     stress : np.ndarray, shape (3,3)
         Stress tensor in GPa.
     """
-    with open(folder + "/" + filename, "r") as f:
+    with open(folder + "/" + filename) as f:
         lines = f.readlines()
 
     stress = None
@@ -628,8 +583,8 @@ def read_cell_vectors(path="./", verbose=True):
     ## input: (opt.)   path   path to the folder of the calculation         (string)
     ## output:  -                                                           (void)
     try:
-        cell_file=get_cell_filename(path=path)
-        cellvectors=read_cell(path=cell_file)
+        cell_file = get_cell_filename(path=path)
+        cellvectors = read_cell(path=cell_file)
     except:
         # Get the .inp file
         inp_file = get_inp_filename(path=path, verbose=False)
@@ -708,9 +663,9 @@ def read_periodicity(path="./", verbose=True):
                             Periodic = True
     if verbose:
         if Periodic:
-            print(f"ℹ️ : Periodicity detected")
+            print("ℹ️ : Periodicity detected")
         else:
-            print(f"ℹ️ : No periodicity detected")
+            print("ℹ️ : No periodicity detected")
 
     return Periodic
 
@@ -734,16 +689,16 @@ def check_uks(path="./", verbose=True):
     if verbose:
         print(f"ℹ️ : Reading spin settings (RKS/UKS) from file: {inp_file}")
     UKS = False
-    with open(inp_file, "r") as f:
+    with open(inp_file) as f:
         for line in f:
             if len(line.split()) >= 1:
                 if line.split()[0] == "LSD":
                     UKS = True
     if verbose:
         if UKS:
-            print(f"ℹ️ : Detected UKS calculation.")
+            print("ℹ️ : Detected UKS calculation.")
         else:
-            print(f"ℹ️ : Detected RKS calculation.")
+            print("ℹ️ : Detected RKS calculation.")
     return UKS
 
 
@@ -758,7 +713,7 @@ def read_multiplicity(path="./", verbose=True):
     if verbose:
         print(f"ℹ️ : Reading spin multiplicity settings from file: {inp_file}")
     mul = 1
-    with open(inp_file, "r") as f:
+    with open(inp_file) as f:
         for line in f:
             if len(line.split()) > 1:
                 if line.split()[0] == "MULTIPLICITY":
@@ -778,7 +733,7 @@ def get_number_of_electrons(parentfolder="./", verbose=True):
     # Calculate the HOMO
     NumberOfElectrons = {}
     Charge = 0
-    with open(inp_file, "r") as f:
+    with open(inp_file) as f:
         lines = f.readlines()
         for line in lines:
             if len(line.split()) >= 2:
@@ -789,10 +744,7 @@ def get_number_of_electrons(parentfolder="./", verbose=True):
                 if line.split()[0] == "POTENTIAL":
                     PotentialName = line.split()[1]
                     splitedPotentialName = PotentialName.split("-")
-                    if (
-                        splitedPotentialName[0] == "GTH"
-                        or splitedPotentialName[1] == "GTH"
-                    ):
+                    if splitedPotentialName[0] == "GTH" or splitedPotentialName[1] == "GTH":
                         numstring = splitedPotentialName[-1]
                         numofE = int(numstring[1:])
                         NumberOfElectrons[atomtype] = numofE
@@ -807,7 +759,7 @@ def get_number_of_electrons(parentfolder="./", verbose=True):
         if Charge != 0:
             print(f"ℹ️ : System is charged with total charge: {Charge}")
         else:
-            print(f"ℹ️ : System is charge-neutral")
+            print("ℹ️ : System is charge-neutral")
     return numofE, Charge
 
 
@@ -851,26 +803,17 @@ def read_total_energy(path="./", verbose=True):
         print(f"ℹ️ : Reading total ground state energy from file: {outfilename}")
 
     GSEnergy = None  # Start with None to detect if it was found
-    with open(os.path.join(path, outfilename), "r") as f:
+    with open(os.path.join(path, outfilename)) as f:
         for line in f:
             parts = line.split()
-            if (
-                len(parts) > 8
-                and parts[0] == "ENERGY|"
-                and parts[1] == "Total"
-                and parts[2] == "FORCE_EVAL"
-            ):
+            if len(parts) > 8 and parts[0] == "ENERGY|" and parts[1] == "Total" and parts[2] == "FORCE_EVAL":
                 try:
                     GSEnergy = float(parts[8])
                 except ValueError:
-                    raise ValueError(
-                        f"Could not convert energy value '{parts[8]}' to float in file '{outfilename}'"
-                    )
+                    raise ValueError(f"Could not convert energy value '{parts[8]}' to float in file '{outfilename}'")
 
     if GSEnergy is None:
-        raise ValueError(
-            f"Total ground state energy could not be determined from file '{outfilename}'"
-        )
+        raise ValueError(f"Total ground state energy could not be determined from file '{outfilename}'")
 
     if verbose:
         print(f"ℹ️ : Found total ground state energy to be: {GSEnergy} [Ha]")
@@ -894,29 +837,22 @@ def read_ground_state_dipole_moment(path="./", verbose=True):
         print(f"ℹ️ : Reading ground state dipole moment from file: {outfilename}")
     dipole_moment = None
     readflag = False
-    with open(outfilename, "r") as file:
+    with open(outfilename) as file:
         for line in file:
             if len(line.split()) > 0:
                 if readflag:
                     dx = line.split()[1]
                     dy = line.split()[3]
                     dz = line.split()[5]
-                    dipole_moment = (
-                        np.array([float(dx), float(dy), float(dz)])
-                        * ConversionFactors["A->a.u."]
-                    )
+                    dipole_moment = np.array([float(dx), float(dy), float(dz)]) * ConversionFactors["A->a.u."]
                     break
-                if (
-                    line.split()[0] == "Dipole"
-                    and line.split()[1] == "moment"
-                    and line.split()[2] == "[Debye]"
-                ):
+                if line.split()[0] == "Dipole" and line.split()[1] == "moment" and line.split()[2] == "[Debye]":
                     readflag = True
 
     if dipole_moment is None:
         raise ValueError(f"ℹ️ :Dipole moment data not found in the file {outfilename}")
     if verbose:
-        print(f"ℹ️ : Found ground state dipole moment to be: {dx,dy,dz} [e a_0]")
+        print(f"ℹ️ : Found ground state dipole moment to be: {dx, dy, dz} [e a_0]")
     return dipole_moment
 
 
@@ -938,9 +874,7 @@ def read_ks_matrices(parentfolder="./", filename="KSHamiltonian"):
     UKS = check_uks(parentfolder)
     if not UKS:
         try:
-            KSlines, OLMlines, NumBasisfunctions = (
-                read_matrices_from_file_multiplicity_one(parentfolder, filename)
-            )
+            KSlines, OLMlines, NumBasisfunctions = read_matrices_from_file_multiplicity_one(parentfolder, filename)
             KSHamiltonian = np.zeros((NumBasisfunctions, NumBasisfunctions))
             OLM = np.zeros((NumBasisfunctions, NumBasisfunctions))
             for l in KSlines:
@@ -972,8 +906,8 @@ def read_ks_matrices(parentfolder="./", filename="KSHamiltonian"):
             OLM = np.load(parentfolder + "/OLM.npy")
     else:
         try:
-            KSlines_alpha, KSlines_beta, OLMlines, NumBasisfunctions = (
-                read_matrices_from_file_multiplicity_two(parentfolder, filename)
+            KSlines_alpha, KSlines_beta, OLMlines, NumBasisfunctions = read_matrices_from_file_multiplicity_two(
+                parentfolder, filename
             )
             KSHamiltonian_alpha = np.zeros((NumBasisfunctions, NumBasisfunctions))
             KSHamiltonian_beta = np.zeros((NumBasisfunctions, NumBasisfunctions))
@@ -1018,9 +952,7 @@ def read_ks_matrices(parentfolder="./", filename="KSHamiltonian"):
     return KSHamiltonian_alpha, KSHamiltonian_beta, OLM
 
 
-def read_matrices_from_file_multiplicity_one(
-    parentfolder="./", filename="KSHamiltonian"
-):
+def read_matrices_from_file_multiplicity_one(parentfolder="./", filename="KSHamiltonian"):
     ##Reads in the overlapmatrix and the KSHamiltonian in case of Spin multiplicity 1
     ## input:
     ## (opt.)   folder              path to the folder of the KSHamiltonian file         (string)
@@ -1037,11 +969,7 @@ def read_matrices_from_file_multiplicity_one(
                 if line.split()[0] == "KOHN-SHAM" and line.split()[1] == "MATRIX":
                     OLMFlag = False
                     Niter += 1
-                if (
-                    line.split()[0] == "OVERLAP"
-                    and line.split()[1] == "MATRIX"
-                    and OLMFlag
-                ):
+                if line.split()[0] == "OVERLAP" and line.split()[1] == "MATRIX" and OLMFlag:
                     OLMFlag = False
                 if OLMFlag:
                     OLMlines.append(line)
@@ -1063,11 +991,7 @@ def read_matrices_from_file_multiplicity_one(
                     KSFlag = False
                 if KSFlag:
                     KSlines.append(line)
-                if (
-                    line.split()[0] == "KOHN-SHAM"
-                    and line.split()[1] == "MATRIX"
-                    and Niter2 == Niter
-                ):
+                if line.split()[0] == "KOHN-SHAM" and line.split()[1] == "MATRIX" and Niter2 == Niter:
                     KSFlag = True
                 if Nlines2 == Nlines - 3:
                     NumBasisfunctions = int(line.split()[0])
@@ -1092,11 +1016,7 @@ def read_matrices_from_file_multiplicity_two(parentfolder, filename="KSHamiltoni
                     if line.split()[2] == "FOR" and line.split()[3] == "BETA":
                         OLMFlag = False
                         Niter1 += 1
-                if (
-                    line.split()[0] == "OVERLAP"
-                    and line.split()[1] == "MATRIX"
-                    and OLMFlag
-                ):
+                if line.split()[0] == "OVERLAP" and line.split()[1] == "MATRIX" and OLMFlag:
                     OLMFlag = False
                 if OLMFlag:
                     OLMlines.append(line)
@@ -1123,11 +1043,7 @@ def read_matrices_from_file_multiplicity_two(parentfolder, filename="KSHamiltoni
                 if KSFlag1:
                     KSlines_alpha.append(line)
                 if line.split()[0] == "KOHN-SHAM" and line.split()[1] == "MATRIX":
-                    if (
-                        line.split()[2] == "FOR"
-                        and line.split()[3] == "ALPHA"
-                        and Niter2 == Niter0
-                    ):
+                    if line.split()[2] == "FOR" and line.split()[3] == "ALPHA" and Niter2 == Niter0:
                         KSFlag1 = True
                 if Nlines2 == Nlines - 3:
                     NumBasisfunctions = int(line.split()[0])
@@ -1151,11 +1067,7 @@ def read_matrices_from_file_multiplicity_two(parentfolder, filename="KSHamiltoni
                 if KSFlag1:
                     KSlines_beta.append(line)
                 if line.split()[0] == "KOHN-SHAM" and line.split()[1] == "MATRIX":
-                    if (
-                        line.split()[2] == "FOR"
-                        and line.split()[3] == "BETA"
-                        and Niter2 == Niter1
-                    ):
+                    if line.split()[2] == "FOR" and line.split()[3] == "BETA" and Niter2 == Niter1:
                         KSFlag1 = True
             Nlines2 += 1
     return KSlines_alpha, KSlines_beta, OLMlines, NumBasisfunctions
@@ -1203,11 +1115,7 @@ def read_mos_ao(parentfolder="./"):
     for line in MOstring:
         splited_line = line.split()[1:]
         if len(splited_line) >= 5:
-            if (
-                splited_line[0].isdigit()
-                and splited_line[1].isdigit()
-                and splited_line[2].isalpha()
-            ):
+            if splited_line[0].isdigit() and splited_line[1].isdigit() and splited_line[2].isalpha():
                 aoBasisindex = int(splited_line[0]) - 1
                 iterator = 0
                 for number_string in splited_line[4:]:
@@ -1245,6 +1153,110 @@ def read_mos(parentfolder="./"):
 #########                        END AO Matrices                        ############
 ####################################################################################
 
+####################################################################################
+#########                          CSR Matrices                         ############
+####################################################################################
+
+
+class CSR_File(BaseModel):
+    data: np.ndarray
+    shape: tuple[int, int]
+    num_atomic_basis_functions: int
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+def read_csr_file(path: str = "./", filename: str = "KS-KS_SPIN_1_K_1-1_0.csr") -> CSR_File:
+    """
+    Reads a CSR file and returns its contents as a CSR_File object.
+    Used for k-point resolved KS and Overlap matrices obtained with the KS_CSR_WRITE and S_CSR_WRITE sections in CP2K.
+    Parameters
+    ----------
+    path: str
+        Path to the folder containing the CSR file. Default is current directory.
+    filename: str
+        Name of the CSR file. Default is "KS-KS_SPIN_1_K_1-1_0.csr".
+
+    Returns
+    -------
+    CSR_File
+        An object containing the matrix data, shape, and number of atomic basis functions.
+
+    """
+    # Read the entire file content
+    with open("/".join([path, filename])) as f_csr:
+        content = [line.strip().split() for line in f_csr]
+        n_columns = len(content[0])
+        content = np.array(content, dtype=float).reshape((-1, n_columns))
+
+    # Extract matrix dimensions
+    num_atomic_basis_functions = int(np.max(content[:, 0]))
+
+    data = np.zeros((num_atomic_basis_functions, num_atomic_basis_functions), dtype=complex)
+    for line in content:
+        data[int(line[0]) - 1, int(line[1]) - 1] = (
+            float(line[2]) + 1j * float(line[3]) if n_columns == 4 else float(line[2])
+        )
+
+    return CSR_File(
+        data=data,
+        shape=(num_atomic_basis_functions, num_atomic_basis_functions),
+        num_atomic_basis_functions=num_atomic_basis_functions,
+    )
+
+
+def read_multiple_csr_files(
+    path: str = "./", filename_pattern: str = ".csr", is_ks: bool = False, is_overlap: bool = False
+) -> dict[str, dict[int, CSR_File]]:
+    """
+    Reads multiple CSR files matching a given filename pattern from a specified directory.
+    Parameters
+    ----------
+    path: str
+        Path to the folder containing the CSR files. Default is current directory.
+    filename_pattern: str
+        Pattern to match CSR filenames. Default (".csr") is compatible with KS-matrices and Overlap-matrices.
+    is_ks: bool
+        Flag indicating if KS matrices are being read. Default is False.
+    is_overlap: bool
+        Flag indicating if Overlap matrices are being read. Default is False.
+
+    Returns
+    -------
+    dict[str, CSR_File]:
+        A dictionary mapping filenames to their corresponding CSR_File objects. Keys are kpoints labeled by CP2K.
+    """
+    # collect all csr files in the directory
+    if filename_pattern == ".csr":
+        csr_filenames = [f for f in os.listdir(path) if f.endswith(".csr")]
+    else:
+        csr_filenames = [f for f in os.listdir(path) if filename_pattern in f]
+
+    csr_filenames.sort()
+    pattern_kpt = re.compile(r"_K_(\d+)-1_0")
+    dict_data = {}
+    if is_ks:
+        dict_data["ks"] = {}
+        ks_filenames = [f for f in csr_filenames if "-KS_" in f]
+        for f in ks_filenames:
+            dict_data["ks"][int(pattern_kpt.search(f).group(1))] = read_csr_file(path, f)
+
+    if is_overlap:
+        dict_data["overlap"] = {}
+        overlap_filenames = [f for f in csr_filenames if "-S_" in f]
+        for f in overlap_filenames:
+            dict_data["overlap"][int(pattern_kpt.search(f).group(1))] = read_csr_file(path, f)
+
+    if not (is_ks and is_overlap):
+        print("⚠️ : Neither KS nor Overlap matrices were specified to be read. Returning empty dictionary.")
+
+    return dict_data
+
+
+####################################################################################
+#########                        END CSR Matrices                       ############
+####################################################################################
+
 
 ####################################################################################
 #########                         Excited States                        ############
@@ -1270,7 +1282,7 @@ def read_excited_states(path, minweight=1e-6, verbose=True):
     try:
         readflag = False
         energies = []
-        with open(outfilename, "r") as f:
+        with open(outfilename) as f:
             lines = f.readlines()
             for line in lines:
                 if len(line.split()) > 4:
@@ -1296,7 +1308,7 @@ def read_excited_states(path, minweight=1e-6, verbose=True):
         stateiterator = []
         stateiteratorflag = False
         homoid = read_homo_index(path)
-        with open(outfilename, "r") as f:
+        with open(outfilename) as f:
             for line in f:
                 if len(line.split()) > 0 and stateiteratorflag:
                     if (
@@ -1305,11 +1317,7 @@ def read_excited_states(path, minweight=1e-6, verbose=True):
                     ):
                         stateiteratorflag = False
                         states.append([energies[it], stateiterator])
-                if (
-                    stateiteratorflag
-                    and len(line.split()) == 3
-                    and represents_int(line.split()[1])
-                ):
+                if stateiteratorflag and len(line.split()) == 3 and represents_int(line.split()[1]):
                     if abs(float(line.split()[2])) >= minweight:
                         stateiterator.append(
                             [
@@ -1333,7 +1341,7 @@ def read_excited_states(path, minweight=1e-6, verbose=True):
                                 stateiteratorflag = True
         return states
     except Exception as e:
-        raise IOError("Could not read file: " + outfilename + " (" + str(e) + ")")
+        raise OSError("Could not read file: " + outfilename + " (" + str(e) + ")")
 
 
 def read_transition_dipole_moments(path="./", verbose=True):
@@ -1349,7 +1357,7 @@ def read_transition_dipole_moments(path="./", verbose=True):
     energies = []
     TransitionDipolevectors = []
     Oscillatorstrenghts = []
-    with open(outfilename, "r") as f:
+    with open(outfilename) as f:
         for line in f:
             if len(line.split()) > 4:
                 if (
@@ -1365,9 +1373,7 @@ def read_transition_dipole_moments(path="./", verbose=True):
                     dx = line.split()[3]
                     dy = line.split()[4]
                     dz = line.split()[5]
-                    TransitionDipolevectors.append(
-                        np.array([float(dx), float(dy), float(dz)])
-                    )
+                    TransitionDipolevectors.append(np.array([float(dx), float(dy), float(dz)]))
                     Oscillatorstrenghts.append(float(line.split()[6]))
                 if (
                     line.split()[0] == "number"
@@ -1414,11 +1420,7 @@ def read_G0W0_energies(path="./", verbose=True):
                     E_QP.append(float(line.split()[7]))
                 if line.split()[0] == "G0W0" and line.split()[1] == "results":
                     G0W0flag = True
-                if (
-                    line.split()[0] == "Molecular"
-                    and line.split()[1] == "orbital"
-                    and line.split()[2] == "E_SCF"
-                ):
+                if line.split()[0] == "Molecular" and line.split()[1] == "orbital" and line.split()[2] == "E_SCF":
                     readflag = True
     return (
         orbitals,
@@ -1448,7 +1450,7 @@ def read_cube_file(filename, parentfolder="./"):
     output:  data              (np.array)              Nx x Ny x Nz numpy array where first index is x, second y and third is z
     """
     predata = []
-    with open(parentfolder + "/" + filename, "r") as file:
+    with open(parentfolder + "/" + filename) as file:
         lines = file.readlines()
         it = 0
         Cubedata = False
