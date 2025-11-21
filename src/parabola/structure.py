@@ -334,8 +334,8 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         self.determine_symmetry()
 
     def determine_symmetry(self):
-        tol_tolerance = 5 * 10 ** (-4)
-        self._test_translation(tol_translation=tol_tolerance)
+        tol_translation = 5 * 10 ** (-4)
+        self._test_translation(tol_translation=tol_translation)
         primitive_indices = self._find_indices_in_primitive_cell(tol_translation=tol_translation)
 
         geometry_centered_coordinates, center = Geometry.ComputeCenterOfGeometryCoordinates(
@@ -554,7 +554,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 self.molecular_structure.coordinates @ np.linalg.inv(self.molecular_structure.cellvectors),
                 self.molecular_structure.atomic_numbers,
             ),
-            symprec=,
+            symprec=tol_translation,
         )  # returns (cellvectors_of_primitive_cell, positions_in_fractional_coord, atomic_numbers)
 
         # determine the multiplicity of the primitive cell in supercell

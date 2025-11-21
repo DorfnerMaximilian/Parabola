@@ -318,7 +318,7 @@ def deflectAlongModes(parentfolder="./"):
     Vib_Ana_inputs(deltas, vectors, parentfolder)
 
 
-def getTransAndRotEigenvectors(coordinates, masses):
+def get_trans_and_rot_eigenvectors(coordinates, masses):
     """
     Computes the translational and rotational eigenvectors according to "Vibrational Analysis in Gaussian,"
     Joseph W. Ochterski (1999).
@@ -806,7 +806,7 @@ def CorrectNormalModeEnergies_Output(
         numofatoms = int(len(NormCarthesianDisplacements[0]) / 3)
 
         # Get translational and rotational eigenvectors
-        Transeigenvectors, Roteigenvectors = getTransAndRotEigenvectors(
+        Transeigenvectors, Roteigenvectors = get_trans_and_rot_eigenvectors(
             path_to_original_data, True
         )
         # Calculate orthogonal projector
