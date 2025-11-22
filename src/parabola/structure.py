@@ -438,7 +438,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                         indices = np.argmax(transformed, axis=0)
                         molecular_structure.unitcells[(n, m, k)] = indices.tolist()
         else:
-            molecular_structure.unitcells[(0, 0, 0)] = [it for it in range(len(Molecular_Structure.atoms))]
+            molecular_structure.unitcells[(0, 0, 0)] = [it for it in range(len(molecular_structure.atoms))]
 
     def _test_inversion(self, molecular_structure: "Molecular_Structure", tol_inversion):
         atomic_symbols = molecular_structure.atoms
@@ -548,52 +548,53 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         # SC_cellvectors = transformation_matrix @ PC_cellvectors
         transformation_matrix = molecular_structure.cellvectors @ np.linalg.inv(primitive_cell[0])
         multiplicity_of_primitive = np.linalg.det(transformation_matrix)
+        if np.sum(np.array(molecular_structure.periodicity))>0: #this is the periodic case
+            if np.isclose(multiplicity_of_primitive, np.round(multiplicity_of_primitive), atol=1e-6):
+                multiplicity_of_primitive = int(np.round(multiplicity_of_primitive))
+                molecular_structure.primitive_cellvectors = molecular_structure.cellvectors / np.array(
+                        molecular_structure.periodicity
+                    )
 
-        if np.isclose(multiplicity_of_primitive, np.round(multiplicity_of_primitive), atol=1e-6):
-            multiplicity_of_primitive = int(np.round(multiplicity_of_primitive))
-            molecular_structure.primitive_cellvectors = molecular_structure.cellvectors / np.array(
-                molecular_structure.periodicity
-            )
+                if multiplicity_of_primitive / np.prod(molecular_structure.periodicity) != 1:
+                    print("ℹ️ : Sublattice detected in the conventional cell. Updating to primitive cell.")
 
-            if multiplicity_of_primitive / np.prod(molecular_structure.periodicity) != 1:
-                print("ℹ️ : Sublattice detected in the conventional cell. Updating to primitive cell.")
+                    # This translation vector is hardcoded for orthorhombic supercell to hexagonal unit cell conversion!
+                    # However, it is generalized for orthorhomic supercells constructed from any multiplicity of the
+                    # hexagonal primitive unit cell
+                    translation_vector = np.array([1.0, 1.0, 0.0]) / (
+                        multiplicity_of_primitive / np.prod(molecular_structure.periodicity)
+                    )
+                    primitive_indices = self._find_sublattice(
+                        molecular_structure=molecular_structure, translation_vector=translation_vector
+                    )
 
-                # This translation vector is hardcoded for orthorhombic supercell to hexagonal unit cell conversion!
-                # However, it is generalized for orthorhomic supercells constructed from any multiplicity of the
-                # hexagonal primitive unit cell
-                translation_vector = np.array([1.0, 1.0, 0.0]) / (
-                    multiplicity_of_primitive / np.prod(molecular_structure.periodicity)
-                )
-                primitive_indices = self._find_sublattice(
-                    molecular_structure=molecular_structure, translation_vector=translation_vector
-                )
+                    # This 30 degree rotation is hardcoded for orthorhombic supercell to hexagonal unit cell conversion!
+                    rotation = np.array(
+                        [[np.cos(np.pi / 6), -np.sin(np.pi / 6), 0], [np.sin(np.pi / 6), np.cos(np.pi / 6), 0], [0, 0, 1]]
+                    )
+                    molecular_structure.primitive_cellvectors = primitive_cell[0] @ rotation
+                    molecular_structure.cellvectors = np.round(
+                        (molecular_structure.primitive_cellvectors * np.array(molecular_structure.periodicity)[:, None]),
+                        decimals=6,
+                    )
+                    molecular_structure.cellvectors[0] *= multiplicity_of_primitive / np.prod(
+                        molecular_structure.periodicity
+                    )
 
-                # This 30 degree rotation is hardcoded for orthorhombic supercell to hexagonal unit cell conversion!
-                rotation = np.array(
-                    [[np.cos(np.pi / 6), -np.sin(np.pi / 6), 0], [np.sin(np.pi / 6), np.cos(np.pi / 6), 0], [0, 0, 1]]
-                )
-                molecular_structure.primitive_cellvectors = primitive_cell[0] @ rotation
-                molecular_structure.cellvectors = np.round(
-                    (molecular_structure.primitive_cellvectors * np.array(molecular_structure.periodicity)[:, None]),
-                    decimals=6,
-                )
-                molecular_structure.cellvectors[0] *= multiplicity_of_primitive / np.prod(
-                    molecular_structure.periodicity
-                )
+                    molecular_structure.coordinates = wrapping_coordinates(
+                        molecular_structure.coordinates, molecular_structure.cellvectors
+                    )
 
-                molecular_structure.coordinates = wrapping_coordinates(
-                    molecular_structure.coordinates, molecular_structure.cellvectors
-                )
-
-                # run _test_translation again with updated cell vectors
-                molecular_structure.periodicity = (1, 1, 1)  # resetting before calling _test_translation again
-                self._test_translation(molecular_structure=molecular_structure, tol_translation=tol_translation)
+                    # run _test_translation again with updated cell vectors
+                    molecular_structure.periodicity = (1, 1, 1)  # resetting before calling _test_translation again
+                    self._test_translation(molecular_structure=molecular_structure, tol_translation=tol_translation)
+                else:
+                    # there is no sublattice, the conventional cell is already primitive
+                    primitive_indices = molecular_structure.unitcells[(0, 0, 0)]
             else:
-                # there is no sublattice, the conventional cell is already primitive
-                primitive_indices = molecular_structure.unitcells[(0, 0, 0)]
-        else:
-            raise ValueError("Could not determine multiplicity of the primitive cell.")
-
+                raise ValueError("Could not determine multiplicity of the primitive cell.")
+        else:# this is the non-periodic case
+            primitive_indices = molecular_structure.unitcells[(0, 0, 0)]
         return primitive_indices
 
     def _find_sublattice(
