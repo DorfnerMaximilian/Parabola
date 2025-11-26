@@ -61,6 +61,7 @@ class Vibrations:
     def __init__(self, mol, disable_symmetry=False):
         # Parse the Data
         vibrations_path = mol.vibrations_path
+        self.vibrations_path=vibrations_path
         masses = mol.masses
         molecular_symmetry = mol.Molecular_Symmetry
         axes = mol.geometric_principle_axis
@@ -81,7 +82,6 @@ class Vibrations:
 
             # 3. Create a new, blank Symmetry object
             molecular_symmetry.Symmetry_Generators = {"Id": id_matrix}
-
         # Now safe to access parent attributes
         self.Vibrational_Symmetry = Vibrational_Symmetry(molecular_symmetry)
         self.ImposeTranslationalSymmetry(masses=masses)
@@ -115,7 +115,7 @@ class Vibrations:
         # (Optional) Visualize the original mass-weighted Hessian
         plt.imshow(MassWeightedHessian, cmap="viridis", interpolation="nearest")
         plt.colorbar()
-        plt.savefig("./Hessian_Original.png")
+        plt.savefig(self.vibrations_path+"/"+"Hessian_Original.png")
         plt.close()
 
         # --- CONSISTENT SYMMETRY ORDERING ---
@@ -140,7 +140,7 @@ class Vibrations:
         # (Optional) Visualize the block-diagonalized Hessian
         plt.imshow(MassWeightedHessian_Sectors, cmap="viridis", interpolation="nearest")
         plt.colorbar()
-        plt.savefig("./Hessian_Sectors.png")
+        plt.savefig(self.vibrations_path+"/"+"Hessian_Sectors.png")
         plt.close()
 
         # --- BLOCK DIAGONALIZATION (IN CONSISTENT ORDER) ---
