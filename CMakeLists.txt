@@ -28,7 +28,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if (MSVC)
     add_compile_options(/O2)
 else()
-    add_compile_options(-O3 -fvisibility=hidden -Wall -Wextra -O3 -march=native)
+    add_compile_options(-O3 -fvisibility=hidden -Wall -Wextra -march=native)
 endif()
 
 # -----------------------------
