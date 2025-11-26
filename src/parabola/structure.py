@@ -119,7 +119,7 @@ class Molecular_Structure:
         # If electronic_path is provided in the current call, update the structure.
         if electronics_path is not None:
             # Recompute only if the path has changed or if the structure is currently None.
-            if self.electronics_path != electronics_path or self.electronics is None:
+            if self.electronics_path != electronics_path or self.Electronics is None:
                 print("🔄 : Electronic Structure path provided/changed. Computing/updating electronic structure.")
                 self.electronics_path = electronics_path
                 self.Electronics = self.determine_electronics()
@@ -150,8 +150,7 @@ class Molecular_Structure:
         full_path = os.path.abspath(self.electronics_path)
         print("Vibrational Structure data taken from:")
         print(full_path)
-        electronics = electronics.Electronics(self)
-        return electronics
+        return electronics.Electronics(self)
 
     def determine_vibrations(self):
         """
@@ -335,7 +334,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         self,
         molecular_structure: "Molecular_Structure",
     ):
-        tol_translation = 5 * 10 ** (-4)
+        tol_translation = 5 * 10 ** (-5)
         self._test_translation(molecular_structure=molecular_structure, tol_translation=tol_translation)
         primitive_indices = self._find_indices_in_primitive_cell(
             molecular_structure=molecular_structure, tol_translation=tol_translation
@@ -541,7 +540,6 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             ),
             symprec=tol_translation,
         )  # returns (cellvectors_of_primitive_cell, positions_in_fractional_coord, atomic_numbers)
-
         # determine the multiplicity of the primitive cell in supercell
         # if multiplicity == np.prod(molecular_structure.periodicity),
         # then the found conventional cell is already primitive else, find the sublattice in the conventional cell
@@ -554,8 +552,8 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 molecular_structure.primitive_cellvectors = molecular_structure.cellvectors / np.array(
                         molecular_structure.periodicity
                     )
-
-                if multiplicity_of_primitive / np.prod(molecular_structure.periodicity) != 1:
+                fraction=multiplicity_of_primitive / np.prod(molecular_structure.periodicity)
+                if fraction != 1 and isinstance(fraction, int):
                     print("ℹ️ : Sublattice detected in the conventional cell. Updating to primitive cell.")
 
                     # This translation vector is hardcoded for orthorhombic supercell to hexagonal unit cell conversion!
