@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.linalg import schur
 from scipy.linalg import null_space
+from scipy.sparse import csgraph
 
 
 class Symmetry:
@@ -44,63 +45,71 @@ class Symmetry:
     def _determineSymmetrySectors(self):
         symmetry_generators = self.Symmetry_Generators
         V = self.IrrepsProjector
-        symmetry_generators = self.Symmetry_Generators
         dim = V.shape[0]
-        Gs_in_V_basis = {sym: V.T @ G @ V for sym, G in symmetry_generators.items()}
+        
+        # 1. Transform generators to the V basis
+        # Note: Use V.conj().T if V is complex!
+        Gs_in_V_basis = {sym: V.conj().T @ G @ V for sym, G in symmetry_generators.items()}
 
-        # Build a joint matrix to detect common invariant subspaces
-        combined = np.zeros((dim, dim))
+        # 2. Build the Adjacency Matrix
+        # We sum absolute values. If element (i,j) is non-zero, states i and j mix.
+        adjacency = np.zeros((dim, dim))
         for G in Gs_in_V_basis.values():
-            combined += np.abs(G) ** 2
+            adjacency += np.abs(G)
 
-        # Optionally symmetrize numerically
-        combined = (combined + combined.T) / 2
+        # 3. Apply Tolerance to remove noise
+        # This is crucial. Anything below 1e-10 is considered zero connectivity.
+        tol = 1e-10
+        adjacency[adjacency < tol] = 0
+        
+        # 4. Find Connected Components (Invariant Subspaces)
+        # This works even if indices are [0, 5, 2] for one sector.
+        n_components, labels = csgraph.connected_components(adjacency, directed=False)
 
-        # Use your block detection algorithm
-        blocks = detect_block_sizes(combined)
         SymSectors = {}
-        for block in blocks:
-            label = "Id=" + str(
-                int(
-                    np.round(
-                        np.trace(
-                            np.eye(np.shape(combined)[0])[
-                                block[0] : block[0] + block[1],
-                                block[0] : block[0] + block[1],
-                            ]
-                        ),
-                        0,
-                    )
-                )
-            )
-            for sym in Gs_in_V_basis:
-                label += (
-                    "|"
-                    + sym
-                    + "="
-                    + str(
-                        int(
-                            np.round(
-                                np.trace(
-                                    Gs_in_V_basis[sym][
-                                        block[0] : block[0] + block[1],
-                                        block[0] : block[0] + block[1],
-                                    ]
-                                ),
-                                0,
-                            )
-                        )
-                    )
-                )
-            if label in SymSectors:
-                for it in range(block[0], block[0] + block[1]):
-                    SymSectors[label].append(it)
-            else:
-                SymSectors[label] = []
-                for it in range(block[0], block[0] + block[1]):
-                    SymSectors[label].append(it)
-        self.SymSectors = SymSectors
+        
+        # Group indices by their component label
+        # sector_indices is a list of lists, e.g. [[0,1], [2,3,4], ...]
+        sector_indices = [[] for _ in range(n_components)]
+        for idx, label in enumerate(labels):
+            sector_indices[label].append(idx)
 
+        # 5. Label the sectors based on Characters (Traces)
+        for indices in sector_indices:
+            # We need to extract the sub-block for these specific indices
+            # Use np.ix_ to slice non-contiguous rows/cols
+            ix_mesh = np.ix_(indices, indices)
+            
+            label_parts = []
+            
+            # Calculate trace for Identity (Dimension of irrep)
+            dim_trace = len(indices) 
+            label_parts.append(f"Id={dim_trace}")
+
+            for sym, G in Gs_in_V_basis.items():
+                # Extract submatrix for this sector
+                sub_G = G[ix_mesh]
+                
+                # Calculate Trace (Character)
+                # Do NOT force int(). Use formatted float/complex string.
+                chi = np.trace(sub_G)
+                
+                # Format to avoid 1.0000000002 issues
+                if abs(chi.imag) < 1e-10:
+                    chi_str = f"{chi.real:.0f}" # Real character
+                else:
+                    chi_str = f"{chi:.0f}" # Complex character
+                
+                label_parts.append(f"|{sym}={chi_str}")
+
+            full_label = "".join(label_parts)
+
+            if full_label not in SymSectors:
+                SymSectors[full_label] = []
+            
+            SymSectors[full_label].extend(indices)
+
+        self.SymSectors = SymSectors
 
 #############################Helper Routines for Base Symmetry Class#############################
 def compute_common_centralizer(matrices):
