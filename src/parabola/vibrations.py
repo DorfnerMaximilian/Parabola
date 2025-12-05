@@ -10,7 +10,7 @@ pathtocp2k = os.environ["cp2kpath"]
 pathtobinaries = pathtocp2k + "/exe/local/"
 
 
-def getRotProjector(
+def get_rot_projector(
     mass_centered_coordinates,
     geometric_principle_axis,
     mass_principle_axis,
@@ -47,7 +47,7 @@ def getRotProjector(
         return None
 
 
-def getTransProjector(masses):
+def get_trans_projector(masses):
     NumDisplacements = 3 * len(masses)
     trans_projector = np.zeros((NumDisplacements, NumDisplacements))
     for it in range(3):
@@ -65,12 +65,12 @@ class Vibrations:
         masses = mol.masses
         molecular_symmetry = mol.Molecular_Symmetry
         axes = mol.geometric_principle_axis
-        Hessian = Read.read_hessian(vibrations_path)
-        self.Hessian = Hessian
-        self.inverse_sqrt_MassMatrix = np.sqrt(
+        hessian = Read.read_hessian(vibrations_path)
+        self.hessian = hessian
+        self.Mm12 = np.sqrt(
             np.linalg.inv(np.kron(np.diag(masses), np.eye(3)))
         )
-        self.VibrationalModes = {}
+        self.vibrational_modes = {}
         if disable_symmetry:
             print("❗ Symmetry Disabled for Vibrational Analysis.")
             # 1. Get the number of atoms
@@ -84,38 +84,38 @@ class Vibrations:
             molecular_symmetry.Symmetry_Generators = {"Id": id_matrix}
         # Now safe to access parent attributes
         self.Vibrational_Symmetry = Vibrational_Symmetry(molecular_symmetry)
-        self.ImposeTranslationalSymmetry(masses=masses)
-        self.getVibrationalModes(axes=axes)
+        self.impose_translational_symmetry(masses=masses)
+        self.get_vibrational_modes(axes=axes)
         # Generate Projectors:
-        rot_projector = getRotProjector(
+        rot_projector = get_rot_projector(
             mol.mass_centered_coordinates,
             mol.geometric_principle_axis,
             mol.mass_principle_axis,
             mol.masses,
             mol.periodicity,
         )
-        trans_projector = getTransProjector(mol.masses)
+        trans_projector = get_trans_projector(mol.masses)
         self.identify_external_dof(trans_projector, rot_projector)
         self.write_mol_file(mol.coordinates, mol.masses, mol.atoms, mol.path)
 
-    def getVibrationalModes(self, axes):
-        def TransformHessian(Hessian, Axis):
+    def get_vibrational_modes(self, axes):
+        def transform_hessian(Hessian, Axis):
             M = np.array(Axis).T  # M is 3x3
             N = Hessian.shape[0] // 3  # Number of blocks
             block = np.kron(np.eye(N), M)  # Build 3N x 3N block diagonal matrix
             return block.T @ Hessian @ block, block
 
         # --- Setup and Hessian Transformation ---
-        Hessian, O = TransformHessian(self.Hessian, axes)
-        sqrtMm1 = self.inverse_sqrt_MassMatrix
-        MassWeightedHessian = sqrtMm1 @ Hessian @ sqrtMm1
+        hessian, O = transform_hessian(self.hessian, axes)
+        Mm12 = self.Mm12
+        mass_weighted_hessian = Mm12 @ hessian @ Mm12
         # Convert units to get frequencies in cm^-1
-        MassWeightedHessian *= (10**3 / 1.8228884842645) * (2.19474631370540e02) ** 2
+        mass_weighted_hessian *= (10**3 / 1.8228884842645) * (2.19474631370540e02) ** 2
 
         # (Optional) Visualize the original mass-weighted Hessian
-        plt.imshow(MassWeightedHessian, cmap="viridis", interpolation="nearest")
+        plt.imshow(mass_weighted_hessian, cmap="viridis", interpolation="nearest")
         plt.colorbar()
-        plt.savefig(self.vibrations_path+"/"+"Hessian_Original.png")
+        plt.savefig(self.vibrations_path+"/"+"Hessian_raw.eps",format='eps')
         plt.close()
 
         # --- CONSISTENT SYMMETRY ORDERING ---
@@ -133,14 +133,14 @@ class Vibrations:
         VIrr_reordered = VIrr[:, reordering]
 
         # 4. Create the block-diagonal Hessian. The blocks are now in a consistent order.
-        MassWeightedHessian_Sectors = (
-            VIrr_reordered.T @ MassWeightedHessian @ VIrr_reordered
+        mass_weighted_hessian_block = (
+            VIrr_reordered.T @ mass_weighted_hessian @ VIrr_reordered
         )
 
         # (Optional) Visualize the block-diagonalized Hessian
-        plt.imshow(MassWeightedHessian_Sectors, cmap="viridis", interpolation="nearest")
+        plt.imshow(mass_weighted_hessian_block, cmap="viridis", interpolation="nearest")
         plt.colorbar()
-        plt.savefig(self.vibrations_path+"/"+"Hessian_Sectors.png")
+        plt.savefig(self.vibrations_path+"/"+"Hessian_block.eps",format='eps')
         plt.close()
 
         # --- BLOCK DIAGONALIZATION (IN CONSISTENT ORDER) ---
@@ -151,13 +151,13 @@ class Vibrations:
             block_size = len(SymSectors[sym])
 
             # Extract the symmetry block
-            Block_Hessian = MassWeightedHessian_Sectors[
+            block_hessian = mass_weighted_hessian_block[
                 current_index : current_index + block_size,
                 current_index : current_index + block_size,
             ]
 
             # Diagonalize the block to get eigenvalues and eigenvectors for this symmetry
-            eigenvalues, eigenvectors = np.linalg.eigh(Block_Hessian)
+            eigenvalues, eigenvectors = np.linalg.eigh(block_hessian)
 
             # Frequencies (cm^-1) are the signed square roots of the eigenvalues
             frequencies_cm_inv = np.sign(eigenvalues) * np.sqrt(np.abs(eigenvalues))
@@ -173,19 +173,19 @@ class Vibrations:
             )
 
             # Store the calculated vibrational modes
-            if sym not in self.VibrationalModes:
-                self.VibrationalModes[sym] = []
+            if sym not in self.vibrational_modes:
+                self.vibrational_modes[sym] = []
 
             for i in range(block_size):
-                mode = VibrationalMode(
-                    frequencies_cm_inv[i], V_mwh[:, i], sqrtMm1 @ V_mwh[:, i], sym
+                mode = vibrational_mode(
+                    frequencies_cm_inv[i], V_mwh[:, i], Mm12 @ V_mwh[:, i], sym
                 )
-                self.VibrationalModes[sym].append(mode)
+                self.vibrational_modes[sym].append(mode)
 
             # Advance the index to the start of the next block
             current_index += block_size
 
-    def ImposeTranslationalSymmetry(self, masses):
+    def impose_translational_symmetry(self, masses):
         # Imposes exact relation on the Hessian, that has to be fullfilled for the Translational D.O.F. to decouple from the rest
         # input:
         # Hessian:    (numpy.array)  Hessian in carthesian coordinates
@@ -217,13 +217,13 @@ class Vibrations:
             return J
 
         J = getJ(masses)
-        Hessiantilde = np.transpose(np.linalg.inv(J)) @ self.Hessian @ np.linalg.inv(J)
+        hessian_tilde = np.transpose(np.linalg.inv(J)) @ self.hessian @ np.linalg.inv(J)
         for it1 in range(3 * len(masses)):
             for it2 in range(3 * len(masses)):
                 if it1 >= 3 * len(masses) - 3 or it2 >= 3 * len(masses) - 3:
-                    Hessiantilde[it1][it2] = 0.0
-        Hessian = np.transpose(J) @ Hessiantilde @ J
-        self.Hessian = 0.5 * (Hessian + np.transpose(Hessian))
+                    hessian_tilde[it1][it2] = 0.0
+        hessian = np.transpose(J) @ hessian_tilde @ J
+        self.hessian = 0.5 * (hessian + np.transpose(hessian))
 
     def identify_external_dof(self, projector_trans, projector_rot):
         def isTranslation(mode, projector_trans, tolerance=0.95):
@@ -250,8 +250,8 @@ class Vibrations:
             ):
                 mode.isrotation = True
 
-        for sym in self.VibrationalModes:
-            for mode in self.VibrationalModes[sym]:
+        for sym in self.vibrational_modes:
+            for mode in self.vibrational_modes[sym]:
                 isTranslation(mode, projector_trans)
                 if projector_rot is not None:
                     isRotation(mode, projector_rot)
@@ -294,12 +294,12 @@ class Vibrations:
         numofatoms = len(masses)
         coordinates = coordinates
         atoms = atoms
-        SymSectors = [sym for sym in self.VibrationalModes]
+        SymSectors = [sym for sym in self.vibrational_modes]
         normalmodeEnergies = []
         Normalized_Displacement = []
         normfactors = []
         for sym in SymSectors:
-            for Mode in self.VibrationalModes[sym]:
+            for Mode in self.vibrational_modes[sym]:
                 if not Mode.istranslation and not Mode.isrotation:
                     normalmodeEnergies.append(Mode.frequency)
                     Normalized_Displacement.append(
@@ -387,7 +387,7 @@ class Vibrational_Symmetry(Symmetry.Symmetry):
         self._determineSymmetrySectors()
 
 
-class VibrationalMode:
+class vibrational_mode:
     def __init__(self, frequency, normal_mode, displacement, symmetry_label):
         self.frequency = frequency
         self.normal_mode = normal_mode
