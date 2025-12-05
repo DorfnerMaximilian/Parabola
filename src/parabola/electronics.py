@@ -321,7 +321,8 @@ class Electronics:
                 "Large Condition number of the Overlap Matrix! Cond(OLM)="
                 + str(cond_number)
             )
-        self.inverse_sqrt_OLM = Util.LoewdinTransformation(OLM, algorithm="Schur-Pade")
+        self.OLM_sym_blocks = {}
+        self.U=None
         self.real_eigenstates = {}
         self.energies = {}
         self.indexmap = {}
@@ -352,8 +353,8 @@ class Electronics:
         U = get_basis_transformation(
                 np.array(axes).T, np.eye(len(atoms)), atoms, self.basis
             )
+        self.U=U
         print(f"ℹ️ : Calculating electronic eigenstates for {name}")
-
         KS_Hamiltonian_alpha=self.KS_Hamiltonian_alpha
         if self.UKS:
             KS_Hamiltonian_beta=self.KS_Hamiltonian_beta
@@ -377,19 +378,19 @@ class Electronics:
         H_block_diag_alpha=VIrr_reordered.T@KS_Hamiltonian_alpha@VIrr_reordered
         if self.UKS:
             H_block_diag_beta=VIrr_reordered.T@KS_Hamiltonian_beta@VIrr_reordered
+        
         plt.imshow(
             S_block_diag, cmap="viridis", interpolation="nearest"
         )
         plt.colorbar()
-        plt.savefig("./S_block.png")
+        plt.savefig("./S_block_diag.eps",format="eps")
         plt.close()
         plt.imshow(
             H_block_diag_alpha, cmap="viridis", interpolation="nearest"
         )
         plt.colorbar()
-        plt.savefig("./H_block.png")
+        plt.savefig("./H_block_diag.eps",format="eps")
         plt.close()
-
         # --- BLOCK DIAGONALIZATION (IN CONSISTENT ORDER) ---
         print(f"ℹ️ : Symmetry Sectors and Electronic Energies")
         current_index = 0
@@ -407,6 +408,7 @@ class Electronics:
                 current_index : current_index + block_size,
                 current_index : current_index + block_size,
             ]
+            self.OLM_sym_blocks[sym]=S_block
             H_block_alpha = H_block_diag_alpha[
                 current_index : current_index + block_size,
                 current_index : current_index + block_size,
