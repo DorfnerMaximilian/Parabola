@@ -119,7 +119,7 @@ class Molecular_Structure:
         # If electronic_path is provided in the current call, update the structure.
         if electronics_path is not None:
             # Recompute only if the path has changed or if the structure is currently None.
-            if self.electronics_path != electronics_path or self.electronics is None:
+            if self.electronics_path != electronics_path or self.Electronics is None:
                 print("🔄 : Electronic Structure path provided/changed. Computing/updating electronic structure.")
                 self.electronics_path = electronics_path
                 self.Electronics = self.determine_electronics()
@@ -136,7 +136,7 @@ class Molecular_Structure:
                 self.Vibrations = self.determine_vibrations()
             else:
                 print("✔️ : Vibrational Structure path is the same and structure exists. No recomputation needed.")
-        if save:
+        if save and not is_already_initialized:
             self.save()
 
     def determine_electronics(self):
@@ -150,8 +150,8 @@ class Molecular_Structure:
         full_path = os.path.abspath(self.electronics_path)
         print("Vibrational Structure data taken from:")
         print(full_path)
-        electronics = electronics.Electronics(self)
-        return electronics
+        electronics_var = electronics.Electronics(self)
+        return electronics_var
 
     def determine_vibrations(self):
         """
