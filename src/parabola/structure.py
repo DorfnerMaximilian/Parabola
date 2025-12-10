@@ -382,10 +382,10 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             molecular_structure.center_of_mass = center
             molecular_structure.mass_principle_axis = [v1, v2, v3]
             molecular_structure.mass_centered_coordinates = G_UC_CC
-        if len(primitive_indices) > 1:
-            self._test_inversion(molecular_structure, tol_inversion=5 * 10 ** (-3))
-            self._test_rotation(molecular_structure, tol_rotation=5 * 10 ** (-3))
-            self._test_mirror(molecular_structure, tol_mirror=5 * 10 ** (-2))
+        #if len(primitive_indices) > 1:
+        #    self._test_inversion(molecular_structure, tol_inversion=5 * 10 ** (-3))
+        #    self._test_rotation(molecular_structure, tol_rotation=5 * 10 ** (-3))
+        #    self._test_mirror(molecular_structure, tol_mirror=5 * 10 ** (-2))
         if not self.Symmetry_Generators:
             self.Symmetry_Generators["Id"] = np.eye(len(molecular_structure.masses))
 

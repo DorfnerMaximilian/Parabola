@@ -353,6 +353,8 @@ class Electronics:
             U = get_basis_transformation(
                 np.array(axes).T, np.eye(len(atoms)), atoms, self.basis
             )
+            U = np.eye(U.shape[0])
+            print('U converted to Identity!')
             if self.UKS:
                 KS_Hamiltonian_alpha = self.KS_Hamiltonian_alpha
                 KS_Hamiltonian_beta = self.KS_Hamiltonian_beta
