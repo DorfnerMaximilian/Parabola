@@ -490,9 +490,9 @@ def read_vibrations(parentfolder="./"):
         normfactors = np.load(parentfolder + "/Norm-Factors.npy")
     except:
         # Open the Molden file
-        mol_files = [f for f in os.listdir(parentfolder) if f.endswith(".mol")]
+        mol_files = [f for f in os.listdir(parentfolder) if f.endswith(".molecular_structure")]
         if len(mol_files) != 1:
-            raise ValueError("InputError: There should be only one mol file in the current directory")
+            raise ValueError("InputError: There should be only one molecular_structure file in the current directory")
         f = open(parentfolder + "/" + mol_files[0])
         Frequencyflag = False
         Vibrationflag = False
@@ -854,6 +854,51 @@ def read_ground_state_dipole_moment(path="./", verbose=True):
     if verbose:
         print(f"ℹ️ : Found ground state dipole moment to be: {dx, dy, dz} [e a_0]")
     return dipole_moment
+
+
+def get_kpoints(path: str = "./"):
+    """
+    Parse K-points and weights from a CP2K output file.
+
+    Parameters
+    ----------
+    path
+
+    Returns
+    -------
+    kpoints : np.ndarray, shape (N,3)
+        K-point coordinates in units of 2*pi/Bohr.
+    weights : np.ndarray, shape (N,)
+        K-point weights.
+    """
+    kpoints = []
+    weights = []
+    reading_kpoints = False
+
+    output_filenames = [f for f in os.listdir(path) if f.endswith(".out")]
+    if len(output_filenames) != 1:
+        raise ValueError("InputError: There should be only one .out file in the provided directory")
+
+    with open(os.path.join(path, output_filenames[0])) as f:
+        for line in f:
+            line = line.strip()
+            if "List of Kpoints" in line:
+                reading_kpoints = True
+                continue
+            if reading_kpoints:
+                if line.startswith("BRILLOUIN| Number"):  # header line before data
+                    continue
+                if line.startswith("*" * 79):
+                    break
+                if line.startswith("BRILLOUIN|"):
+                    parts = line.split()
+                    # parts[1] = Label, parts[2] = Weight, parts[3:6] = X,Y,Z
+                    weight = float(parts[2])
+                    kvec = [float(p) for p in parts[3:6]]
+                    kpoints.append(kvec)
+                    weights.append(weight)
+
+    return np.array(kpoints), np.array(weights)
 
 
 ####################################################################################
@@ -1224,7 +1269,7 @@ def read_multiple_csr_files(
     Returns
     -------
     dict[str, CSR_File]:
-        A dictionary mapping filenames to their corresponding CSR_File objects. Keys are kpoints labeled by CP2K.
+        A dictionary mapping filenames to their corresponding CSR_File objects. Keys are kpoints labeled by CP2K - 1.
     """
     # collect all csr files in the directory
     if filename_pattern == ".csr":
@@ -1239,13 +1284,13 @@ def read_multiple_csr_files(
         dict_data["ks"] = {}
         ks_filenames = [f for f in csr_filenames if "-KS_" in f]
         for f in ks_filenames:
-            dict_data["ks"][int(pattern_kpt.search(f).group(1))] = read_csr_file(path, f)
+            dict_data["ks"][int(pattern_kpt.search(f).group(1)) - 1] = read_csr_file(path, f)
 
     if is_overlap:
         dict_data["overlap"] = {}
         overlap_filenames = [f for f in csr_filenames if "-S_" in f]
         for f in overlap_filenames:
-            dict_data["overlap"][int(pattern_kpt.search(f).group(1))] = read_csr_file(path, f)
+            dict_data["overlap"][int(pattern_kpt.search(f).group(1)) - 1] = read_csr_file(path, f)
 
     if not (is_ks and is_overlap):
         print("⚠️ : Neither KS nor Overlap matrices were specified to be read. Returning empty dictionary.")
