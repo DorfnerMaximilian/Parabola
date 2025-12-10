@@ -529,7 +529,7 @@ static std::complex<double> get_phase_Matrix_Element(
     const std::vector<double> &alphas1, const std::vector<Monomial> &lm1,
     const std::array<double, 3> &R2, const std::vector<double> &contr_coeff2,
     const std::vector<double> &alphas2, const std::vector<Monomial> &lm2,
-    const std::vector<double> &cell_vectors, const std::array<double, 3> &q) {
+    const std::vector<double> &cell_vectors, const std::array<double, 3> &q, const float cutoff_rad) {
 
   std::complex<double> matrix_element(0.0, 0.0);
   // Loop over cell vectors
@@ -543,7 +543,14 @@ static std::complex<double> get_phase_Matrix_Element(
     std::array<double, 3> R2_shifted = {
         R2[0] + cell_vector[0], R2[1] + cell_vector[1], R2[2] + cell_vector[2]};
 
-    // Compute the overlap for the shifted positions
+    double squared = pow(R1[0] - R2_shifted[0],2) + pow(R1[1] - R2_shifted[1],2) + pow(R1[2] - R2_shifted[2],2);
+    double distance = sqrt(squared);
+
+    // Compute the overlap for the shifted positions "after checking the distance between them"
+    if (distance > cutoff_rad) {
+            continue;
+        }
+
     for (size_t it1 = 0; it1 < alphas1.size(); ++it1) {
       for (size_t it2 = 0; it2 < alphas2.size(); ++it2) {
         matrix_element +=
@@ -1096,7 +1103,8 @@ static std::vector<std::complex<double>> get_Phase_Operators(
     const std::vector<int>& contr_coefLengths_set2,
     const std::vector<std::string>& lms_set2,
     const std::vector<double>& cell_vectors,
-    const std::vector<double>& q) {
+    const std::vector<double>& q,
+    const float cutoff_rad) {
 
     if (q.size() != 3) {
         throw std::runtime_error("q vector must have exactly 3 elements");
@@ -1175,7 +1183,8 @@ static std::vector<std::complex<double>> get_Phase_Operators(
                     basisfunctions_set2[j].alphas,
                     solidHarmonics[basisfunctions_set2[j].lm],
                     cell_vectors_vec,
-                    q_array
+                    q_array,
+                    cutoff_rad
                 );
         }
     }
@@ -1299,6 +1308,7 @@ PYBIND11_MODULE(_extension, m) {
         py::arg("lms_set2"),
         py::arg("cell_vectors"),
         py::arg("q"),
+        py::arg("cutoff_rad"),
         "Get phase operator matrix elements"
     );
 }

@@ -1466,8 +1466,25 @@ def get_phase_operators(
     Basis: dict[str, list[tuple[str, str, str, tuple[float, float], ...]]],
     q_vector: list[float] = [0.0, 0.0, 0.0],
     cell_vectors=[0.0, 0.0, 0.0],
+    cutoff_radius=50
 ):
+
     ## TODO: Docstring is missing
+    """
+    Calculate the matrix element <phi_mu | exp(i q*r) |phi_nu> which can be used to calculate the overlap ..
+    .. of the cell-periodic part of the bloch functions.
+    Args:
+        Atoms:
+        Basis:
+        q_vector: Relative k-vector between the
+        cell_vectors:
+        cutoff_radius: Maximum radius upto which the overlap of basis functions will be calculated. in Angstroems.
+
+    Returns:
+
+    """
+
+
     # Initialize the python lists for Basis Set 1
     atoms_set1: list[str] = []
     positions_set1: list[float] = []
@@ -1532,6 +1549,9 @@ def get_phase_operators(
         alphas_lengths_set2  # Lengths of contr_coef for each basis function in Set 1
     )
 
+    # Converting the cutoff_radius into atomic units
+    cutoff_radius = cutoff_radius * ConversionFactors['A->a.u.']
+
     # Call the C++ function
     ## TODO: Nomenclature - get_Phase_Operators returns an operator and not an overlap?
     OLP_array = get_Phase_Operators(
@@ -1551,6 +1571,7 @@ def get_phase_operators(
         lms_set2=lms_set2,
         cell_vectors=cell_vectors,
         q=q_vector,
+        cutoff_rad=cutoff_radius
     )
 
     phi_q = np.array(OLP_array, dtype=np.complex128).reshape((len(atoms_set1), len(atoms_set2)))
