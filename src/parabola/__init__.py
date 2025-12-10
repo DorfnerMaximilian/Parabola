@@ -16,3 +16,4 @@ from . import TDDFT
 from . import ConvTests
 from . import linear_coupling_constants
 from . import Symmetry
+from . import wannier
