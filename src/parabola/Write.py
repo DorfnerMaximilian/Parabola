@@ -75,16 +75,23 @@ def write_xyz_file(
         print(f"❌ Error writing file: {e}")
 
 
-def write_cube_file(x, y, z, data, atoms, filename="test.cube", parentfolder="./"):
+def write_cube_file(x, y, z, data, cellvector1, cellvector2, cellvector3, atoms, filename="test.cube", parentfolder="./"):
     """Function to write a .cube file that is readable by e.g. Jmol, the origin is assumed to be [0.0,0.0,0.0]
     input:   data:             (np.array)              Nx x Ny x Nz numpy array with the wave function coefficients at each gridpoint
     (opt.)   parentfolder:     (str)                   path to the .inp file of the cp2k calculation to read in the cell dimensions
     output:  f                 (np.array)              Nx x Ny x Nz numpy array where first index is x, second y and third is z
     """
+    """
+    Following changes have been made to generalize the function to write cube files for a non-orthorhombic lattice.
+    A quick check of correct working has been done. Extensive benchmark pending!
+    """
+
     numofatoms = len(atoms)
     Nx = np.shape(data)[0]
     Ny = np.shape(data)[1]
     Nz = np.shape(data)[2]
+
+    """
     origin = [x[0], y[0], z[0]]
     # Calculate voxel spacings — assuming uniform grid spacing
     dx = x[1] - x[0]
@@ -104,13 +111,40 @@ def write_cube_file(x, y, z, data, atoms, filename="test.cube", parentfolder="./
         file.write(f"{Nx:5d} {dx:12.6f} {0.0:12.6f} {0.0:12.6f}\n")
         file.write(f"{Ny:5d} {0.0:12.6f} {dy:12.6f} {0.0:12.6f}\n")
         file.write(f"{Nz:5d} {0.0:12.6f} {0.0:12.6f} {dz:12.6f}\n")
+        """
+
+    # --- NON-ORTHORHOMBIC MODIFICATION ---
+    # 1. Calculate the Voxel Vectors (step vectors)
+    # The cell vectors MUST be in Atomic Units (a.u.) before this step.
+    V1 = cellvector1 / Nx
+    V2 = cellvector2 / Ny
+    V3 = cellvector3 / Nz
+
+    origin = [0.0, 0.0, 0.0]
+
+    with open(parentfolder + "/" + filename, 'w') as file:
+        file.write("Cube File generated with Parabola\n")
+        file.write("OUTER LOOP: X, MIDDLE LOOP: Y, INNER LOOP: Z\n")
+
+        # Line 3: Number of atoms (N_atoms) and Grid Origin (X_orig, Y_orig, Z_orig)
+        file.write(f"{numofatoms:5.0f}{origin[0]:12.6f}{origin[1]:12.6f}{origin[2]:12.6f}\n")
+
+        # Line 4: N1 (Nx) and the Voxel Vector V1 (X1, Y1, Z1)
+        file.write(f"{Nx:5d}{V1[0]:12.6f}{V1[1]:12.6f}{V1[2]:12.6f}\n")
+
+        # Line 5: N2 (Ny) and the Voxel Vector V2 (X2, Y2, Z2)
+        file.write(f"{Ny:5d}{V2[0]:12.6f}{V2[1]:12.6f}{V2[2]:12.6f}\n")
+
+        # Line 6: N3 (Nz) and the Voxel Vector V3 (X3, Y3, Z3)
+        file.write(f"{Nz:5d}{V3[0]:12.6f}{V3[1]:12.6f}{V3[2]:12.6f}\n")
         for atom in atoms:
+            print(atom[1], type(atom[1]))
             file.write(
-                format(AtomSymbolToAtomnumber(atom[1]), "5.0f")
+                format(PhysConst.AtomSymbolToAtomNumber[atom[1]], "5.0f")
                 + format(0.0, "12.6f")
-                + format(ConversionFactors["A->a.u."] * atom[2], "12.6f")
-                + format(ConversionFactors["A->a.u."] * atom[3], "12.6f")
-                + format(conFactors["A->a.u."] * atom[4], "12.6f")
+                + format(PhysConst.ConversionFactors["A->a.u."] * atom[2], "12.6f")
+                + format(PhysConst.ConversionFactors["A->a.u."] * atom[3], "12.6f")
+                + format(PhysConst.ConversionFactors["A->a.u."] * atom[4], "12.6f")
                 + "\n"
             )
         for itx in range(Nx):

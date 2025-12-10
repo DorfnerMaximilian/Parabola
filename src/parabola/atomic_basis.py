@@ -892,6 +892,7 @@ def WFNonxyzGrid(
     grid2: np.ndarray,
     grid3: np.ndarray,
     Coefficients: list[float],
+    latticevectors: np.ndarray,
     Atoms: list[tuple[int, str, float, float, float]],
     Basis: dict[str, list[tuple[str, str, str, tuple[float, float], ...]]],
     cell_vectors: list[float] = [0.0, 0.0, 0.0],
@@ -937,12 +938,24 @@ def WFNonxyzGrid(
     Returns:
         A 3D numpy array with shape (len(grid1), len(grid2), len(grid3)).
     """
+    """
+    Following changes are being made to generalize this function to get real-space representation in a non-orthorhombic lattice. 
+    Previous version was restricted to orthorhombic.
+    A quick check of correct working has been done. Extensive benchmark pending!
+    """
 
     # Make the grid
-    xyz_grid = (
-        np.array(np.meshgrid(grid1, grid2, grid3, indexing="ij")).flatten("F").tolist()
-        #np.array(np.meshgrid(grid1, grid2, grid3, indexing="ij")).ravel(order="C").tolist()
-    )
+    #xyz_grid = (
+    #    np.array(np.meshgrid(grid1, grid2, grid3, indexing="ij")).flatten("F").tolist()
+    #    #np.array(np.meshgrid(grid1, grid2, grid3, indexing="ij")).ravel(order="C").tolist()
+    #)
+
+    # Non-orthorhombic generalisation
+    U, V, W = np.meshgrid(grid1, grid2, grid3, indexing="ij")
+    F_coords_flat = np.stack((U, V, W)).flatten("F")
+    F_coords = F_coords_flat.reshape(-1, 3)  # Shape (N1*N2*N3, 3)
+    R_coords = F_coords @ latticevectors.T
+    xyz_grid = R_coords.flatten().tolist()
 
     # Initialize the python lists for Basis Set
     atoms_set: list[str] = []
