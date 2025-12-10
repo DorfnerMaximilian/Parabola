@@ -429,6 +429,7 @@ class Electronics:
 
             # energies in eV
             energies_alpha_eV = eigenvalues_alpha * 27.211
+            # TODO: Remove comments after testing
             # print(
             #    f"Symmetry Sector for Spin Species ↑: {sym}, Energies (eV): \n {energies_alpha_eV}"
             # )
@@ -441,6 +442,7 @@ class Electronics:
 
                 # energies (eV)
                 energies_beta_eV = eigenvalues_beta * 27.211
+                # TODO: Remove comments after testing
                 # print(
                 #    f"Symmetry Sector for Spin Species ↓: {sym}, Energies (eV): \n {energies_beta_eV}"
                 # )
@@ -547,14 +549,14 @@ def test_phase_op(mol):
                     print(sym_sector1, sym_sector2, np.max(np.abs(OLP)))
 
     """
-    basis=mol.electronics.basis
+    basis=molecular_structure.electronics.basis
     xyz_filepath=Read.get_xyz_filename("./")
     atoms=Read.read_atomic_coordinates(xyz_filepath)
     
     print(q_points)
     
-    s0=mol.electronics.real_eigenstates["alpha"]["Id=1|t1=1|Sz=2"][0]
-    Sm12=mol.electronics.inverse_sqrt_OLM
+    s0=molecular_structure.electronics.real_eigenstates["alpha"]["Id=1|t1=1|Sz=2"][0]
+    Sm12=molecular_structure.electronics.inverse_sqrt_OLM
       # Adjust this line as needed
     
     
@@ -566,8 +568,8 @@ def test_phase_op(mol):
         phase_1 = np.linalg.multi_dot([Sm12, phi_q, Sm12])
         s0_transformed = phase_1 @ s0.A
         print(q_point)
-        for sym_sector in mol.electronics.real_eigenstates["alpha"]:
-            for it,state in enumerate(mol.electronics.real_eigenstates["alpha"][sym_sector]):
+        for sym_sector in molecular_structure.electronics.real_eigenstates["alpha"]:
+            for it,state in enumerate(molecular_structure.electronics.real_eigenstates["alpha"][sym_sector]):
                 value=np.dot(state.A,s0_transformed)
                 if np.abs(value)>0.01:
                     print(sym_sector,it,value,np.abs(value)*np.sqrt(2))
@@ -722,7 +724,7 @@ def get_q_points(cellvectors, periodicity, return_format="combined"):
 
     Parameters:
     -----------
-    mol : molecule object
+    molecular_structure : molecule object
         Must have attributes: cellvectors, periodicity
     return_format : str, optional
         - 'combined': returns all k-points as single list (default)

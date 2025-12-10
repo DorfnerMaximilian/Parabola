@@ -5,7 +5,7 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 
-from . import TDDFT, Geometry, Read, Write, electronics
+from . import TDDFT, Geometry, Read, Write, atomic_basis, electronics
 from .PhysConst import ConversionFactors
 
 
@@ -83,11 +83,11 @@ def commute_check(mol, path="./"):
     olm = mol.Electronics.OLM
     # olmp12 = sp.fractional_matrix_power(olm,0.5)
     # ksh = olmp12 @ ksh_orth @ olmp12
-    # Or use the DFT output ksh = mol.Electronics.KS_Hamiltonian_alpha
+    # Or use the DFT output ksh = molecular_structure.Electronics.KS_Hamiltonian_alpha
 
     T1 = mol.Electronics.electronic_symmetry.Symmetry_Generators["t1"]
     T2 = mol.Electronics.electronic_symmetry.Symmetry_Generators["t2"]
-    # T3 = mol.Electronics.electronic_symmetry.Symmetry_Generators['t3']
+    # T3 = molecular_structure.Electronics.electronic_symmetry.Symmetry_Generators['t3']
 
     # ks_t1 = ksh @ T1
     # t1_ks = T1 @ ksh
@@ -158,6 +158,22 @@ def threshold(M, threshold=1e-5):
     return Mreal + (1.0j) * Mimag
 
 
+def constructing_bloch_states_from_csr(mol, path="./"):
+    ks_and_overlap = Read.read_multiple_csr_files(path=path, is_ks=True, is_overlap=True)
+    all_ks, all_overlap = ks_and_overlap["ks"], ks_and_overlap["overlap"]
+
+    # check if ks and overlap matrices exist for the same k-points
+    if set(all_ks.keys()) != set(all_overlap.keys()):
+        raise ValueError("KS and Overlap matrices do not have the same k-points.")
+
+    energies_and_vectors = {}
+    for kpt, ks in all_ks.items():
+        energies_and_vectors[kpt] = np.linalg.eigh(ks.data)  # returns eigenvalues (N, ) and eigenvectors (N, N)
+
+    basissets = atomic_basis.getBasis(path)
+    return basissets
+
+
 def testing_bloch(mol, path="./", name_of_file="general"):
     if "Bloch_states_" + name_of_file + ".npy" in os.listdir(path):
         print("Found pre-calculated bloch states!")
@@ -192,7 +208,7 @@ def testing_bloch(mol, path="./", name_of_file="general"):
             par_bloch_states = np.array(par_bloch_states).T
 
             T2 = mol.Electronics.electronic_symmetry.Symmetry_Generators["t2"]
-            # T3 = mol.Electronics.electronic_symmetry.Symmetry_Generators["t3"]
+            # T3 = molecular_structure.Electronics.electronic_symmetry.Symmetry_Generators["t3"]
 
             # print('commute - atomic basis: ', np.max(abs( olm @ T1 - T1 @ olm)), np.max(abs( T2 @ T1 - T1 @ T2)) , np.max(abs( ksh @ T2 - T2 @ ksh)))
 
@@ -255,20 +271,20 @@ def bloch_form(mol, path="./", name_of_file="general"):
         return bloch_eigenstates
     else:
         """
-        ksh = mol.Electronics.KS_Hamiltonian_alpha
-        olm = mol.Electronics.OLM
-        prim_gam_sym, non_prim_gam_sym = separating_symmetries(mol)
-        periodic_bool = np.array(mol.periodicity) > 1
+        ksh = molecular_structure.Electronics.KS_Hamiltonian_alpha
+        olm = molecular_structure.Electronics.OLM
+        prim_gam_sym, non_prim_gam_sym = separating_symmetries(molecular_structure)
+        periodic_bool = np.array(molecular_structure.periodicity) > 1
 
         bloch_eigenstates = []
         sym_sector = non_prim_gam_sym[0]
         sym_states = []
-        for state in mol.Electronics.real_eigenstates["alpha"][sym_sector]:
+        for state in molecular_structure.Electronics.real_eigenstates["alpha"][sym_sector]:
             sym_states.append(state.A)
         sym_states = np.array(sym_states)
-        periodic_bool = np.array(mol.periodicity) > 1
-        T1 = mol.Electronics.electronic_symmetry.Symmetry_Generators['t1']
-        T2 = mol.Electronics.electronic_symmetry.Symmetry_Generators['t2']
+        periodic_bool = np.array(molecular_structure.periodicity) > 1
+        T1 = molecular_structure.Electronics.electronic_symmetry.Symmetry_Generators['t1']
+        T2 = molecular_structure.Electronics.electronic_symmetry.Symmetry_Generators['t2']
 
         # commuting check
         ksh_in_symbasis = sym_states @ ksh @ sym_states.T
@@ -376,7 +392,7 @@ def cel_periodic_overlap_calc(mol, path="./"):
         xyz_filepath = Read.get_xyz_filename(path)
         atoms = Read.read_atomic_coordinates(xyz_filepath)
         q_points, _, _, unit_vectors = get_q_points(mol)
-        # cellvectors = Geometry.getNeibouringCellVectors(cell=mol.cellvectors, m=periodic[0], n=periodic[1], l=periodic[2])
+        # cellvectors = Geometry.getNeibouringCellVectors(cell=molecular_structure.cellvectors, m=periodic[0], n=periodic[1], l=periodic[2])
         cellvectors = Geometry.getNeibouringCellVectors(cell=mol.cellvectors, m=1, n=2, l=2)
         # assuming the supercell is large enough so that just the first neighbouring cells are enough; otherwise a convergence check would be needed!
         for d in [0, 1, 2]:
@@ -732,12 +748,12 @@ def band_index(mol, nh, nl, name_of_bloch_file="general", name_of_k_res_bloch="k
     olm = mol.Electronics.OLM
     ksh = mol.Electronics.KS_Hamiltonian_alpha
 
-    # cellvectors = Geometry.getNeibouringCellVectors(cell=mol.cellvectors, m=periodic[0], n=periodic[1], l=periodic[2]) # assuming the supercell is large enough so that just the first neighbouring cells are enough; otherwise a convergence check would be needed!
+    # cellvectors = Geometry.getNeibouringCellVectors(cell=molecular_structure.cellvectors, m=periodic[0], n=periodic[1], l=periodic[2]) # assuming the supercell is large enough so that just the first neighbouring cells are enough; otherwise a convergence check would be needed!
     cellvectors = Geometry.getNeibouringCellVectors(cell=mol.cellvectors, m=3, n=3, l=1)
     all_connected_bands = []
     bloch_states_full = testing_bloch(
         mol, path=path, name_of_file=name_of_bloch_file
-    )  # bloch_form(mol, path=path, name_of_file=name_of_bloch_file)
+    )  # bloch_form(molecular_structure, path=path, name_of_file=name_of_bloch_file)
     determine_k_point(mol, bloch_states_full)
     available_mask = np.ones(bloch_states_full.shape[1], dtype=bool)
 
@@ -1007,11 +1023,11 @@ def wan_real_plot(mol, mode, ind=[0], Wan_npy="Wannier_orbitals_occ.npy", path="
 
 
 ###
-# def wan_interpolate_bandstruc(mol, special_k_points, Wan_file='Wannier_orbitals8lumobands.npy', path='./'):
-#    periodic_bool = np.array(mol.periodicity) > 1
+# def wan_interpolate_bandstruc(molecular_structure, special_k_points, Wan_file='Wannier_orbitals8lumobands.npy', path='./'):
+#    periodic_bool = np.array(molecular_structure.periodicity) > 1
 #    periodic = periodic_bool.astype(int)
-#    ksh = mol.Electronics.KS_Hamiltonian_alpha
-#    olm = mol.Electronics.OLM
+#    ksh = molecular_structure.Electronics.KS_Hamiltonian_alpha
+#    olm = molecular_structure.Electronics.OLM
 #    Wan_orbs = np.load(path+Wan_file)
 #    onsite = Wan_orbs @ ksh @ Wan_orbs.T
 #
@@ -1019,7 +1035,7 @@ def wan_real_plot(mol, mode, ind=[0], Wan_npy="Wannier_orbitals_occ.npy", path="
 #    transfer_ints = []
 #    for d in [0, 1, 2]:
 #        if periodic_bool[d]:
-#            T_op = mol.Electronics.electronic_symmetry.Symmetry_Generators['t' + str(d + 1)]
+#            T_op = molecular_structure.Electronics.electronic_symmetry.Symmetry_Generators['t' + str(d + 1)]
 #            tr = Wan_orbs @ ksh @ T_op @ Wan_orbs.T
 #            transfer_ints.append(tr)
 #        else:
@@ -1029,8 +1045,8 @@ def wan_real_plot(mol, mode, ind=[0], Wan_npy="Wannier_orbitals_occ.npy", path="
 #    transfer_ints_2nd_nearest = []
 #    for d1, d2 in [[0, 1], [1, 2], [0, 2]]:
 #        if periodic_bool[d1] and periodic_bool[d2]:
-#            T_op1 = mol.Electronics.electronic_symmetry.Symmetry_Generators['t' + str(d1 + 1)]
-#            T_op2 = mol.Electronics.electronic_symmetry.Symmetry_Generators['t' + str(d2 + 1)]
+#            T_op1 = molecular_structure.Electronics.electronic_symmetry.Symmetry_Generators['t' + str(d1 + 1)]
+#            T_op2 = molecular_structure.Electronics.electronic_symmetry.Symmetry_Generators['t' + str(d2 + 1)]
 #            tr = Wan_orbs @ ksh @ T_op2 @ T_op1 @ Wan_orbs.T
 #            transfer_ints_2nd_nearest.append(tr)
 #            tr = Wan_orbs @ ksh @ T_op2.T @ T_op1 @ Wan_orbs.T
@@ -1043,7 +1059,7 @@ def wan_real_plot(mol, mode, ind=[0], Wan_npy="Wannier_orbitals_occ.npy", path="
 #    transfer_ints_3rd_nearest = []
 #    for d in [0, 1, 2]:
 #        if periodic_bool[d]:
-#            T_op = mol.Electronics.electronic_symmetry.Symmetry_Generators['t' + str(d + 1)]
+#            T_op = molecular_structure.Electronics.electronic_symmetry.Symmetry_Generators['t' + str(d + 1)]
 #            tr = Wan_orbs @ ksh @ T_op @ T_op @ Wan_orbs.T
 #            transfer_ints_3rd_nearest.append(tr)
 #        else:
@@ -1053,14 +1069,14 @@ def wan_real_plot(mol, mode, ind=[0], Wan_npy="Wannier_orbitals_occ.npy", path="
 #    transfer_ints_4rth_nearest = []
 #    for d in [0, 1, 2]:
 #        if periodic_bool[d]:
-#            T_op = mol.Electronics.electronic_symmetry.Symmetry_Generators['t' + str(d + 1)]
+#            T_op = molecular_structure.Electronics.electronic_symmetry.Symmetry_Generators['t' + str(d + 1)]
 #            tr = Wan_orbs @ ksh @ T_op @ T_op @ Wan_orbs.T
 #            transfer_ints_3rd_nearest.append(tr)
 #        else:
 #            transfer_ints_3rd_nearest.append(np.zeros(onsite.shape[0]))
 #
-#    T_opa = mol.Electronics.electronic_symmetry.Symmetry_Generators['t1']
-#    T_opb = mol.Electronics.electronic_symmetry.Symmetry_Generators['t2']
+#    T_opa = molecular_structure.Electronics.electronic_symmetry.Symmetry_Generators['t1']
+#    T_opb = molecular_structure.Electronics.electronic_symmetry.Symmetry_Generators['t2']
 #
 #    #tr_ab = Wan_orbs @ ksh @ T_opb @ T_opa @ Wan_orbs.T
 #
@@ -1080,7 +1096,7 @@ def wan_real_plot(mol, mode, ind=[0], Wan_npy="Wannier_orbitals_occ.npy", path="
 #
 #
 #    conversion_factor = ConversionFactors["a.u.->A"]
-#    prim_unit_cellvectors = [ mol.cellvectors[d]/(mol.periodicity[d]*conversion_factor) for d in [0,1,2] ]
+#    prim_unit_cellvectors = [ molecular_structure.cellvectors[d]/(molecular_structure.periodicity[d]*conversion_factor) for d in [0,1,2] ]
 #
 #    reciprocal_lattice = np.zeros((3, 3))
 #    reciprocal_lattice[0, :], reciprocal_lattice[1, :], reciprocal_lattice[2, :] = get_reciprocal_lattice_vectors(*prim_unit_cellvectors)
@@ -1175,14 +1191,14 @@ def wan_real_plot(mol, mode, ind=[0], Wan_npy="Wannier_orbitals_occ.npy", path="
 #        occupations_on_path.append(this_line_occupations)
 #    file.close()
 #
-#    cell_vectors = mol.cellvectors
-#    periodicity = mol.periodicity
+#    cell_vectors = molecular_structure.cellvectors
+#    periodicity = molecular_structure.periodicity
 #    primitive_cell_vectors = [cell_vectors[i] / periodicity[i] for i in range(3)]
 #    reciprocal_lattice = np.zeros((3, 3))
 #    reciprocal_lattice[0, :], reciprocal_lattice[1, :], reciprocal_lattice[2, :] = get_reciprocal_lattice_vectors(
 #        *primitive_cell_vectors)
 #    conversion_factor = ConversionFactors["a.u.->A"]
-#    ksh = mol.Electronics.KS_Hamiltonian_alpha
+#    ksh = molecular_structure.Electronics.KS_Hamiltonian_alpha
 #
 #    os.makedirs(path + 'Testing_wantb', exist_ok=True)
 #    for path_index, kpath in enumerate(special_k):
@@ -1523,7 +1539,7 @@ def get_q_points(mol, return_format="combined"):
 
     Parameters:
     -----------
-    mol : molecule object
+    molecular_structure : molecule object
         Must have attributes: cellvectors, periodicity
     return_format : str, optional
         - 'combined': returns all k-points as single list (default)

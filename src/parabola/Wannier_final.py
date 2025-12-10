@@ -606,7 +606,7 @@ def get_q_points(mol, return_format="combined"):
 
     Parameters:
     -----------
-    mol : molecule object
+    molecular_structure : molecule object
         Must have attributes: cellvectors, periodicity
     return_format : str, optional
         - 'combined': returns all k-points as single list (default)
@@ -878,7 +878,7 @@ def testing_bloch(mol, path="./", name_of_file="general"):
 
             T1 = mol.electronic_structure.Electronic_Symmetry.Symmetry_Generators["t1"]
             T2 = mol.electronic_structure.Electronic_Symmetry.Symmetry_Generators["t2"]
-            # T3 = mol.electronic_structure.Electronic_Symmetry.Symmetry_Generators['t3']
+            # T3 = molecular_structure.electronic_structure.Electronic_Symmetry.Symmetry_Generators['t3']
 
             # print('commute - atomic basis: ', np.max(abs( olm @ T1 - T1 @ olm)), np.max(abs( T2 @ T1 - T1 @ T2)) , np.max(abs( ksh @ T2 - T2 @ ksh)))
 
@@ -965,8 +965,8 @@ def bloch_form(mol, path="./"):
             val, vec = np.linalg.eig(full)
             bloch = sym_states.T @ vec
 
-            # T1 = mol.electronic_structure.Electronic_Symmetry.Symmetry_Generators['t1']
-            # T2 = mol.electronic_structure.Electronic_Symmetry.Symmetry_Generators['t2']
+            # T1 = molecular_structure.electronic_structure.Electronic_Symmetry.Symmetry_Generators['t1']
+            # T2 = molecular_structure.electronic_structure.Electronic_Symmetry.Symmetry_Generators['t2']
             # eig = np.conjugate(bloch).T @ T2 @ bloch
             # eig_diag = np.diagonal(eig)
 
@@ -1006,8 +1006,8 @@ def band_index(mol, nh, nl, periodic_copies, path="./"):
     ksh = mol.electronic_structure.KS_Hamiltonian_alpha
 
     all_connected_bands = []
-    bloch_states_full = testing_bloch(mol, path=path)  # bloch_form(mol, path=path)
-    # determine_k_point(mol, bloch_states_full)
+    bloch_states_full = testing_bloch(mol, path=path)  # bloch_form(molecular_structure, path=path)
+    # determine_k_point(molecular_structure, bloch_states_full)
     available_mask = np.ones(bloch_states_full.shape[0], dtype=bool)
 
     phi_q = []
