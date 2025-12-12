@@ -15,6 +15,7 @@ pathtobinaries = pathtocp2k + "/exe/local/"
 def Vib_Ana_inputs(
     deltas=[],
     vectors=[],
+    cp_wfn=False,
     parentpath="./",
     linktobinary=True,
     binary="cp2k.popt",
@@ -120,7 +121,7 @@ def Vib_Ana_inputs(
     os.system(
         "cp " + parentpath + xyzfilename + " " + parentpath + "Equilibrium_Geometry"
     )
-    if RestartfileFlag:
+    if RestartfileFlag and cp_wfn:
         os.system(
             "cp "
             + parentpath
@@ -162,7 +163,7 @@ def Vib_Ana_inputs(
                 path_to=parentpath,
             )
             os.system("cp " + parentpath + inpfilename + " " + parentpath + work_dir)
-            if RestartfileFlag:
+            if RestartfileFlag and cp_wfn:
                 os.system(
                     "cp " + parentpath + Restart_filename + " " + parentpath + work_dir
                 )
