@@ -132,7 +132,75 @@ def get_tensor_representation():
         [[2, 2, 0], -18.0 * np.sqrt(35.0 / np.pi) / 16.0],
         [[0, 4, 0], 3.0 * np.sqrt(35.0 / np.pi) / 16.0],
     ]
-
+    # --- h orbitals (symmetric 3×3×3×3×3 tensors) ---
+    # The prefactors for h-orbitals can become quite complex. 
+    # These are derived from the real spherical harmonics Y_lm.
+    cs["h-5"] = [
+        [[5, 0, 0], -1.0 * np.sqrt(231.0 / (4.0 * np.pi)) / 8.0],
+        [[3, 2, 0], 5.0 * np.sqrt(231.0 / (4.0 * np.pi)) / 8.0],
+        [[1, 4, 0], -1.0 * np.sqrt(231.0 / (4.0 * np.pi)) / 8.0],
+    ]
+    cs["h-4"] = [
+        [[4, 1, 0], 3.0 * np.sqrt(385.0 / (4.0 * np.pi)) / 8.0],
+        [[2, 3, 0], -5.0 * np.sqrt(385.0 / (4.0 * np.pi)) / 8.0],
+        [[0, 5, 0], 1.0 * np.sqrt(385.0 / (4.0 * np.pi)) / 8.0],
+    ]
+    cs["h-3"] = [
+        [[2, 3, 0], 3.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 8.0],
+        [[4, 1, 0], -3.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 8.0],
+        [[2, 1, 2], -15.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 16.0],
+        [[0, 3, 2], 15.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 16.0],
+    ]
+    cs["h-2"] = [
+        [[1, 3, 1], 105.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 32.0],
+        [[3, 1, 1], -35.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 32.0],
+        [[1, 1, 3], -10.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 32.0],
+    ]
+    cs["h-1"] = [
+        [[0, 1, 4], -15.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 32.0],
+        [[2, 1, 2], 15.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 16.0],
+        [[4, 1, 0], -3.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 16.0],
+        [[0, 3, 2], -15.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 32.0],
+        [[2, 3, 0], 3.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 16.0],
+        [[0, 5, 0], -1.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 32.0],
+    ]
+    cs["h0"] = [
+        [[0, 0, 5], 3.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 4.0],
+        [[2, 0, 3], -15.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 8.0],
+        [[0, 2, 3], -15.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 8.0],
+        [[4, 0, 1], 15.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 16.0],
+        [[0, 4, 1], 15.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 16.0],
+        [[2, 2, 1], 45.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 16.0],
+    ]
+    cs["h+1"] = [
+        [[1, 0, 4], 15.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 32.0],
+        [[3, 0, 2], -15.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 16.0],
+        [[5, 0, 0], 1.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 32.0],
+        [[1, 2, 2], 15.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 32.0],
+        [[3, 2, 0], -3.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 16.0],
+        [[1, 4, 0], 3.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 16.0],
+    ]
+    cs["h+2"] = [
+        [[2, 1, 2], 35.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 32.0],
+        [[0, 3, 2], -105.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 32.0],
+        [[4, 1, 0], 10.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 32.0],
+    ]
+    cs["h+3"] = [
+        [[4, 1, 0], 3.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 8.0],
+        [[2, 3, 0], 3.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 8.0],
+        [[2, 1, 2], -15.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 16.0],
+        [[0, 3, 2], -15.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 16.0],
+    ]
+    cs["h+4"] = [
+        [[5, 0, 0], 1.0 * np.sqrt(385.0 / (4.0 * np.pi)) / 8.0],
+        [[3, 2, 0], -5.0 * np.sqrt(385.0 / (4.0 * np.pi)) / 8.0],
+        [[1, 4, 0], 3.0 * np.sqrt(385.0 / (4.0 * np.pi)) / 8.0],
+    ]
+    cs["h+5"] = [
+        [[5, 0, 0], 1.0 * np.sqrt(231.0 / (4.0 * np.pi)) / 8.0],
+        [[3, 2, 0], -5.0 * np.sqrt(231.0 / (4.0 * np.pi)) / 8.0],
+        [[1, 4, 0], 5.0 * np.sqrt(231.0 / (4.0 * np.pi)) / 8.0],
+    ]
     # Map monomial powers to i,j tensor indices
     def add_monomial(M_lambda, monomial, type):
         """Adds a monomial to the tensor by symmetrizing over index permutations."""
@@ -149,6 +217,8 @@ def get_tensor_representation():
                 M_lambda[p[0], p[1], p[2]] += weight
             elif type == "g":
                 M_lambda[p[0], p[1], p[2], p[3]] += weight
+            elif type == "h":
+                M_lambda[p[0], p[1], p[2], p[3],p[4]] += weight
         return M_lambda
 
     # Assemble tensor representations
@@ -175,6 +245,11 @@ def get_tensor_representation():
             for mono in cs[lm]:
                 ten4 = add_monomial(ten4, mono, type="g")
             representation_matrices[lm] = ten4  # 3x3x3x3 tensor
+        elif lm[0] == "h":
+            ten5 = np.zeros((3, 3, 3, 3,3))
+            for mono in cs[lm]:
+                ten5 = add_monomial(ten5, mono, type="h")
+            representation_matrices[lm] = ten5  # 3x3x3x3x3 tensor
 
     return representation_matrices
 
