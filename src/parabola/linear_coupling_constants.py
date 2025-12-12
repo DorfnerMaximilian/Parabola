@@ -12,7 +12,7 @@ pathtocp2k = os.environ["cp2kpath"]
 pathtobinaries = pathtocp2k + "/exe/local/"
 
 
-def LCC_inputs(deltas=[], parentfolder="./", linktobinary=True, binaryloc=pathtobinaries):
+def LCC_inputs(deltas=[], parentfolder="./",cp_wfn=False):
     frequencies, normCD, norm_factors = Read.read_vibrations(parentfolder)
     nCD = []
     if len(deltas)==0:
@@ -23,7 +23,7 @@ def LCC_inputs(deltas=[], parentfolder="./", linktobinary=True, binaryloc=pathto
     normCD=np.array(normCD)
     for it in range(np.shape(normCD)[0]):
         nCD.append(normCD[it, :])
-    VibAna.Vib_Ana_inputs(deltas, nCD, parentpath=parentfolder)
+    VibAna.Vib_Ana_inputs(deltas, nCD,cp_wfn=cp_wfn, parentpath=parentfolder)
 
 
 def getManyBodyCouplings(eta, LCC, id_homo):
