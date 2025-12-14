@@ -365,21 +365,31 @@ class Vibrational_Symmetry(Symmetry.Symmetry):
         molecular_symmetry = Molecular_Symmetry
         if "Id" not in Molecular_Symmetry.Symmetry_Generators.keys():
             xyz_symmetry = XYZ_Symmetry(Molecular_Symmetry)
-            generators = {}
+            generators_raw = {}
+            ordering=[]
             for sym in molecular_symmetry.Symmetry_Generators:
-                generators[sym] = np.kron(
+                generators_raw[sym] = np.kron(
                     molecular_symmetry.Symmetry_Generators[sym],
                     xyz_symmetry.Symmetry_Generators[sym],
                 )
-            self.Symmetry_Generators = generators
-            self._iscommutative()
-            if self.commutative:
-                self.IrrepsProjector = simultaneous_real_block_diagonalization(
+                ordering.append(sym)
+            if "t1" in ordering:
+                required_index=ordering.index("t1")
+            elif "t2" in ordering:
+                required_index=ordering.index("t2")
+            elif "t3" in ordering:
+                required_index=ordering.index("t3")
+            else:
+                required_index=None
+            commutation_matrix=Symmetry.get_commutation_matrix(generators_raw)
+            matrix_indices=Symmetry.get_max_commuting_subset(commutation_matrix, required_index=required_index)
+            generators={}
+            for index in matrix_indices:
+                generators[ordering[index]]=generators_raw[ordering[index]]
+            self.Symmetry_Generators=generators
+            self.IrrepsProjector = simultaneous_real_block_diagonalization(
                     list(self.Symmetry_Generators.values())
                 )
-            else:
-                self._determineCentralizer()
-                self._determineIrrepsProjector()
         else:
             self.IrrepsProjector = np.kron(
                 molecular_symmetry.Symmetry_Generators["Id"], np.eye(3)

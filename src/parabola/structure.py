@@ -180,93 +180,85 @@ class Molecular_Structure:
     @property
     def info(self):
         """
-        Nicely formatted molecular structure summary with attribute descriptions.
+        Nicely formatted molecular structure summary with symmetry extensions.
         """
 
-        info = {
-            "name": {
-                "label": "Name",
-                "description": "The name identifier of the molecular structure",
-                "value": self.name,
-                "unit": None,
-            },
-            "path": {
-                "label": "Path",
-                "description": "File or data source path for the molecular data",
-                "value": self.path,
-                "unit": None,
-            },
-            "atoms": {
-                "label": "Number of atoms",
-                "description": "Total number of atoms in the structure",
-                "value": len(self.atoms),
-                "unit": None,
-            },
-            "atomic_symbols": {
-                "label": "Atomic Symbols",
-                "description": "Chemical symbols of the constituent atoms",
-                "value": ", ".join(self.atoms),
-                "unit": None,
-            },
-            "coordinates": {
-                "label": "Cartesian Coordinates",
-                "description": "Original coordinates",
-                "value": [
-                    f"Atom {i + 1} [{self.atoms[i]}]: {np.round(coord, 6)}" for i, coord in enumerate(self.coordinates)
-                ],
-                "unit": "Angström",
-            },
-            "geom_centered": {
-                "label": "Geometrically Centered Coordinates",
-                "description": "Coordinates centered to geometric_center and represented in the frame described by geometric_principle_axis",
-                "value": [
-                    f"Atom {i + 1} [{self.atoms[i]}]: {np.round(coord, 6)}"
-                    for i, coord in enumerate(self.geometrically_centered_coordinates)
-                ],
-                "unit": "Angström",
-            },
-            "cell_vectors": {
-                "label": "Cell Vectors",
-                "description": "Lattice or box vectors (in Angstroms)",
-                "value": [f"Vector {i + 1}: {vec}" for i, vec in enumerate(self.cellvectors)],
-                "unit": "Angström",
-            },
-            "periodicity": {
-                "label": "Periodicity",
-                "description": "How many copies are detected along the cellvectors. 0: open boundary conditions, 1:periodic boundary conditions",
-                "value": self.periodicity,
-                "unit": None,
-            },
-            "symmetry": {
-                "label": "Symmetry Information",
-                "description": "Symmetry generators or operations of the structure",
-                "value": (
-                    list(self.Molecular_Symmetry.Symmetry_Generators.keys())
-                    if self.Molecular_Symmetry.Symmetry_Generators.keys()
-                    else ["No symmetry information available."]
-                ),
-                "unit": None,
-            },
-        }
-
-        print("=" * 40)
-        print(" Molecular Structure Information")
-        print("=" * 40)
-
-        for key, entry in info.items():
-            print(f"\n{entry['label']}:")
-            print(f"  Description: {entry['description']}")
-            if entry["unit"] is not None:
-                print(f"  Unit: {entry['unit']}")
-            value = entry["value"]
-
-            if isinstance(value, list):
-                for v in value:
-                    print(f"  {v}")
+        def format_symmetry(title, description, keys):
+            print(f"\n{title}")
+            print("-" * len(title))
+            print(f"  {description}")
+            if keys:
+                for k in keys:
+                    print(f"  • {k}")
             else:
-                print(f"  {value}")
+                print("  • No symmetry information available.")
 
-        print("\n" + "=" * 40)
+        def safe_symmetry_keys(obj):
+            try:
+                keys = obj.Symmetry_Generators.keys()
+                return list(keys) if keys else None
+            except Exception:
+                return None
+
+        print("=" * 60)
+        print(" Molecular Structure Information")
+        print("=" * 60)
+
+        # ── Basic structure information ──────────────────────────────
+        print("\nBasic Information")
+        print("-" * 18)
+        print(f"  Name: {self.name}")
+        print(f"  Path: {self.path}")
+        print(f"  Number of atoms: {len(self.atoms)}")
+        print(f"  Atomic symbols: {', '.join(self.atoms)}")
+
+        # ── Coordinates ──────────────────────────────────────────────
+        print("\nCartesian Coordinates (Å)")
+        print("-" * 27)
+        for i, coord in enumerate(self.coordinates):
+            print(f"  Atom {i+1:>3} [{self.atoms[i]}]: {np.round(coord, 6)}")
+
+        print("\nGeometrically Centered Coordinates (Å)")
+        print("-" * 40)
+        for i, coord in enumerate(self.geometrically_centered_coordinates):
+            print(f"  Atom {i+1:>3} [{self.atoms[i]}]: {np.round(coord, 6)}")
+
+        # ── Cell information ─────────────────────────────────────────
+        print("\nCell Vectors (Å)")
+        print("-" * 16)
+        for i, vec in enumerate(self.cellvectors):
+            print(f"  Vector {i+1}: {vec}")
+        print(f"\nPeriodicity: {self.periodicity}")
+
+        # ── Symmetry information ─────────────────────────────────────
+        print("\n" + "=" * 60)
+        print(" Symmetry Information")
+        print("=" * 60)
+
+        format_symmetry(
+            "Molecular Symmetry",
+            "Symmetry generators of the molecular structure:",
+            safe_symmetry_keys(getattr(self, "Molecular_Symmetry", None)),
+        )
+
+        format_symmetry(
+            "Electronic Symmetry",
+            "Commuting symmetry generators of the electronic structure:",
+            safe_symmetry_keys(
+                getattr(getattr(self, "Electronics", None), "electronic_symmetry", None)
+            ),
+        )
+
+        format_symmetry(
+            "Vibrational Symmetry",
+            "Commuting symmetry generators of the vibrational modes:",
+            safe_symmetry_keys(
+                getattr(getattr(self, "Vibrations", None), "vibrational_symmetry", None)
+            ),
+        )
+
+        print("\n" + "=" * 60)
+
 
     @property
     def n_atoms(self):

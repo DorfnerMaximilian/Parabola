@@ -553,6 +553,10 @@ class Electronics:
             Homoindex = self.num_e / 2
             for id, element in enumerate(label_alpha):
                 self.indexmap["alpha"][int(id + 1 - Homoindex)] = element
+def get_bloch_functions(self):
+    return True
+
+
 
 
 def test_phase_op(mol):
@@ -943,21 +947,31 @@ class electronic_symmetry(Symmetry.Symmetry):
     def __init__(self, molecular_symmetry, atoms, basis):
         super().__init__()  # Initialize parent class
         if "Id" not in molecular_symmetry.Symmetry_Generators.keys():
-            generators = {}
+            generators_raw = {}
+            ordering=[]
             for sym in molecular_symmetry.Symmetry_Generators:
                 P = molecular_symmetry.Symmetry_Generators[sym]
                 O = get_xyz_representation(symmetrylabel=sym)
                 generator = get_basis_transformation(O, P, atoms, basis)
-                generators[sym] = generator
-            self.Symmetry_Generators = generators
-            self._iscommutative()
-            if self.commutative:
-                self.IrrepsProjector = simultaneous_real_block_diagonalization(
+                generators_raw[sym] = generator
+                ordering.append(sym)
+            if "t1" in ordering:
+                required_index=ordering.index("t1")
+            elif "t2" in ordering:
+                required_index=ordering.index("t2")
+            elif "t3" in ordering:
+                required_index=ordering.index("t3")
+            else:
+                required_index=None
+            commutation_matrix=Symmetry.get_commutation_matrix(generators_raw)
+            matrix_indices=Symmetry.get_max_commuting_subset(commutation_matrix, required_index=required_index)
+            generators={}
+            for index in matrix_indices:
+                generators[ordering[index]]=generators_raw[ordering[index]]
+            self.Symmetry_Generators=generators
+            self.IrrepsProjector = simultaneous_real_block_diagonalization(
                     list(self.Symmetry_Generators.values())
                 )
-            else:
-                self._determineCentralizer()
-                self._determineIrrepsProjector()
         else:
             self.IrrepsProjector = np.kron(
                 molecular_symmetry.Symmetry_Generators["Id"], np.eye(3)

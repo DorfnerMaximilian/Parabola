@@ -1,8 +1,6 @@
 import numpy as np
-from scipy.linalg import schur
 from scipy.linalg import null_space
-from scipy.sparse import csgraph
-
+import itertools
 
 class Symmetry:
     """
@@ -20,20 +18,6 @@ class Symmetry:
         self.IrrepsProjector = None
         self.SymSectors = None  # Will store labeled symmetry sectors after projection
         self.commutative = None
-
-    def _iscommutative(self):
-        commutative = True
-        generators = self.Symmetry_Generators
-        for sym1 in generators:
-            for sym2 in generators:
-                comm = (
-                    generators[sym1] @ generators[sym2]
-                    - generators[sym2] @ generators[sym1]
-                )
-                if np.linalg.norm(comm) > 10 ** (-9):
-                    commutative = False
-                    break
-        self.commutative = commutative
 
     def _determineCentralizer(self):
         matrices = [self.Symmetry_Generators[key] for key in self.Symmetry_Generators]
@@ -144,7 +128,59 @@ def getIrrepsProjector(centralizers):
     P = sum(a * X for a, X in zip(alpha, centralizers))
     _, eigenvectors = np.linalg.eigh(P)
     return eigenvectors
+def get_commutation_matrix(generators, tol=1e-9):
+    symbols = list(generators.keys())
+    n = len(symbols)
+    commutation_matrix = np.zeros((n, n))
 
+    for i, sym1 in enumerate(symbols):
+        for j, sym2 in enumerate(symbols):
+            comm = (
+                generators[sym1] @ generators[sym2]
+                - generators[sym2] @ generators[sym1]
+            )
+            if np.linalg.norm(comm) < tol:
+                commutation_matrix[i, j] = 1.0
+
+    return commutation_matrix
+def get_max_commuting_subset(matrix, required_index=None):
+        N = len(matrix)
+        all_indices = list(range(N))
+        
+        # 1. Define the search space
+        if required_index is not None:
+            # Only look at operators that commute with the required one (excluding itself)
+            # We treat matrix[i][req] == 1 as the edge definition
+            search_space = [i for i in range(N) if i != required_index and matrix[i][required_index] == 1]
+            start_nodes = [required_index]
+        else:
+            # Search everywhere
+            search_space = all_indices
+            start_nodes = []
+
+        # 2. Iterate from largest possible size down to 1
+        # We look for a clique of size k. If found, it's guaranteed to be the maximum.
+        for size in range(len(search_space), 0, -1):
+            
+            for subset in itertools.combinations(search_space, size):
+                # Check if this subset forms a clique
+                is_clique = True
+                
+                # Check every pair in the subset
+                for i, j in itertools.combinations(subset, 2):
+                    if matrix[i][j] == 0:
+                        is_clique = False
+                        break
+                
+                if is_clique:
+                    # Found the largest possible! Return it immediately.
+                    # Don't forget to add the required operator back in.
+                    return sorted(list(subset) + start_nodes)
+
+        # 3. Fallback
+        # If no edges were found in search_space (size loop finished without return),
+        # the result is just the required node itself, or a single node if unconstrained.
+        return start_nodes if start_nodes else [0] if N > 0 else []
 
 def detect_block_sizes(matrix, tol=1e-10):
     """
