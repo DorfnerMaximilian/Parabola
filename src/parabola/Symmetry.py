@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.linalg import schur
 from scipy.linalg import null_space
+from scipy.sparse import csgraph
 
 
 class Symmetry:

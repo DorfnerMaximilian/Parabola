@@ -15,6 +15,7 @@ pathtobinaries = pathtocp2k + "/exe/local/"
 def Vib_Ana_inputs(
     deltas=[],
     vectors=[],
+    cp_wfn=False,
     parentpath="./",
     linktobinary=True,
     binary="cp2k.popt",
@@ -23,7 +24,7 @@ def Vib_Ana_inputs(
     deltasflag = False
     if len(deltas) == 0:
         deltasflag = True
-        print("Using Standardvalue of 0.1 a_0 for Displacements!")
+        print("Using Standardvalue of 0.05 a_0 for Displacements!")
     cartesianflag = False
     if len(vectors) == 0:
         cartesianflag = True
@@ -82,7 +83,7 @@ def Vib_Ana_inputs(
             # do a second check based on SVD
             print("Warning: The set of vectors given do not form a basis!")
     if deltasflag:
-        deltas = 0.1 * np.ones(3 * numberofatoms)
+        deltas = 0.05 * np.ones(3 * numberofatoms)
     with open(parentpath + "BasisHessian", "w+") as g:
         if cartesianflag:
             g.write("delta=" + str(deltas[0]) + "\n")
@@ -120,7 +121,7 @@ def Vib_Ana_inputs(
     os.system(
         "cp " + parentpath + xyzfilename + " " + parentpath + "Equilibrium_Geometry"
     )
-    if RestartfileFlag:
+    if RestartfileFlag and cp_wfn:
         os.system(
             "cp "
             + parentpath
@@ -162,7 +163,7 @@ def Vib_Ana_inputs(
                 path_to=parentpath,
             )
             os.system("cp " + parentpath + inpfilename + " " + parentpath + work_dir)
-            if RestartfileFlag:
+            if RestartfileFlag and cp_wfn:
                 os.system(
                     "cp " + parentpath + Restart_filename + " " + parentpath + work_dir
                 )

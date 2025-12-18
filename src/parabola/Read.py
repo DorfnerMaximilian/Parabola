@@ -454,7 +454,7 @@ def read_basis_vectors(parentfolder="./"):
 
 def read_hessian(path="./"):
     try:
-        Hessian = np.load("Hessian.npy")
+        Hessian = np.load(path+"/"+"Hessian.npy")
     except:
         # Read in the basis vectors of the finite displacements:
         BasisVectors, deltas = read_basis_vectors(path + "/")
@@ -508,7 +508,7 @@ def read_hessian(path="./"):
             for s1alpha1 in range(len(deltas)):
                 partialFpartialY[s1alpha1][lambd] = diffofforces.flatten()[s1alpha1]
         Hessian = -partialFpartialY @ Tinv
-        np.save("Hessian.npy", Hessian)
+        np.save(path+"/"+"Hessian.npy", Hessian)
     return Hessian
 
 

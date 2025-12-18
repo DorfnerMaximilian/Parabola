@@ -132,7 +132,75 @@ def get_tensor_representation():
         [[2, 2, 0], -18.0 * np.sqrt(35.0 / np.pi) / 16.0],
         [[0, 4, 0], 3.0 * np.sqrt(35.0 / np.pi) / 16.0],
     ]
-
+    # --- h orbitals (symmetric 3×3×3×3×3 tensors) ---
+    # The prefactors for h-orbitals can become quite complex. 
+    # These are derived from the real spherical harmonics Y_lm.
+    cs["h-5"] = [
+        [[5, 0, 0], -1.0 * np.sqrt(231.0 / (4.0 * np.pi)) / 8.0],
+        [[3, 2, 0], 5.0 * np.sqrt(231.0 / (4.0 * np.pi)) / 8.0],
+        [[1, 4, 0], -1.0 * np.sqrt(231.0 / (4.0 * np.pi)) / 8.0],
+    ]
+    cs["h-4"] = [
+        [[4, 1, 0], 3.0 * np.sqrt(385.0 / (4.0 * np.pi)) / 8.0],
+        [[2, 3, 0], -5.0 * np.sqrt(385.0 / (4.0 * np.pi)) / 8.0],
+        [[0, 5, 0], 1.0 * np.sqrt(385.0 / (4.0 * np.pi)) / 8.0],
+    ]
+    cs["h-3"] = [
+        [[2, 3, 0], 3.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 8.0],
+        [[4, 1, 0], -3.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 8.0],
+        [[2, 1, 2], -15.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 16.0],
+        [[0, 3, 2], 15.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 16.0],
+    ]
+    cs["h-2"] = [
+        [[1, 3, 1], 105.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 32.0],
+        [[3, 1, 1], -35.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 32.0],
+        [[1, 1, 3], -10.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 32.0],
+    ]
+    cs["h-1"] = [
+        [[0, 1, 4], -15.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 32.0],
+        [[2, 1, 2], 15.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 16.0],
+        [[4, 1, 0], -3.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 16.0],
+        [[0, 3, 2], -15.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 32.0],
+        [[2, 3, 0], 3.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 16.0],
+        [[0, 5, 0], -1.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 32.0],
+    ]
+    cs["h0"] = [
+        [[0, 0, 5], 3.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 4.0],
+        [[2, 0, 3], -15.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 8.0],
+        [[0, 2, 3], -15.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 8.0],
+        [[4, 0, 1], 15.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 16.0],
+        [[0, 4, 1], 15.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 16.0],
+        [[2, 2, 1], 45.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 16.0],
+    ]
+    cs["h+1"] = [
+        [[1, 0, 4], 15.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 32.0],
+        [[3, 0, 2], -15.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 16.0],
+        [[5, 0, 0], 1.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 32.0],
+        [[1, 2, 2], 15.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 32.0],
+        [[3, 2, 0], -3.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 16.0],
+        [[1, 4, 0], 3.0 * np.sqrt(77.0 / (4.0 * np.pi)) / 16.0],
+    ]
+    cs["h+2"] = [
+        [[2, 1, 2], 35.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 32.0],
+        [[0, 3, 2], -105.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 32.0],
+        [[4, 1, 0], 10.0 * np.sqrt(11.0 / (4.0 * np.pi)) / 32.0],
+    ]
+    cs["h+3"] = [
+        [[4, 1, 0], 3.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 8.0],
+        [[2, 3, 0], 3.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 8.0],
+        [[2, 1, 2], -15.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 16.0],
+        [[0, 3, 2], -15.0 * np.sqrt(1001.0 / (2.0 * np.pi)) / 16.0],
+    ]
+    cs["h+4"] = [
+        [[5, 0, 0], 1.0 * np.sqrt(385.0 / (4.0 * np.pi)) / 8.0],
+        [[3, 2, 0], -5.0 * np.sqrt(385.0 / (4.0 * np.pi)) / 8.0],
+        [[1, 4, 0], 3.0 * np.sqrt(385.0 / (4.0 * np.pi)) / 8.0],
+    ]
+    cs["h+5"] = [
+        [[5, 0, 0], 1.0 * np.sqrt(231.0 / (4.0 * np.pi)) / 8.0],
+        [[3, 2, 0], -5.0 * np.sqrt(231.0 / (4.0 * np.pi)) / 8.0],
+        [[1, 4, 0], 5.0 * np.sqrt(231.0 / (4.0 * np.pi)) / 8.0],
+    ]
     # Map monomial powers to i,j tensor indices
     def add_monomial(M_lambda, monomial, type):
         """Adds a monomial to the tensor by symmetrizing over index permutations."""
@@ -149,6 +217,8 @@ def get_tensor_representation():
                 M_lambda[p[0], p[1], p[2]] += weight
             elif type == "g":
                 M_lambda[p[0], p[1], p[2], p[3]] += weight
+            elif type == "h":
+                M_lambda[p[0], p[1], p[2], p[3],p[4]] += weight
         return M_lambda
 
     # Assemble tensor representations
@@ -175,6 +245,11 @@ def get_tensor_representation():
             for mono in cs[lm]:
                 ten4 = add_monomial(ten4, mono, type="g")
             representation_matrices[lm] = ten4  # 3x3x3x3 tensor
+        elif lm[0] == "h":
+            ten5 = np.zeros((3, 3, 3, 3,3))
+            for mono in cs[lm]:
+                ten5 = add_monomial(ten5, mono, type="h")
+            representation_matrices[lm] = ten5  # 3x3x3x3x3 tensor
 
     return representation_matrices
 
@@ -321,7 +396,8 @@ class Electronics:
                 "Large Condition number of the Overlap Matrix! Cond(OLM)="
                 + str(cond_number)
             )
-        self.inverse_sqrt_OLM = Util.LoewdinTransformation(OLM, algorithm="Schur-Pade")
+        self.OLM_sym_blocks = {}
+        self.U=None
         self.real_eigenstates = {}
         self.energies = {}
         self.indexmap = {}
@@ -349,51 +425,20 @@ class Electronics:
             self.bloch_states = {}
 
     def get_real_electronic_eigenstates(self, name, atoms, axes):
-        def TransformHamiltonian(self, atoms, axes):
-            U = get_basis_transformation(
+        U = get_basis_transformation(
                 np.array(axes).T, np.eye(len(atoms)), atoms, self.basis
             )
-            if self.UKS:
-                KS_Hamiltonian_alpha = self.KS_Hamiltonian_alpha
-                KS_Hamiltonian_beta = self.KS_Hamiltonian_beta
-                KS_Hamiltonian_alpha = U.T @ KS_Hamiltonian_alpha @ U
-                KS_Hamiltonian_beta = U.T @ KS_Hamiltonian_beta @ U
-            else:
-                KS_Hamiltonian_alpha = self.KS_Hamiltonian_alpha
-                KS_Hamiltonian_alpha = U.T @ KS_Hamiltonian_alpha @ U
-                KS_Hamiltonian_beta = KS_Hamiltonian_alpha
-            return KS_Hamiltonian_alpha, KS_Hamiltonian_beta, U
-
+        self.U=U
         print(f"ℹ️ : Calculating electronic eigenstates for {name}")
-        # --- Setup and Hessian Transformation ---
-        KS_Hamiltonian_alpha, KS_Hamiltonian_beta, U = TransformHamiltonian(
-            self, atoms, axes
-        )
-        sqrtSm1 = self.inverse_sqrt_OLM
-        sqrtSm1 = U.T @ sqrtSm1 @ U
-        KS_Hamiltonian_alpha_orth = np.real(sqrtSm1 @ KS_Hamiltonian_alpha @ sqrtSm1)
+        KS_Hamiltonian_alpha=self.KS_Hamiltonian_alpha
         if self.UKS:
-            KS_Hamiltonian_beta_orth = sqrtSm1 @ KS_Hamiltonian_beta @ sqrtSm1
-
-        # (Optional) Visualize the original mass-weighted Hessian
-        plt.imshow(KS_Hamiltonian_alpha_orth, cmap="viridis", interpolation="nearest")
-        plt.colorbar()
-        plt.savefig("./Hamiltonian_alpha_orth_Original.png")
-        plt.close()
-
-        if self.UKS:
-            # (Optional) Visualize the original mass-weighted Hessian
-            plt.imshow(
-                KS_Hamiltonian_beta_orth, cmap="viridis", interpolation="nearest"
-            )
-            plt.colorbar()
-            plt.savefig("./Hamiltonian_beta_orth_Original.png")
-            plt.close()
+            KS_Hamiltonian_beta=self.KS_Hamiltonian_beta
+        S=self.OLM
+    
 
         # --- CONSISTENT SYMMETRY ORDERING ---
         SymSectors = self.electronic_symmetry.SymSectors
         VIrr = self.electronic_symmetry.IrrepsProjector
-
         # 1. Sort symmetry labels alphabetically to ensure a consistent order.
         sorted_sym_labels = sorted(SymSectors.keys())
 
@@ -402,61 +447,61 @@ class Electronics:
         reordering = np.concatenate([SymSectors[key] for key in sorted_sym_labels])
 
         # 3. Reorder the projector matrix columns based on the sorted symmetry order.
-        VIrr_reordered = VIrr[:, reordering]
-
-        # 4. Create the block-diagonal Hessian. The blocks are now in a consistent order.
-        KS_Hamiltonian_alpha_orth_Sectors = (
-            VIrr_reordered.T @ KS_Hamiltonian_alpha_orth @ VIrr_reordered
-        )
+        VIrr_reordered = U@VIrr[:, reordering]
+        # 4. Create the block-diagonal Hamiltonian and OLM.
+        S_block_diag=VIrr_reordered.T@S@VIrr_reordered
+        H_block_diag_alpha=VIrr_reordered.T@KS_Hamiltonian_alpha@VIrr_reordered
         if self.UKS:
-            KS_Hamiltonian_beta_orth_Sectors = (
-                VIrr_reordered.T @ KS_Hamiltonian_beta_orth @ VIrr_reordered
-            )
-
-        # (Optional) Visualize the block-diagonalized Hessian
+            H_block_diag_beta=VIrr_reordered.T@KS_Hamiltonian_beta@VIrr_reordered
+        
         plt.imshow(
-            KS_Hamiltonian_alpha_orth_Sectors, cmap="viridis", interpolation="nearest"
+            S_block_diag, cmap="viridis", interpolation="nearest"
         )
         plt.colorbar()
-        plt.savefig("./Hamiltonian_alpha_orth_Sectors.png")
+        plt.savefig("./S_block_diag.eps",format="eps")
         plt.close()
-        if self.UKS:
-            plt.imshow(
-                KS_Hamiltonian_alpha_orth_Sectors,
-                cmap="viridis",
-                interpolation="nearest",
-            )
-            plt.colorbar()
-            plt.savefig("./Hamiltonian_beta_orth_Sectors.png")
-            plt.close()
-
+        plt.imshow(
+            H_block_diag_alpha, cmap="viridis", interpolation="nearest"
+        )
+        plt.colorbar()
+        plt.savefig("./H_block_diag.eps",format="eps")
+        plt.close()
         # --- BLOCK DIAGONALIZATION (IN CONSISTENT ORDER) ---
         print(f"ℹ️ : Symmetry Sectors and Electronic Energies")
         current_index = 0
         # 5. Iterate through the sorted labels to process each block.
         label_alpha = []
-        energy_alpha = []
+        energy_alpha = {}
         if self.UKS:
             label_beta = []
-            energy_beta = []
+            energy_beta = {}
         # 5. Iterate through the sorted labels to process each block.
         for sym in sorted_sym_labels:
             block_size = len(SymSectors[sym])
-
-            # Extract the symmetry block
-            Block_Hamiltonian_alpha = KS_Hamiltonian_alpha_orth_Sectors[
+            # Extract the symmetry blocks
+            S_block = S_block_diag[
                 current_index : current_index + block_size,
                 current_index : current_index + block_size,
             ]
+            self.OLM_sym_blocks[sym]=S_block
+            H_block_alpha = H_block_diag_alpha[
+                current_index : current_index + block_size,
+                current_index : current_index + block_size,
+            ]
+            
             if self.UKS:
-                Block_Hamiltonian_beta = KS_Hamiltonian_beta_orth_Sectors[
+                H_block_beta = H_block_diag_beta[
                     current_index : current_index + block_size,
                     current_index : current_index + block_size,
                 ]
-
+            #orthorgonalize 
+            S_block_m12=Util.LoewdinTransformation(S_block)
+            H_block_alpha_orth=S_block_m12@H_block_alpha@S_block_m12
+            if self.UKS:
+                H_block_beta_orth=S_block_m12@H_block_beta@S_block_m12
             # Diagonalize the block to get eigenvalues and eigenvectors for this symmetry
             eigenvalues_alpha, eigenvectors_alpha = np.linalg.eigh(
-                Block_Hamiltonian_alpha
+                H_block_alpha_orth
             )
 
             # energies in eV
@@ -467,14 +512,13 @@ class Electronics:
 
             # Transform eigenvectors from the symmetry basis back to the mass-weighted basis
             V_mwh_alpha = (
-                U
-                @ VIrr_reordered[:, current_index : current_index + block_size]
-                @ eigenvectors_alpha
+                VIrr_reordered[:, current_index : current_index + block_size]
+                @S_block_m12@ eigenvectors_alpha
             )
             if self.UKS:
                 # Diagonalize the block to get eigenvalues and eigenvectors for this symmetry
                 eigenvalues_beta, eigenvectors_beta = np.linalg.eigh(
-                    Block_Hamiltonian_beta
+                    H_block_beta_orth
                 )
 
                 # energies (eV)
@@ -485,25 +529,22 @@ class Electronics:
 
                 # Transform eigenvectors from the symmetry basis back
                 V_mwh_beta = (
-                    U
-                    @ VIrr_reordered[:, current_index : current_index + block_size]
-                    @ eigenvectors_beta
+                    VIrr_reordered[:, current_index : current_index + block_size]
+                    @S_block_m12@ eigenvectors_beta
                 )
 
             V_mwh_alpha = fix_phases_states(V_mwh_alpha, threshold=1e-10)
             self.real_eigenstates["alpha"][sym] = V_mwh_alpha
-            self.energies["alpha"] = energies_alpha_eV
+            self.energies["alpha"][sym] = energies_alpha_eV
+            for it in range(len(energies_alpha_eV)):
+                label_alpha.append((sym,it))
             if self.UKS:
                 V_mwh_beta = fix_phases_states(V_mwh_beta, threshold=1e-10)
                 self.real_eigenstates["beta"][sym].append(V_mwh_beta)
-                self.energies["beta"] = energies_alpha_eV
+                self.energies["beta"][sym] = energies_alpha_eV
+                for it in range(len(energies_alpha_eV)):
+                    label_beta.append((sym,it))
 
-            for i in range(block_size):
-                label_alpha.append((sym, i))
-                energy_alpha.append(eigenvalues_alpha[i])
-                if self.UKS:
-                    label_beta.append((sym, i))
-                    energy_beta.append(eigenvalues_beta[i])
             # Advance the index to the start of the next block
             current_index += block_size
         if not self.UKS:
@@ -924,52 +965,7 @@ class electronic_symmetry(Symmetry.Symmetry):
         self._determineSymmetrySectors()
 
 
-#### Define Symmetry Class ####
-def detect_block_sizes(matrix, tol=1e-8):
-    """
-    Detects block sizes in a (approximately) block-diagonal square matrix.
-    Args:
-        matrix: (n x n) NumPy array (assumed square and block-diagonal).
-        tol: threshold below which off-diagonal elements are considered zero.
 
-    Returns:
-        A list of (start_index, block_size) tuples.
-    """
-    n = matrix.shape[0]
-    assert matrix.shape[0] == matrix.shape[1], "Matrix must be square."
-    blocks = []
-    i = 0
-
-    while i < n:
-        block_found = False
-        for size in range(1, n - i + 1):
-            # Extract candidate block
-            block = matrix[i : i + size, i : i + size]
-
-            # Check if it's isolated: off-block rows/cols should be zero
-            off_block = matrix[i : i + size, i + size :]
-            off_block_T = matrix[i + size :, i : i + size]
-
-            if np.all(np.abs(off_block) < tol) and np.all(np.abs(off_block_T) < tol):
-                # Check if next row/col introduces new coupling
-                if i + size == n:
-                    blocks.append((i, size))
-                    i += size
-                    block_found = True
-                    break
-                next_col = matrix[i : i + size, i + size]
-                next_row = matrix[i + size, i : i + size]
-                if np.all(np.abs(next_col) < tol) and np.all(np.abs(next_row) < tol):
-                    blocks.append((i, size))
-                    i += size
-                    block_found = True
-                    break
-        if not block_found:
-            # Fallback: treat single diagonal element as a block
-            blocks.append((i, 1))
-            i += 1
-
-    return blocks
 
 
 def simultaneous_real_block_diagonalization(matrices):
@@ -1125,8 +1121,7 @@ def get_xyz_representation(symmetrylabel):
         return np.eye(3)
 
 
-def test_IrrepsProjector(name):
-    el = ElectronicStructure(name)
+def test_IrrepsProjector(el):
     SymSectors = el.electronic_symmetry.SymSectors
     VIrr = el.electronic_symmetry.IrrepsProjector
 

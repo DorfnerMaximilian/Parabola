@@ -119,7 +119,7 @@ class Molecular_Structure:
         # If electronic_path is provided in the current call, update the structure.
         if electronics_path is not None:
             # Recompute only if the path has changed or if the structure is currently None.
-            if self.electronics_path != electronics_path or self.electronics is None:
+            if self.electronics_path != electronics_path or self.Electronics is None:
                 print("🔄 : Electronic Structure path provided/changed. Computing/updating electronic structure.")
                 self.electronics_path = electronics_path
                 self.Electronics = self.determine_electronics()
@@ -150,8 +150,7 @@ class Molecular_Structure:
         full_path = os.path.abspath(self.electronics_path)
         print("Vibrational Structure data taken from:")
         print(full_path)
-        electronics = electronics.Electronics(self)
-        return electronics
+        return electronics.Electronics(self)
 
     def determine_vibrations(self):
         """
@@ -335,7 +334,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         self,
         molecular_structure: "Molecular_Structure",
     ):
-        tol_translation = 5 * 10 ** (-4)
+        tol_translation = 5 * 10 ** (-5)
         self._test_translation(molecular_structure=molecular_structure, tol_translation=tol_translation)
         primitive_indices = self._find_indices_in_primitive_cell(
             molecular_structure=molecular_structure, tol_translation=tol_translation
@@ -449,21 +448,40 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             np.array(atomic_symbols)[primitive_indices],
             tol_inversion,
         )
+        periodicity=molecular_structure.periodicity
         if has_symmetry:
-            # Generate the Original Pairs
-            pairs = {}
-            for idx, inv_idx in inversion_pairs.items():
-                for uc in molecular_structure.unitcells:
-                    ucindex = molecular_structure.unitcells[uc]
-                    pairs[ucindex[idx]] = ucindex[inv_idx]
-                pairs[primitive_indices[idx]] = primitive_indices[inv_idx]
-            # Add the remaining pairs on the diagonal
+            all_unit_cells = molecular_structure.unitcells
+            pairs={}
+            if np.sum(molecular_structure.periodicity)>0:
+                # inversion_pairs maps primitive index A -> primitive index B
+                for idx_A_prim, idx_B_prim in inversion_pairs.items():
+                    
+                    # Iterate over every unit cell in the supercell
+                    for uc_coords in all_unit_cells:
+                        # uc_coords is (cx, cy, cz), e.g., (1, 0, 0)
+                        # WRAP the inverted coordinates back into the supercell range [0, N-1]
+                        uc_inv=((-uc_coords[0])%periodicity[0],(-uc_coords[1])%periodicity[1],(-uc_coords[2])%periodicity[2])
+                        
+                        # Get the global indices for the original and wrapped inverted cells
+                        uc_indices = all_unit_cells[uc_coords] # Indices for atom A in cell C
+                        uc_indices_inv = all_unit_cells[uc_inv] # Indices for atom B in cell Wrap(-C)
+                        
+                        # Map Atom A (idx_A_prim) in Cell C to Atom B (idx_B_prim) in Cell Wrap(-C)
+                        global_index_A = uc_indices[idx_A_prim]
+                        global_index_B = uc_indices_inv[idx_B_prim]
+                        
+                        pairs[global_index_A] = global_index_B
+                # Add the remaining pairs on the diagonal
+            else:
+                pairs=inversion_pairs
             nAtoms = len(atomic_symbols)
-            PrimitiveInversion = get_Inversion_Symmetry_Generator(pairs, nAtoms)
+            PrimitiveInversion = get_discrete_symmetry_generator(pairs, nAtoms)
             self.Symmetry_Generators["i"] = PrimitiveInversion
 
     def _test_rotation(self, molecular_structure: "Molecular_Structure", tol_rotation, nmax=10):
         geometrically_centered_coordinates = molecular_structure.geometrically_centered_coordinates
+        geometric_principle_axis=np.array(molecular_structure.geometric_principle_axis)
+        
         atomic_symbols = molecular_structure.atoms
         primitive_indices = molecular_structure.unitcells[(0, 0, 0)]
         for axis in ["x", "y", "z"]:
@@ -489,19 +507,76 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                         has_symmetry = False
                         break
             if has_symmetry and n != 1:
-                # Generate the Original Pairs
-                pairs = {}
-                for idx, rot_idx in rotation_pairs.items():
-                    for uc in molecular_structure.unitcells:
-                        ucindex = molecular_structure.unitcells[uc]
-                        pairs[ucindex[idx]] = ucindex[rot_idx]
-                # Add the remaining pairs on the diagonal
-                nAtoms = len(atomic_symbols)
-                PrimitiveRotation = get_Inversion_Symmetry_Generator(pairs, nAtoms)
-                self.Symmetry_Generators["C" + axis + "_" + str(n)] = PrimitiveRotation
+                #check if lattice vectors are transformed accordingly
+                periodicity=molecular_structure.periodicity
+                if np.sum(periodicity)>0:
+                    primitive_cell_vectors=[molecular_structure.cellvectors[0]/periodicity[0],
+                                        molecular_structure.cellvectors[1]/periodicity[1],
+                                        molecular_structure.cellvectors[2]/periodicity[2]]
+                    c=np.cos(2*np.pi/n);s=np.sin(2*np.pi/n)
+                    if axis == "x":
+                        R = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+                    elif axis == "y":
+                        R = np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
+                    else:
+                        R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+                    #represent in original carthesian basis
+                    Rotation_Matrix=geometric_principle_axis@R@geometric_principle_axis.T
+                    # A: Matrix whose rows are the primitive cell vectors (3x3)
+                    A = np.array(primitive_cell_vectors)
+                    
+                    # A_inv: Inverse of A (A_inv @ A = Identity)
+                    A_inv = np.linalg.inv(A)
+
+                    # M: The rotation matrix in the basis of the cell vectors
+                    # M = A @ Rotation_Matrix @ A_inv
+                    M_lattice = A @ Rotation_Matrix @ A_inv
+
+                    # The condition for a symmetry operation is that M_lattice 
+                    # must contain only integer entries.
+                    
+                    # Check for integer entries by comparing M_lattice to its 
+                    # nearest integer matrix (using a small tolerance).
+                    tolerance = 1e-5  # Standard tolerance for floating point comparison
+                    
+                    M_rounded = np.round(M_lattice)
+                    # Check if all elements in the difference matrix are close to zero
+                    is_lattice_symmetry = np.allclose(M_lattice, M_rounded, atol=tolerance)
+                else:
+                    is_lattice_symmetry=True
+                
+                if is_lattice_symmetry:
+                    # Generate the Original Pairs
+                    pairs = {}
+                    all_unit_cells = molecular_structure.unitcells
+                    if np.sum(periodicity)>0:
+                        # rotation maps primitive index A -> primitive index B
+                        for idx_A_prim, idx_B_prim in rotation_pairs.items():
+                            # Iterate over every unit cell in the supercell
+                            for uc_coords in all_unit_cells:
+                                # uc_coords is (cx, cy, cz), e.g., (1, 0, 0)
+                                # WRAP the inverted coordinates back into the supercell range [0, N-1]
+                                rotated_uc=M_lattice@np.array([uc_coords[0],uc_coords[1],uc_coords[2]]).T
+                                uc_rot_wrapped=(int(rotated_uc[0])%periodicity[0],int(rotated_uc[1])%periodicity[1],int(rotated_uc[2])%periodicity[2])
+                                # Get the global indices for the original and wrapped inverted cells
+                                uc_indices = all_unit_cells[uc_coords] # Indices for atom A in cell C
+                                uc_indices_rot = all_unit_cells[uc_rot_wrapped] # Indices for atom B in cell Wrap(C)
+                                
+                                # Map Atom A (idx_A_prim) in Cell C to Atom B (idx_B_prim) in Cell Wrap(C)
+                                global_index_A = uc_indices[idx_A_prim]
+                                global_index_B = uc_indices_rot[idx_B_prim]
+                            
+                                pairs[global_index_A] = global_index_B
+                    else:
+                        pairs=rotation_pairs
+                    # Add the remaining pairs on the diagonal
+                    nAtoms = len(atomic_symbols)
+                    PrimitiveRotation = get_discrete_symmetry_generator(pairs, nAtoms)
+                    self.Symmetry_Generators["C" + axis + "_" + str(n)] = PrimitiveRotation
 
     def _test_mirror(self, molecular_structure: "Molecular_Structure", tol_mirror):
         geometrically_centered_coordinates = molecular_structure.geometrically_centered_coordinates
+        geometric_principle_axis=np.array(molecular_structure.geometric_principle_axis)
         atomic_symbols = molecular_structure.atoms
         primitive_indices = molecular_structure.unitcells[(0, 0, 0)]
         for axis in ["x", "y", "z"]:
@@ -512,15 +587,73 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 tolerance=tol_mirror,
             )
             if has_symmetry:
-                # Generate the Original Pairs
-                pairs = {}
-                for idx, rot_idx in mirror_pairs.items():
-                    for uc in molecular_structure.unitcells:
-                        ucindex = molecular_structure.unitcells[uc]
-                        pairs[ucindex[idx]] = ucindex[rot_idx]
-                nAtoms = len(atomic_symbols)
-                PrimitiveMirror = get_Inversion_Symmetry_Generator(pairs, nAtoms)
-                self.Symmetry_Generators["S" + axis] = PrimitiveMirror
+                #check if lattice vectors are transformed accordingly
+                periodicity=molecular_structure.periodicity
+                if np.sum(periodicity)>0:
+                    primitive_cell_vectors=[molecular_structure.cellvectors[0]/periodicity[0],
+                                        molecular_structure.cellvectors[1]/periodicity[1],
+                                        molecular_structure.cellvectors[2]/periodicity[2]]
+                    if axis == "x":
+                        S = np.array([[-1, 0, 0], [0, 1, 0], [0, 0, 1]])
+                    elif axis == "y":
+                        S = np.array([[1, 0, 0], [0, -1, 0], [0, 0, 1]])
+                    else:
+                        S = np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]])
+                    #represent in original carthesian basis
+                    mirror_matrix=geometric_principle_axis@S@geometric_principle_axis.T
+                    # A: Matrix whose rows are the primitive cell vectors (3x3)
+                    A = np.array(primitive_cell_vectors)
+                    
+                    # A_inv: Inverse of A (A_inv @ A = Identity)
+                    A_inv = np.linalg.inv(A)
+
+                    # M: The rotation matrix in the basis of the cell vectors
+                    # M = A @ Rotation_Matrix @ A_inv
+                    M_lattice = A @ mirror_matrix @ A_inv
+
+                    # The condition for a symmetry operation is that M_lattice 
+                    # must contain only integer entries.
+                    
+                    # Check for integer entries by comparing M_lattice to its 
+                    # nearest integer matrix (using a small tolerance).
+                    tolerance = 1e-5  # Standard tolerance for floating point comparison
+                    
+                    M_rounded = np.round(M_lattice)
+                    # Check if all elements in the difference matrix are close to zero
+                    is_lattice_symmetry = np.allclose(M_lattice, M_rounded, atol=tolerance)
+                else:
+                    is_lattice_symmetry=True
+                
+                if is_lattice_symmetry:
+                    # Generate the Original Pairs
+                    pairs = {}
+                    if np.sum(periodicity)>0:
+                        all_unit_cells = molecular_structure.unitcells
+                        # rotation maps primitive index A -> primitive index B
+                        for idx_A_prim, idx_B_prim in mirror_pairs.items():
+                            
+                            # Iterate over every unit cell in the supercell
+                            for uc_coords in all_unit_cells:
+                                # uc_coords is (cx, cy, cz), e.g., (1, 0, 0)
+                                # WRAP the inverted coordinates back into the supercell range [0, N-1]
+                                mirrored_uc=M_lattice@np.array([uc_coords[0],uc_coords[1],uc_coords[2]]).T
+                                uc_mirror_wrapped=(int(mirrored_uc[0])%periodicity[0],int(mirrored_uc[1])%periodicity[1],int(mirrored_uc[2])%periodicity[2])
+                                # Get the global indices for the original and wrapped inverted cells
+                                uc_indices = all_unit_cells[uc_coords] # Indices for atom A in cell C
+                                uc_indices_rot = all_unit_cells[uc_mirror_wrapped] # Indices for atom B in cell Wrap(C)
+                                
+                                # Map Atom A (idx_A_prim) in Cell C to Atom B (idx_B_prim) in Cell Wrap(C)
+                                global_index_A = uc_indices[idx_A_prim]
+                                global_index_B = uc_indices_rot[idx_B_prim]
+                            
+                                pairs[global_index_A] = global_index_B
+
+                            # Add the remaining pairs on the diagonal
+                    else:
+                        pairs=mirror_pairs
+                    nAtoms = len(atomic_symbols)
+                    PrimitiveMirror = get_discrete_symmetry_generator(pairs, nAtoms)
+                    self.Symmetry_Generators["S" + axis] = PrimitiveMirror
 
     def _find_indices_in_primitive_cell(self, molecular_structure: "Molecular_Structure", tol_translation=1e-6):
         """
@@ -541,7 +674,6 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             ),
             symprec=tol_translation,
         )  # returns (cellvectors_of_primitive_cell, positions_in_fractional_coord, atomic_numbers)
-
         # determine the multiplicity of the primitive cell in supercell
         # if multiplicity == np.prod(molecular_structure.periodicity),
         # then the found conventional cell is already primitive else, find the sublattice in the conventional cell
@@ -554,8 +686,8 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 molecular_structure.primitive_cellvectors = molecular_structure.cellvectors / np.array(
                         molecular_structure.periodicity
                     )
-
-                if multiplicity_of_primitive / np.prod(molecular_structure.periodicity) != 1:
+                fraction=multiplicity_of_primitive / np.prod(molecular_structure.periodicity)
+                if fraction != 1 and isinstance(fraction, int):
                     print("ℹ️ : Sublattice detected in the conventional cell. Updating to primitive cell.")
 
                     # This translation vector is hardcoded for orthorhombic supercell to hexagonal unit cell conversion!
@@ -1119,7 +1251,7 @@ def detect_inversion_symmetry(centered_coords, atomic_symbols, tolerance=1e-5):
     return True, inversion_pairs
 
 
-def get_Inversion_Symmetry_Generator(pairs_pairs, n_atoms):
+def get_discrete_symmetry_generator(pairs_pairs, n_atoms):
     """
     Generates a permutation matrix based on detected inversion pairs.
 

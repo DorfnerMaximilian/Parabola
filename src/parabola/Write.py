@@ -119,7 +119,39 @@ def write_cube_file(x, y, z, data, atoms, filename="test.cube", parentfolder="./
                     if (itx or ity or itz) and itz % 6 == 0:
                         file.write("\n")
                     file.write(" {0: .5E}".format(data[itx, ity, itz]))
+def write_hessian_basis_file(atoms,deltas,vectors,parentpath="./",cartesianflag=False):
 
+    num_of_atoms=len(atoms)
+
+    with open(parentpath + "BasisHessian", "w+") as g:
+        if cartesianflag:
+            g.write("delta=" + str(deltas[0]) + "\n")
+        else:
+            g.write("delta=" + str(deltas[0]))
+            for it in range(1, len(deltas) - 1):
+                g.write("," + str(deltas[it]))
+            g.write("," + str(deltas[-1]) + "\n")
+
+        g.write("unit=Bohr" + "\n")
+        g.write(
+            "Basis Vectors in which the Hessian is represented expressed in the Standard Basis:\n"
+        )
+        g.write("Format:     Atom:       x:             y:           z:\n")
+        num = 1
+        for vector in vectors:
+            g.write("Basisvector    " + str(num) + "\n")
+            for it in range(num_of_atoms):
+                g.write(
+                    atoms[it]
+                    + " "
+                    + str(vector[3 * it])
+                    + " "
+                    + str(vector[3 * it + 1])
+                    + " "
+                    + str(vector[3 * it + 2])
+                    + "\n"
+                )
+            num += 1
 
 def write_mol_file(
     normalmodeEnergies, normalmodes, normfactors, coordinates, atoms, parentfolder="./"
