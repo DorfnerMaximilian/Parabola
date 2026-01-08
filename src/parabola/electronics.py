@@ -7,6 +7,7 @@ from .PhysConst import ConversionFactors
 import numpy as np
 from scipy.linalg import schur
 from itertools import permutations
+from fractions import Fraction
 import matplotlib.pyplot as plt
 import os
 
@@ -378,6 +379,7 @@ class Electronics:
         if hasattr(mol, "KS_Hamiltonian_alpha"):
             return
         self.mol_path = mol.path
+        self.electronics_path=mol.electronics_path
         self.basis = atomic_basis.getBasis(mol.electronics_path)
         num_e, charge = Read.get_number_of_electrons(
             parentfolder=mol.electronics_path
@@ -390,6 +392,7 @@ class Electronics:
         self.KS_Hamiltonian_alpha = KS_alpha
         self.KS_Hamiltonian_beta = KS_beta
         self.OLM = OLM
+        self.OLM_m12=Util.LoewdinTransformation(OLM)
         cond_number = np.linalg.cond(OLM)
         if cond_number > 10 ** (6):
             Warning(
@@ -397,6 +400,7 @@ class Electronics:
                 + str(cond_number)
             )
         self.OLM_sym_blocks = {}
+        
         self.U=None
         self.real_eigenstates = {}
         self.energies = {}
@@ -415,14 +419,21 @@ class Electronics:
         )
         name = mol.name
         axes = mol.geometric_principle_axis
-        self.get_real_electronic_eigenstates(name, atoms, axes)
-        symmetry_labels = self.electronic_symmetry.Symmetry_Generators.keys()
+        symmetry_labels = self.electronic_symmetry.generators.keys()
         if (
             "t1" in symmetry_labels
             or "t2" in symmetry_labels
             or "t3" in symmetry_labels
         ):
+            self.periodicity_flag=True
+        else:
+            self.periodicity_flag=False
+        self.get_real_electronic_eigenstates(name, atoms, axes)
+        if self.periodicity_flag:
             self.bloch_states = {}
+            self.energy_bloch={}
+            self.get_bloch_functions()
+            self.get_bands(mol)
 
     def get_real_electronic_eigenstates(self, name, atoms, axes):
         U = get_basis_transformation(
@@ -437,14 +448,22 @@ class Electronics:
     
 
         # --- CONSISTENT SYMMETRY ORDERING ---
-        SymSectors = self.electronic_symmetry.SymSectors
-        VIrr = self.electronic_symmetry.IrrepsProjector
+        sym_sectors = self.electronic_symmetry.sym_sectors
+        VIrr = self.electronic_symmetry.irreps_projector
+        generators = self.electronic_symmetry.generators
+        ts=[]
+        for sym in generators.keys():
+            syms=sym.split("|")
+            for indicator in syms:
+                if indicator[0]=="t":
+                    ts.append(indicator)
+        
         # 1. Sort symmetry labels alphabetically to ensure a consistent order.
-        sorted_sym_labels = sorted(SymSectors.keys())
+        sorted_sym_labels = sorted(sym_sectors.keys())
 
         # 2. Build the reordering array based on the sorted labels.
         # This groups basis functions by symmetry, in a fixed order.
-        reordering = np.concatenate([SymSectors[key] for key in sorted_sym_labels])
+        reordering = np.concatenate([sym_sectors[key] for key in sorted_sym_labels])
 
         # 3. Reorder the projector matrix columns based on the sorted symmetry order.
         VIrr_reordered = U@VIrr[:, reordering]
@@ -458,13 +477,13 @@ class Electronics:
             S_block_diag, cmap="viridis", interpolation="nearest"
         )
         plt.colorbar()
-        plt.savefig("./S_block_diag.eps",format="eps")
+        plt.savefig(self.electronics_path+"/S_block_diag.eps",format="eps")
         plt.close()
         plt.imshow(
             H_block_diag_alpha, cmap="viridis", interpolation="nearest"
         )
         plt.colorbar()
-        plt.savefig("./H_block_diag.eps",format="eps")
+        plt.savefig(self.electronics_path+"/H_block_diag.eps",format="eps")
         plt.close()
         # --- BLOCK DIAGONALIZATION (IN CONSISTENT ORDER) ---
         print(f"ℹ️ : Symmetry Sectors and Electronic Energies")
@@ -477,13 +496,17 @@ class Electronics:
             energy_beta = {}
         # 5. Iterate through the sorted labels to process each block.
         for sym in sorted_sym_labels:
-            block_size = len(SymSectors[sym])
+            block_size = len(sym_sectors[sym])
             # Extract the symmetry blocks
             S_block = S_block_diag[
                 current_index : current_index + block_size,
                 current_index : current_index + block_size,
             ]
             self.OLM_sym_blocks[sym]=S_block
+            #orthorgonalize 
+            S_block_m12=Util.LoewdinTransformation(S_block)
+
+            
             H_block_alpha = H_block_diag_alpha[
                 current_index : current_index + block_size,
                 current_index : current_index + block_size,
@@ -494,8 +517,7 @@ class Electronics:
                     current_index : current_index + block_size,
                     current_index : current_index + block_size,
                 ]
-            #orthorgonalize 
-            S_block_m12=Util.LoewdinTransformation(S_block)
+            
             H_block_alpha_orth=S_block_m12@H_block_alpha@S_block_m12
             if self.UKS:
                 H_block_beta_orth=S_block_m12@H_block_beta@S_block_m12
@@ -506,9 +528,10 @@ class Electronics:
 
             # energies in eV
             energies_alpha_eV = eigenvalues_alpha * 27.211
-            print(
-                f"Symmetry Sector for Spin Species ↑: {sym}, Energies (eV): \n {energies_alpha_eV}"
-            )
+            if not self.periodicity_flag:
+                print(f"✅ Spin Sector ↑ | Label: {sym} | Count: {len(energies_alpha_eV)} states | "
+                      f" Energies (eV):\n {energies_alpha_eV}")
+
 
             # Transform eigenvectors from the symmetry basis back to the mass-weighted basis
             V_mwh_alpha = (
@@ -523,9 +546,9 @@ class Electronics:
 
                 # energies (eV)
                 energies_beta_eV = eigenvalues_beta * 27.211
-                print(
-                    f"Symmetry Sector for Spin Species ↓: {sym}, Energies (eV): \n {energies_beta_eV}"
-                )
+                if not self.periodicity_flag:
+                    print(f"✅ Spin Sector ↓ | Label: {sym} | Count: {len(energies_beta_eV)} states | "
+                      f" Energies (eV):\n {energies_beta_eV}")
 
                 # Transform eigenvectors from the symmetry basis back
                 V_mwh_beta = (
@@ -553,8 +576,329 @@ class Electronics:
             Homoindex = self.num_e / 2
             for id, element in enumerate(label_alpha):
                 self.indexmap["alpha"][int(id + 1 - Homoindex)] = element
-def get_bloch_functions(self):
-    return True
+    def get_bloch_functions(self):
+        # --- Short aliases ---
+        real_eigenstates = self.real_eigenstates
+        OLM = np.asarray(self.OLM, dtype=np.complex128)
+        H_KS_alpha=np.asarray(self.KS_Hamiltonian_alpha)
+        if self.UKS:
+            H_KS_beta=np.asarray(self.KS_Hamiltonian_beta)
+        generators = self.electronic_symmetry.generators
+        energies_alpha = self.energies["alpha"]
+        if self.UKS:
+            energies_beta=self.energies["beta"]
+        sym_sectors = self.electronic_symmetry.sym_sectors
+
+        # --- Output containers ---
+        bloch_states = {"alpha": {}}
+        energies_bloch_states = {"alpha": {}}
+        if self.UKS:
+            bloch_states["beta"]={}
+            energies_bloch_states["beta"] = {}
+        
+        
+        # ============================================================
+        # Loop over symmetry sectors
+        # ============================================================
+        for sym in sym_sectors:
+
+            # --------------------------------------------------------
+            # Parse symmetry string
+            # --------------------------------------------------------
+            indicators = sym.split("|")
+            sym_dict = {}
+            ts = []
+
+            for indicator in indicators:
+                label, value = indicator.split("=")
+                sym_dict[label] = int(value)
+                if label.startswith("t"):
+                    ts.append(label)
+            two_flag=False
+            stng=""
+            for key in sym_dict.keys():
+                if key=="Id" and sym_dict[key]==2:
+                    two_flag=True
+                if key[0]!="t" and key!="Id":
+                    if two_flag:
+                        stng+="|"+key+"="+str(sym_dict[key]//2)
+                    else:
+                        stng+="|"+key+"="+str(sym_dict[key])
+            # ========================================================
+            # Case 1: Id = 1 (already Bloch-like)
+            # ========================================================
+            if sym_dict["Id"] == 1:
+                sym_string = "Id=1|"
+                for t in ts:
+                    phi = "0π" if sym_dict[t] == 1 else "1π"
+                    sym_string += f"{t}={phi}"
+                sym_string += stng
+
+                energies_alpha_sym = energies_alpha[sym].copy()
+
+                bloch_states["alpha"][sym_string] = np.array(
+                    real_eigenstates["alpha"][sym],
+                    dtype=np.complex128,
+                    copy=True,
+                )
+                print(f"Found 1 unique Bloch sectors in symmetry sector {sym}.")
+                print(f"✅ Spin Sector ↑ | Label: {sym_string} | Count: {len(energies_alpha_sym)} states | "
+                      f" Energies (eV):\n {energies_alpha_sym}")
+                if self.UKS:
+                    energies_beta_sym = energies_beta[sym].copy()
+                    bloch_states["beta"][sym_string] = np.array(
+                    real_eigenstates["beta"][sym],
+                    dtype=np.complex128,
+                    copy=True,
+                )
+                    print(
+                        f"Symmetry Sector for Spin Species ↓: {sym_string}, Energies (eV): \n {energies_beta_sym}"
+                    )
+                continue
+                
+            # ========================================================
+            # Case 2: Id = 2 (needs Bloch construction)
+            # ========================================================
+            if sym_dict["Id"] != 2:
+                continue
+
+            energies_alpha_sym = energies_alpha[sym].copy()
+            Psi_alpha = np.array(
+                real_eigenstates["alpha"][sym],
+                dtype=np.complex128,
+                copy=True,
+            )
+            if self.UKS:
+                energies_beta_sym = energies_beta[sym].copy()
+                Psi_beta = np.array(
+                real_eigenstates["beta"][sym],
+                dtype=np.complex128,
+                copy=True,
+            )
+            # --------------------------------------------------------
+            # Step 1: Block-diagonalize translation operators
+            # --------------------------------------------------------
+            # Helper to process a spin channel
+            def diagonalize_spin_channel(Psi_in,H_KS):
+                # Correct Sandwich: C^H @ OLM @ T @ C
+                # This represents the operator in the MO basis for non-orthogonal AOs
+                Ts_sub = Psi_in.conj().T @ (H_KS+OLM @ Ts_op) @ Psi_in
+                _, V = np.linalg.eig(Ts_sub)
+                Psi_out = Psi_in.copy()
+                Psi_out = Psi_out @ V
+                return Psi_out
+            # 1. Use complex random weights to break all accidental degeneracies
+            rng = np.random.default_rng(42)
+            Ts_op = np.zeros(np.shape(OLM), dtype=np.complex128)
+            for t in ts:
+                coeff = rng.random() + 1j * rng.random() 
+                Ts_op += coeff * np.asarray(generators[t], dtype=np.complex128)
+            
+
+            # --- Alpha Channel ---
+            Psi_alpha = diagonalize_spin_channel(Psi_alpha,H_KS=H_KS_alpha)
+
+            # --- Beta Channel (UKS) ---
+            if self.UKS:
+                Psi_beta = diagonalize_spin_channel(Psi_beta,H_KS=H_KS_beta)
+
+            # --------------------------------------------------------
+            # Step 2: Extract Bloch phases
+            # --------------------------------------------------------
+            # Helper to clean phases
+            def get_clean_fractions(Psi_curr):
+                current_fracts = []
+                for t in ts:
+                    Ts_op = np.asarray(generators[t], dtype=np.complex128)
+                    
+                    # Calculate expectation values of Translation Operator
+                    Ts_sub = Psi_curr.conj().T @ Ts_op @ OLM @ Psi_curr
+                    # Extract phases from the diagonal
+                    raw_phases = np.arctan2(
+                        np.imag(np.diag(Ts_sub)),
+                        np.real(np.diag(Ts_sub)),
+                    ) / np.pi
+                    
+                    # --- FIX: Rounding to remove numerical noise ---
+                    # 1. Round to 4 decimals (e.g., 0.99999 -> 1.0, 0.33333 -> 0.3333)
+                    clean_phases = np.round(raw_phases, decimals=4)
+                    
+                    t_fracts = []
+                    for x in clean_phases:
+                        # 2. Limit denominator to something reasonable (e.g., 60 or 100)
+                        # This avoids denominators like 151 or 842
+                        frac = Fraction(x).limit_denominator(100)
+                        
+                        # Handle the periodicity of phases (e.g., 1.0 pi is same as -1.0 pi for some)
+                        # But standard Fraction is fine here.
+                        t_fracts.append(frac.as_integer_ratio())
+                    
+                    current_fracts.append(t_fracts)
+                return current_fracts
+            
+            fracts_alpha = get_clean_fractions(Psi_alpha)
+
+            
+            if self.UKS:
+                fracts_beta = get_clean_fractions(Psi_beta)
+
+                
+            # --------------------------------------------------------
+            # Step 3: Build Bloch symmetry labels
+            # --------------------------------------------------------
+            labels_alpha = []
+
+            for i in range(len(fracts_alpha[0])):
+                sym_string = "Id=1|"
+                for j, t in enumerate(ts):
+                    num, den = fracts_alpha[j][i]
+                    if num==0:
+                        sym_string += f"{t}={num}π"
+                    elif int(np.abs(num))==1 and den==1:
+                        sym_string += f"{t}={num}π"
+                    else:
+                        sym_string += f"{t}={num}/{den}π"
+                    if j != len(ts) - 1:
+                        sym_string += "|"
+                sym_string += stng
+                labels_alpha.append(sym_string)
+            if self.UKS:
+
+                labels_beta = []
+
+                for i in range(len(fracts_beta[0])):
+                    sym_string = "Id=1|"
+                    for j, t in enumerate(ts):
+                        num, den = fracts_beta[j][i]
+                        if num==0:
+                            sym_string += f"{t}={num}π"
+                        elif int(np.abs(num))==1 and den==1:
+                            sym_string += f"{t}={num}π"
+                        else:
+                            sym_string += f"{t}={num}/{den}π"
+                        if j != len(ts) - 1:
+                            sym_string += "|"
+                    sym_string += stng
+                    labels_beta.append(sym_string)
+
+            # --------------------------------------------------------
+            # Step 4: Split into two Bloch sectors
+            # --------------------------------------------------------
+            H_psi_block=np.real(np.conj(Psi_alpha.T)@H_KS_alpha@Psi_alpha)
+            # --- Alpha Channel ---
+            from collections import defaultdict
+            
+            # Group indices by their unique label string
+            groups_alpha = defaultdict(list)
+            for idx, lbl in enumerate(labels_alpha):
+                groups_alpha[lbl].append(idx)
+
+            print(f"Found {len(groups_alpha)} unique Bloch sectors in real symmetry sector {sym}:")
+
+            for lbl, inds in groups_alpha.items():
+                inds = np.array(inds) # Convert to numpy array for advanced indexing
+                
+                # Store wavefunctions and energies
+                Psi_alpha_unsorted=Psi_alpha[:, inds]
+                energies_alpha_unsorted=np.diag(H_psi_block)[inds]
+                sort_inds=np.argsort(energies_alpha_unsorted)
+                bloch_states["alpha"][lbl] = Psi_alpha_unsorted[:, sort_inds]
+                energies_bloch_states["alpha"][lbl] = energies_alpha_unsorted[sort_inds]
+
+                # Combined Print Statement
+                print(f"✅ Spin Sector ↑ | Label: {lbl} | Count: {len(inds)} states | "
+                      f" Energies (eV):\n {energies_alpha_unsorted[sort_inds]*27.211}")
+            # --- Beta Channel (UKS) ---
+            if self.UKS:
+                H_psi_block=np.real(np.conj(Psi_beta.T)@H_KS_beta@Psi_beta)
+                groups_beta = defaultdict(list)
+                for idx, lbl in enumerate(labels_beta):
+                    groups_beta[lbl].append(idx)
+                
+                print(f"Found {len(groups_beta)} unique Bloch sectors in Beta channel.")
+
+                for lbl, inds in groups_beta.items():
+                    inds = np.array(inds)
+                    
+                    Psi_beta_unsorted=Psi_beta[:, inds]
+                    energies_beta_unsorted=np.diag(H_psi_block)[inds]
+
+                    sort_inds=np.argsort(energies_beta_unsorted)
+
+                    bloch_states["beta"][lbl] = Psi_beta_unsorted[:, sort_inds]
+                    energies_bloch_states["beta"][lbl] = energies_beta_unsorted[sort_inds]
+                    
+                    print(f"✅ Spin Sector ↓ | Label: {lbl} | Count: {len(inds)} states | "
+                          f" Energies (eV):\n {energies_beta_unsorted[sort_inds]*27.211}")
+                    
+        self.bloch_states=bloch_states
+                    
+    def get_bands(self,mol):
+        # Initialize dictionary to track periodicity
+        periodic = {"x": False, "y": False, "z": False}
+
+        # Loop through unit cells and mark directions as periodic if any nonzero value found
+        for uc in mol.unitcells.keys():
+            periodic["x"] |= uc[0] != 0
+            periodic["y"] |= uc[1] != 0
+            periodic["z"] |= uc[2] != 0
+
+        # Get list of periodic directions
+        periodic_dirs = [axis for axis, is_periodic in periodic.items() if is_periodic]
+        print(periodic_dirs)
+        # Count how many directions are periodic
+        num_periodic = len(periodic_dirs)
+
+        # get reciprocal lattice vectors
+        q_points = get_q_points(mol.cellvectors, mol.periodicity)
+        delta_q = np.array(q_points[1]) - np.array(q_points[0])
+        if periodic_dirs[0] == "x":
+            m = 1
+            n = 0
+            l = 0
+        elif periodic_dirs[0] == "y":
+            m = 0
+            n = 2
+            l = 0
+        else:
+            m = 0
+            n = 0
+            l = 2
+        cellvectors = Geometry.getNeibouringCellVectors(
+            cell=mol.cellvectors, m=m, n=n, l=l
+        )
+        atoms = Read.read_atomic_coordinates(mol.xyz_path)
+        basis = self.basis
+        phi_q = atomic_basis.get_phase_operators(
+            atoms, basis, q_vector=list(delta_q), cell_vectors=cellvectors
+        )
+        phase_1 = phi_q
+        print(self.bloch_states.keys())
+        bloch_states=self.bloch_states["alpha"]
+        for sym_1 in bloch_states.keys():
+            for sym_2 in bloch_states.keys():
+                states_1=bloch_states[sym_1]
+                states_2=bloch_states[sym_2]
+                if sym_1!=sym_2:
+                    matrix=np.conj(states_1).T@phase_1@states_2
+                    print(np.shape(matrix))
+                    V,s,U=np.linalg.svd(matrix[0:2,0:2])
+                    print(s)
+                    norm=np.linalg.norm(matrix)
+                    if norm>1e-5:
+                        print(sym_1,sym_2)
+                        plt.imshow(np.abs(matrix))
+                        plt.show()
+
+
+            
+
+
+
+
+           
+                
+            
 
 
 
@@ -1029,6 +1373,7 @@ def simultaneous_real_block_diagonalization(matrices):
     # This matrix Q is the transformation we need.
     _, Q = schur(C, output="real")
     return Q
+
 
 
 def get_xyz_representation(symmetrylabel):
