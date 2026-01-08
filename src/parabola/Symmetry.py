@@ -11,27 +11,27 @@ class Symmetry:
     """
 
     def __init__(self):
-        self.Symmetry_Generators = (
+        self.generators = (
             {}
         )  # Dictionary to store symmetry operators (as matrices)
-        self.Centralizer = None
-        self.IrrepsProjector = None
-        self.SymSectors = None  # Will store labeled symmetry sectors after projection
+        self.centralizer = None
+        self.irreps_projector = None
+        self.sym_sectors = None  # Will store labeled symmetry sectors after projection
         self.commutative = None
 
-    def _determineCentralizer(self):
-        matrices = [self.Symmetry_Generators[key] for key in self.Symmetry_Generators]
-        self.Centralizer = compute_common_centralizer(matrices)
+    def _determine_centralizer(self):
+        matrices = [self.generators[key] for key in self.generators]
+        self.centralizer = compute_common_centralizer(matrices)
 
-    def _determineIrrepsProjector(self):
-        self.IrrepsProjector = getIrrepsProjector(self.Centralizer)
+    def _determine_irreps_projector(self):
+        self.irreps_projector = get_irreps_projector(self.centralizer)
 
-    def _determineSymmetrySectors(self):
-        symmetry_generators = self.Symmetry_Generators
-        V = self.IrrepsProjector
-        symmetry_generators = self.Symmetry_Generators
+    def _determine_symmetry_sectors(self):
+        generators = self.generators
+        V = self.irreps_projector
+        generators = self.generators
         dim = V.shape[0]
-        Gs_in_V_basis = {sym: V.T @ G @ V for sym, G in symmetry_generators.items()}
+        Gs_in_V_basis = {sym: V.T @ G @ V for sym, G in generators.items()}
 
         # Build a joint matrix to detect common invariant subspaces
         combined = np.zeros((dim, dim))
@@ -43,7 +43,7 @@ class Symmetry:
 
         # Use your block detection algorithm
         blocks = detect_block_sizes(combined)
-        SymSectors = {}
+        sym_sectors = {}
         for block in blocks:
             label = "Id=" + str(
                 int(
@@ -77,14 +77,14 @@ class Symmetry:
                         )
                     )
                 )
-            if label in SymSectors:
+            if label in sym_sectors:
                 for it in range(block[0], block[0] + block[1]):
-                    SymSectors[label].append(it)
+                    sym_sectors[label].append(it)
             else:
-                SymSectors[label] = []
+                sym_sectors[label] = []
                 for it in range(block[0], block[0] + block[1]):
-                    SymSectors[label].append(it)
-        self.SymSectors = SymSectors
+                    sym_sectors[label].append(it)
+        self.sym_sectors = sym_sectors
 
 
 #############################Helper Routines for Base Symmetry Class#############################
@@ -121,7 +121,7 @@ def compute_common_centralizer(matrices):
     return symmetric_basis
 
 
-def getIrrepsProjector(centralizers):
+def get_irreps_projector(centralizers):
     m = len(centralizers)
     np.random.seed(10)
     alpha = np.random.randn(m)
