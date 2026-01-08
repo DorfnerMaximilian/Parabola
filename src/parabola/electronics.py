@@ -694,7 +694,7 @@ def band_index(mol, nh, nl, path="./", threshold=0.25):
             translate.append("t" + str(dir + 1) + "=1")
 
     # Isolating Symmetry sectors that correspond to the primitive gamma point
-    symsecs = list(mol.electronics.Electronic_Symmetry.SymSectors.keys())
+    symsecs = list(mol.electronics.Electronic_Symmetry.sym_sectors.keys())
     prim_gam_sym = symsecs.copy()
     for sym in symsecs:
         if "Id=1" in sym:
@@ -946,11 +946,11 @@ def fix_phases_states(V, threshold=1e-10):
 class electronic_symmetry(Symmetry.Symmetry):
     def __init__(self, molecular_symmetry, atoms, basis):
         super().__init__()  # Initialize parent class
-        if "Id" not in molecular_symmetry.Symmetry_Generators.keys():
+        if "Id" not in molecular_symmetry.generators.keys():
             generators_raw = {}
             ordering=[]
-            for sym in molecular_symmetry.Symmetry_Generators:
-                P = molecular_symmetry.Symmetry_Generators[sym]
+            for sym in molecular_symmetry.generators:
+                P = molecular_symmetry.generators[sym]
                 O = get_xyz_representation(symmetrylabel=sym)
                 generator = get_basis_transformation(O, P, atoms, basis)
                 generators_raw[sym] = generator
@@ -968,15 +968,15 @@ class electronic_symmetry(Symmetry.Symmetry):
             generators={}
             for index in matrix_indices:
                 generators[ordering[index]]=generators_raw[ordering[index]]
-            self.Symmetry_Generators=generators
-            self.IrrepsProjector = simultaneous_real_block_diagonalization(
-                    list(self.Symmetry_Generators.values())
+            self.generators=generators
+            self.irreps_projector = simultaneous_real_block_diagonalization(
+                    list(self.generators.values())
                 )
         else:
-            self.IrrepsProjector = np.kron(
-                molecular_symmetry.Symmetry_Generators["Id"], np.eye(3)
+            self.irreps_projector = np.kron(
+                molecular_symmetry.generators["Id"], np.eye(3)
             )
-        self._determineSymmetrySectors()
+        self._determine_symmetry_sectors()
 
 
 
@@ -1135,23 +1135,23 @@ def get_xyz_representation(symmetrylabel):
         return np.eye(3)
 
 
-def test_IrrepsProjector(el):
-    SymSectors = el.electronic_symmetry.SymSectors
-    VIrr = el.electronic_symmetry.IrrepsProjector
+def test_irreps_projector(el):
+    sym_sectors = el.electronic_symmetry.sym_sectors
+    VIrr = el.electronic_symmetry.irreps_projector
 
     # 1. Sort symmetry labels alphabetically to ensure a consistent order.
-    sorted_sym_labels = sorted(SymSectors.keys())
+    sorted_sym_labels = sorted(sym_sectors.keys())
 
     # 2. Build the reordering array based on the sorted labels.
     # This groups basis functions by symmetry, in a fixed order.
-    reordering = np.concatenate([SymSectors[key] for key in sorted_sym_labels])
+    reordering = np.concatenate([sym_sectors[key] for key in sorted_sym_labels])
 
     # 3. Reorder the projector matrix columns based on the sorted symmetry order.
     VIrr_reordered = VIrr[:, reordering]
-    for sym in el.electronic_symmetry.Symmetry_Generators:
+    for sym in el.electronic_symmetry.generators:
         symm = (
             VIrr_reordered.T
-            @ el.electronic_symmetry.Symmetry_Generators[sym]
+            @ el.electronic_symmetry.generators[sym]
             @ VIrr_reordered
         )
         plt.imshow(symm, cmap="viridis", interpolation="nearest")

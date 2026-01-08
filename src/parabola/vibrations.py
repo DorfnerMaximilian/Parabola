@@ -81,7 +81,7 @@ class Vibrations:
             id_matrix = np.eye(num_atoms)
 
             # 3. Create a new, blank Symmetry object
-            molecular_symmetry.Symmetry_Generators = {"Id": id_matrix}
+            molecular_symmetry.generators = {"Id": id_matrix}
         # Now safe to access parent attributes
         self.Vibrational_Symmetry = Vibrational_Symmetry(molecular_symmetry)
         self.impose_translational_symmetry(masses=masses)
@@ -119,15 +119,15 @@ class Vibrations:
         plt.close()
 
         # --- CONSISTENT SYMMETRY ORDERING ---
-        SymSectors = self.Vibrational_Symmetry.SymSectors
-        VIrr = self.Vibrational_Symmetry.IrrepsProjector
+        sym_sectors = self.Vibrational_Symmetry.sym_sectors
+        VIrr = self.Vibrational_Symmetry.irreps_projector
 
         # 1. Sort symmetry labels alphabetically to ensure a consistent order.
-        sorted_sym_labels = sorted(SymSectors.keys())
+        sorted_sym_labels = sorted(sym_sectors.keys())
 
         # 2. Build the reordering array based on the sorted labels.
         # This groups basis functions by symmetry, in a fixed order.
-        reordering = np.concatenate([SymSectors[key] for key in sorted_sym_labels])
+        reordering = np.concatenate([sym_sectors[key] for key in sorted_sym_labels])
 
         # 3. Reorder the projector matrix columns based on the sorted symmetry order.
         VIrr_reordered = VIrr[:, reordering]
@@ -148,7 +148,7 @@ class Vibrations:
         current_index = 0
         # 5. Iterate through the sorted labels to process each block.
         for sym in sorted_sym_labels:
-            block_size = len(SymSectors[sym])
+            block_size = len(sym_sectors[sym])
 
             # Extract the symmetry block
             block_hessian = mass_weighted_hessian_block[
@@ -257,15 +257,15 @@ class Vibrations:
                     isRotation(mode, projector_rot)
 
     def CheckSymmetry(self):
-        for sym in self.Vibrational_Symmetry.Symmetry_Generators:
+        for sym in self.Vibrational_Symmetry.generators:
             print(sym)
             comm1 = (
-                self.Hessian @ self.Vibrational_Symmetry.Symmetry_Generators[sym]
-                - self.Vibrational_Symmetry.Symmetry_Generators[sym] @ self.Hessian
+                self.Hessian @ self.Vibrational_Symmetry.generators[sym]
+                - self.Vibrational_Symmetry.generators[sym] @ self.Hessian
             )
             comm2 = (
-                self.MassMatrix @ self.Vibrational_Symmetry.Symmetry_Generators[sym]
-                - self.Vibrational_Symmetry.Symmetry_Generators[sym] @ self.MassMatrix
+                self.MassMatrix @ self.Vibrational_Symmetry.generators[sym]
+                - self.Vibrational_Symmetry.generators[sym] @ self.MassMatrix
             )
             print(np.linalg.norm(comm1))
             print(np.linalg.norm(comm2))
@@ -294,11 +294,11 @@ class Vibrations:
         numofatoms = len(masses)
         coordinates = coordinates
         atoms = atoms
-        SymSectors = [sym for sym in self.vibrational_modes]
-        normalmodeEnergies = []
-        Normalized_Displacement = []
-        normfactors = []
-        for sym in SymSectors:
+        sym_sectors = [sym for sym in self.vibrational_modes]
+        for sym in sym_sectors:
+            normalmodeEnergies = []
+            Normalized_Displacement = []
+            normfactors = []
             for Mode in self.vibrational_modes[sym]:
                 if not Mode.istranslation and not Mode.isrotation:
                     normalmodeEnergies.append(Mode.frequency)
@@ -306,44 +306,42 @@ class Vibrations:
                         Mode.normalized_carthesian_displacement
                     )
                     normfactors.append(Mode.norm_factor)
-        with open(path + "/Vibrations.mol", "w") as f:
-            f.write("[Molden Format]\n")
-            f.write("[FREQ]\n")
-            for Frequency in normalmodeEnergies:
-                f.write("   " + str(Frequency) + "\n")
-            f.write("[FR-COORD]\n")
-            for it, coord in enumerate(coordinates):
-                f.write(
-                    atoms[it]
-                    + "   "
-                    + str(coord[0] * ConversionFactors["A->a.u."])
-                    + "   "
-                    + str(coord[1] * ConversionFactors["A->a.u."])
-                    + "   "
-                    + str(coord[2] * ConversionFactors["A->a.u."])
-                    + "\n"
-                )
-            f.write("[SYMMETRY-SECTORS]\n")
-            for sym in SymSectors:
-                f.write(sym + "\n")
-            f.write("[NORM-FACTORS]\n")
-            for normfactor in normfactors:
-                f.write(str(normfactor) + "\n")
-            f.write("[FR-NORM-COORD]\n")
-            modeiter = 1
-            for mode in Normalized_Displacement:
-                f.write("vibration      " + str(modeiter) + "\n")
-                for s in range(numofatoms):
+            sym_name= sym.replace("|", "_")
+            with open(path + "/Vibrations_"+sym_name+"_.mol", "w") as f:
+                f.write("[Molden Format]\n")
+                f.write("[FREQ]\n")
+                for Frequency in normalmodeEnergies:
+                    f.write("   " + str(Frequency) + "\n")
+                f.write("[FR-COORD]\n")
+                for it, coord in enumerate(coordinates):
                     f.write(
-                        "   "
-                        + str(round(mode[3 * s], 12))
+                        atoms[it]
                         + "   "
-                        + str(round(mode[3 * s + 1], 12))
+                        + str(coord[0] * ConversionFactors["A->a.u."])
                         + "   "
-                        + str(round(mode[3 * s + 2], 12))
+                        + str(coord[1] * ConversionFactors["A->a.u."])
+                        + "   "
+                        + str(coord[2] * ConversionFactors["A->a.u."])
                         + "\n"
                     )
-                modeiter += 1
+                f.write("[NORM-FACTORS]\n")
+                for normfactor in normfactors:
+                    f.write(str(normfactor) + "\n")
+                f.write("[FR-NORM-COORD]\n")
+                modeiter = 1
+                for mode in Normalized_Displacement:
+                    f.write("vibration      " + str(modeiter) + "\n")
+                    for s in range(numofatoms):
+                        f.write(
+                            "   "
+                            + str(round(mode[3 * s], 12))
+                            + "   "
+                            + str(round(mode[3 * s + 1], 12))
+                            + "   "
+                            + str(round(mode[3 * s + 2], 12))
+                            + "\n"
+                        )
+                    modeiter += 1
 
 
 class XYZ_Symmetry(Symmetry.Symmetry):
@@ -352,25 +350,25 @@ class XYZ_Symmetry(Symmetry.Symmetry):
         self.xyz_Generators(Molecular_Symmetry)
 
     def xyz_Generators(self, Molecular_Symmetry):
-        Molecular_Symmetry_Generators = Molecular_Symmetry.Symmetry_Generators
+        Molecular_generators = Molecular_Symmetry.generators
         xyz_Generators = {}
-        for symmetrylabel in Molecular_Symmetry_Generators.keys():
+        for symmetrylabel in Molecular_generators.keys():
             xyz_Generators[symmetrylabel] = getXYZRepresentation(symmetrylabel)
-        self.Symmetry_Generators = xyz_Generators
+        self.generators = xyz_Generators
 
 
 class Vibrational_Symmetry(Symmetry.Symmetry):
     def __init__(self, Molecular_Symmetry):
         super().__init__()  # Initialize parent class
         molecular_symmetry = Molecular_Symmetry
-        if "Id" not in Molecular_Symmetry.Symmetry_Generators.keys():
+        if "Id" not in Molecular_Symmetry.generators.keys():
             xyz_symmetry = XYZ_Symmetry(Molecular_Symmetry)
             generators_raw = {}
             ordering=[]
-            for sym in molecular_symmetry.Symmetry_Generators:
+            for sym in molecular_symmetry.generators:
                 generators_raw[sym] = np.kron(
-                    molecular_symmetry.Symmetry_Generators[sym],
-                    xyz_symmetry.Symmetry_Generators[sym],
+                    molecular_symmetry.generators[sym],
+                    xyz_symmetry.generators[sym],
                 )
                 ordering.append(sym)
             if "t1" in ordering:
@@ -386,15 +384,15 @@ class Vibrational_Symmetry(Symmetry.Symmetry):
             generators={}
             for index in matrix_indices:
                 generators[ordering[index]]=generators_raw[ordering[index]]
-            self.Symmetry_Generators=generators
-            self.IrrepsProjector = simultaneous_real_block_diagonalization(
-                    list(self.Symmetry_Generators.values())
+            self.generators=generators
+            self.irreps_projector = simultaneous_real_block_diagonalization(
+                    list(self.generators.values())
                 )
         else:
-            self.IrrepsProjector = np.kron(
-                molecular_symmetry.Symmetry_Generators["Id"], np.eye(3)
+            self.irreps_projector = np.kron(
+                molecular_symmetry.generators["Id"], np.eye(3)
             )
-        self._determineSymmetrySectors()
+        self._determine_symmetry_sectors()
 
 
 class vibrational_mode:
@@ -647,24 +645,23 @@ def getXYZRepresentation(symmetrylabel):
         return np.eye(3)
 
 
-def test_IrrepsProjector(name):
-    v = VibrationalStructure(name)
-    SymSectors = v.Vibrational_Symmetry.SymSectors
-    VIrr = v.Vibrational_Symmetry.IrrepsProjector
+def test_irreps_projector(v):
+    sym_sectors = v.Vibrational_Symmetry.sym_sectors
+    VIrr = v.Vibrational_Symmetry.irreps_projector
 
     # 1. Sort symmetry labels alphabetically to ensure a consistent order.
-    sorted_sym_labels = sorted(SymSectors.keys())
+    sorted_sym_labels = sorted(sym_sectors.keys())
 
     # 2. Build the reordering array based on the sorted labels.
     # This groups basis functions by symmetry, in a fixed order.
-    reordering = np.concatenate([SymSectors[key] for key in sorted_sym_labels])
+    reordering = np.concatenate([sym_sectors[key] for key in sorted_sym_labels])
 
     # 3. Reorder the projector matrix columns based on the sorted symmetry order.
     VIrr_reordered = VIrr[:, reordering]
-    for sym in v.Vibrational_Symmetry.Symmetry_Generators:
+    for sym in v.Vibrational_Symmetry.generators:
         symm = (
             VIrr_reordered.T
-            @ v.Vibrational_Symmetry.Symmetry_Generators[sym]
+            @ v.Vibrational_Symmetry.generators[sym]
             @ VIrr_reordered
         )
         plt.imshow(symm, cmap="viridis", interpolation="nearest")

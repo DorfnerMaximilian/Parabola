@@ -195,7 +195,7 @@ class Molecular_Structure:
 
         def safe_symmetry_keys(obj):
             try:
-                keys = obj.Symmetry_Generators.keys()
+                keys = obj.generators.keys()
                 return list(keys) if keys else None
             except Exception:
                 return None
@@ -253,7 +253,7 @@ class Molecular_Structure:
             "Vibrational Symmetry",
             "Commuting symmetry generators of the vibrational modes:",
             safe_symmetry_keys(
-                getattr(getattr(self, "Vibrations", None), "vibrational_symmetry", None)
+                getattr(getattr(self, "Vibrations", None), "Vibrational_Symmetry", None)
             ),
         )
 
@@ -326,7 +326,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
         self,
         molecular_structure: "Molecular_Structure",
     ):
-        tol_translation = 5 * 10 ** (-5)
+        tol_translation =  5*10 ** (-4)
         self._test_translation(molecular_structure=molecular_structure, tol_translation=tol_translation)
         primitive_indices = self._find_indices_in_primitive_cell(
             molecular_structure=molecular_structure, tol_translation=tol_translation
@@ -377,8 +377,8 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             self._test_inversion(molecular_structure, tol_inversion=5 * 10 ** (-3))
             self._test_rotation(molecular_structure, tol_rotation=5 * 10 ** (-3))
             self._test_mirror(molecular_structure, tol_mirror=5 * 10 ** (-2))
-        if not self.Symmetry_Generators:
-            self.Symmetry_Generators["Id"] = np.eye(len(molecular_structure.masses))
+        if not self.generators:
+            self.generators["Id"] = np.eye(len(molecular_structure.masses))
 
     def _test_translation(self, molecular_structure: "Molecular_Structure", tol_translation):
         if molecular_structure.periodicity == (1, 1, 1):
@@ -398,11 +398,11 @@ class Molecular_Symmetry(Symmetry.Symmetry):
             )
             Tx, Ty, Tz, xFlag, yFlag, zFlag = getTranslationOps(relative_cell_coordinates, supercell)
             if xFlag and np.sum(np.abs(Tx - np.eye(np.shape(Tx)[0]))) > 10 ** (-10):
-                self.Symmetry_Generators["t1"] = Tx
+                self.generators["t1"] = Tx
             if yFlag and np.sum(np.abs(Ty - np.eye(np.shape(Ty)[0]))) > 10 ** (-10):
-                self.Symmetry_Generators["t2"] = Ty
+                self.generators["t2"] = Ty
             if zFlag and np.sum(np.abs(Tz - np.eye(np.shape(Tz)[0]))) > 10 ** (-10):
-                self.Symmetry_Generators["t3"] = Tz
+                self.generators["t3"] = Tz
             # Compute the unit cells
             p0, p1, p2 = molecular_structure.periodicity
             primitive_indices = np.array(primitive_indices)
@@ -468,7 +468,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                 pairs=inversion_pairs
             nAtoms = len(atomic_symbols)
             PrimitiveInversion = get_discrete_symmetry_generator(pairs, nAtoms)
-            self.Symmetry_Generators["i"] = PrimitiveInversion
+            self.generators["i"] = PrimitiveInversion
 
     def _test_rotation(self, molecular_structure: "Molecular_Structure", tol_rotation, nmax=10):
         geometrically_centered_coordinates = molecular_structure.geometrically_centered_coordinates
@@ -564,7 +564,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                     # Add the remaining pairs on the diagonal
                     nAtoms = len(atomic_symbols)
                     PrimitiveRotation = get_discrete_symmetry_generator(pairs, nAtoms)
-                    self.Symmetry_Generators["C" + axis + "_" + str(n)] = PrimitiveRotation
+                    self.generators["C" + axis + "_" + str(n)] = PrimitiveRotation
 
     def _test_mirror(self, molecular_structure: "Molecular_Structure", tol_mirror):
         geometrically_centered_coordinates = molecular_structure.geometrically_centered_coordinates
@@ -645,7 +645,7 @@ class Molecular_Symmetry(Symmetry.Symmetry):
                         pairs=mirror_pairs
                     nAtoms = len(atomic_symbols)
                     PrimitiveMirror = get_discrete_symmetry_generator(pairs, nAtoms)
-                    self.Symmetry_Generators["S" + axis] = PrimitiveMirror
+                    self.generators["S" + axis] = PrimitiveMirror
 
     def _find_indices_in_primitive_cell(self, molecular_structure: "Molecular_Structure", tol_translation=1e-6):
         """
