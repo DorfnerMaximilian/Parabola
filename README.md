@@ -1,51 +1,132 @@
 # Parabola
-Parabola is intended to be a backend for cp2k to compute the normal modes, their energies and the linear electron-vibration/-phonon coupling constants. It provides apart from that other useful tools that utilize the analysis of electron-phonon coupled systems.
+
+Parabola is a backend for **CP2K** designed to compute
+
+* vibrational normal modes and their energies
+* linear electron–vibration coupling constants
+
+Additionally, it offers several analysis tools:
+* Symmetry considerations for Molecules and Periodic Crystals
+* Code for Molecular Geometry Optimization
+* Bandunfolding for Supercellcalculations
+
+---
+
 ## Prerequisites
-python3: numpy, scipy, matplotlib, ctypes
-c++: OpenMp
 
-## Getting started
-Up to now this is tested for Linux Ubuntu
-The only really mandatory thing is to compile the c++ part of the program.
-Just install all requirements (via apt), and compile the file...
+### Python
 
-## Setting up virtual environment
+* Python ≥ 3.x
+* Required packages:
 
-### install uv
+  * `numpy`
+  * `scipy`
+  * `matplotlib`
+  * `ctypes`
+
+### C++
+
+* C++ compiler with **OpenMP** support
+
+---
+
+## Platform Support
+
+Currently tested on:
+
+* **Linux (Ubuntu)**
+
+Other Linux distributions may work but are not officially tested.
+
+---
+
+## Getting Started
+
+The only mandatory compilation step is building the C++ extension.
+All Python dependencies and build steps are handled via **uv**.
+
+---
+
+## Virtual Environment Setup
+
+### 1. Install `uv`
+
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh 
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### setting up virtual environment
+### 2. Create and sync the virtual environment
+
 ```bash
 uv sync --extra dev
 ```
 
-### Now add your path of your virtual environment to your .bashrc
+This will:
+
+* create a virtual environment in `.venv`
+* install all required Python dependencies
+* build the Parabola package
+
+---
+
+### 3. Activate the virtual environment
+
+Add the virtual environment to your `.bashrc`:
+
 ```bash
-source path_to_your_parabola/.venv/bin/activate
+source /path/to/parabola/.venv/bin/activate
 ```
 
-### Now either reload your .bashrc or open a new terminal, e.g.
+Then reload your shell:
+
 ```bash
 source ~/.bashrc
 ```
 
-## Additional Instructions for uv
-### How To: add python modules
+Alternatively, you may activate it manually in each session:
+
+```bash
+source .venv/bin/activate
+```
+
+---
+
+## Working with `uv`
+
+### Add additional Python dependencies
+
 ```bash
 uv add numpy scipy matplotlib
 ```
 
-### How To: rebuild parabola after making changes to C++ code:
+### Rebuild Parabola after modifying C++ code
+
+After changing any C++ source files, rebuild the package:
+
 ```bash
 uv sync --reinstall-package parabola
+```
+
+Then regenerate Python stubs for the C++ extension:
+
+```bash
 uv run pybind11-stubgen -o src parabola._extension
 ```
 
-## Run tests
+---
+
+## Running Tests
+
+To execute the full test suite:
+
 ```bash
 python -m unittest
-``` 
+```
 
+---
 
+## Notes
+
+* Always ensure your virtual environment is active before running Parabola.
+* Rebuilding is required after **any** change to the C++ code.
+* OpenMP must be available during compilation for optimal performance.
