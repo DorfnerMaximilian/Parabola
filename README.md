@@ -1,6 +1,8 @@
 # Parabola
 
-band unfolding
+Parabola is a package originally designed to serve as a backend 
+for CP2K (https://github.com/cp2k/cp2k), especially for the computation of
+
 * vibrational normal modes and their energies
 * linear electron–vibration coupling constants
 
@@ -8,6 +10,7 @@ Additionally, it offers several analysis tools:
 * symmetry considerations for molecules and periodic crystals
 * molecular geometry optimization
 * bandunfolding
+* wannierization (experimental)
 * ect.
 
 ---
