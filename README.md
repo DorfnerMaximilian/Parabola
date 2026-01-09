@@ -1,14 +1,14 @@
 # Parabola
 
-Parabola is a backend for **CP2K** designed to compute
-
+band unfolding
 * vibrational normal modes and their energies
 * linear electron–vibration coupling constants
 
 Additionally, it offers several analysis tools:
-* Symmetry considerations for Molecules and Periodic Crystals
-* Code for Molecular Geometry Optimization
-* Bandunfolding for Supercellcalculations
+* symmetry considerations for molecules and periodic crystals
+* molecular geometry optimization
+* bandunfolding
+* ect.
 
 ---
 
