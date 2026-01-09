@@ -35,6 +35,7 @@ Additionally, it offers several analysis tools:
 Currently tested on:
 
 * **Linux (Ubuntu)**
+* **macOS**
 
 Other Linux distributions may work but are not officially tested.
 
